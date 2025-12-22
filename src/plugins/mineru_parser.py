@@ -124,7 +124,8 @@ class MinerUParser(BaseDocumentProcessor):
         # 构建请求数据 - 只保留核心参数
         data = {
             "lang_list": params.get("lang_list", ["ch"]),
-            "backend": params.get("backend", "vlm-http-client"),
+            # "backend": params.get("backend", "vlm-http-client"),
+            "backend": params.get("backend", "pipeline"),
             "parse_method": params.get("parse_method", "auto"),
             # 固定返回 markdown 格式
             "return_md": True,
@@ -141,7 +142,7 @@ class MinerUParser(BaseDocumentProcessor):
 
         try:
             start_time = time.time()
-
+            # import ipdb; ipdb.set_trace()
             logger.info(
                 f"MinerU 开始处理: {os.path.basename(file_path)} (backend={data['backend']}, lang={data['lang_list']})"
             )
@@ -184,17 +185,17 @@ class MinerUParser(BaseDocumentProcessor):
                 zip_data = response.content
 
                 # 保存到临时文件并处理
-                with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
+                with tempfile.NamedTemporaryFile(suffix=".zip", dir="output/", delete=False) as tmp_zip:
                     tmp_zip.write(zip_data)
                     tmp_zip.flush()
 
-                    try:
-                        import asyncio
+                try:
+                    import asyncio
 
-                        processed = asyncio.run(_process_zip_file(tmp_zip.name, params.get("db_id")))
-                        text = processed["markdown_content"]
-                    finally:
-                        os.unlink(tmp_zip.name)
+                    processed = asyncio.run(_process_zip_file(tmp_zip.name, params.get("db_id")))
+                    text = processed["markdown_content"]
+                finally:
+                    os.unlink(tmp_zip.name)
 
                 if not text:
                     logger.error("MinerU 未返回任何文本内容")
