@@ -16,6 +16,9 @@
           <router-link to="/database" class="nav-link" v-if="userStore.isLoggedIn && userStore.isAdmin">
             <span>知识库</span>
           </router-link>
+          <router-link to="/sqldatabase" class="nav-link" v-if="userStore.isLoggedIn && userStore.isAdmin">
+            <span>数据库</span>
+          </router-link>
           </nav>
         <div class="header-actions">
           <!-- <div class="github-link">

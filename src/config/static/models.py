@@ -167,6 +167,15 @@ DEFAULT_EMBED_MODELS: dict[str, EmbedModelInfo] = {
         # base_url="https://api.siliconflow.cn/v1/embeddings",
         api_key="no_api_key",
     ),
+    "siliconflow/BAAI/local-bge-m3": EmbedModelInfo(
+        model_id="siliconflow/BAAI/local-bge-m3",
+        name="bge-m3",
+        dimension=1024,
+        base_url="http://192.168.137.100:9997/v1/embeddings",
+        # base_url="http://localhost:9997/v1/embeddings",
+        # base_url="https://api.siliconflow.cn/v1/embeddings",
+        api_key="no_api_key",
+    ),
     # "siliconflow/BAAI/bge-m3": EmbedModelInfo(
     #     model_id="siliconflow/BAAI/bge-m3",
     #     name="BAAI/bge-m3",
