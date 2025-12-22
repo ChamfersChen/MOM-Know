@@ -434,6 +434,11 @@ class MilvusKB(KnowledgeBase):
             raise ValueError(f"Database {db_id} not found")
 
         try:
+            from src.knowledge import knowledge_base # 延迟导入，避免导入时循环引用
+            db_info = knowledge_base.global_databases_meta[db_id]
+
+            query_params = db_info.get("query_params", {}).get("options", {})
+            kwargs.update(query_params)
             db_meta = self.databases_meta.get(db_id, {})
             db_metadata = db_meta.get("metadata", {}) or {}
             reranker_config = db_metadata.get("reranker_config", {}) or {}

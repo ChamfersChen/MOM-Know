@@ -85,6 +85,15 @@
                 type="link"
                 size="small"
                 danger
+                v-if="isTaskCompleted(task)"
+                @click="handleDelete(task.id)"
+              >
+                删除
+              </a-button>
+              <a-button
+                type="link"
+                size="small"
+                danger
                 v-if="canCancel(task)"
                 :disabled="!canCancel(task)"
                 @click="handleCancel(task.id)"
@@ -257,6 +266,10 @@ function handleDetail(taskId) {
 
 function handleCancel(taskId) {
   taskerStore.cancelTask(taskId)
+}
+
+function handleDelete(taskId) {
+  taskerStore.deleteTask(taskId)
 }
 
 function formatTime(value, mode = 'full') {

@@ -17,6 +17,10 @@ MCP_SERVERS = {
         "url": "https://remote.mcpservers.org/sequentialthinking/mcp",
         "transport": "streamable_http",
     },
+    "mcp-server-mychart": {
+        "url": "http://localhost:8001/mcp",
+        "transport": "streamable_http",
+    },
     # "zhipu-web-search-sse": {
     #     "url": f"https://open.bigmodel.cn/api/mcp/web_search/sse?Authorization={os.getenv('ZHIPUAI_API_KEY')}",
     #     "transport": "streamable_http",

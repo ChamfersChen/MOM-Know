@@ -117,6 +117,25 @@ export const useTaskerStore = defineStore('tasker', () => {
       message.error(error?.message || '取消任务失败')
     }
   }
+  
+  function removeTaskById(taskId) {
+    if (!taskId) return
+    const index = tasks.value.findIndex(item => item.id === taskId)
+    if (index >= 0) {
+      tasks.value.splice(index, 1)
+    }
+  }
+  async function deleteTask(taskId) {
+    if (!taskId) return
+    try {
+      await taskerApi.deleteTask(taskId)
+      removeTaskById(taskId)
+      message.success('删除任务成功')
+    } catch (error) {
+      console.error(`删除任务 ${taskId} 失败`, error)
+      message.error(error?.message || '删除任务失败')
+    }
+  }
 
   function registerQueuedTask({ task_id, name, task_type, message: msg, payload } = {}) {
     if (!task_id) return
@@ -186,6 +205,7 @@ export const useTaskerStore = defineStore('tasker', () => {
     loadTasks,
     refreshTask,
     cancelTask,
+    deleteTask,
     registerQueuedTask,
     startPolling,
     stopPolling,

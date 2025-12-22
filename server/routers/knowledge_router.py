@@ -1,6 +1,7 @@
 import aiofiles
 import asyncio
 import os
+import tempfile
 import traceback
 import textwrap
 from collections.abc import Mapping
@@ -18,7 +19,7 @@ from src.knowledge.indexing import SUPPORTED_FILE_EXTENSIONS, is_supported_file_
 from src.knowledge.utils import calculate_content_hash, merge_processing_params
 from src.models.embed import test_embedding_model_status, test_all_embedding_models_status
 from src.storage.minio.client import aupload_file_to_minio, get_minio_client, StorageError
-from src.utils import logger
+from src.utils import logger, hashstr
 
 knowledge = APIRouter(prefix="/knowledge", tags=["knowledge"])
 
@@ -237,17 +238,9 @@ async def export_database(
         logger.error(f"导出数据库失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"导出数据库失败: {e}")
 
-
-# =============================================================================
-# === 文档管理分组 ===
-# =============================================================================
-
-
-@knowledge.post("/databases/{db_id}/documents")
-async def add_documents(
-    db_id: str, items: list[str] = Body(...), params: dict = Body(...), current_user: User = Depends(get_admin_user)
+async def _upload_db_file(
+    db_id: str, items: list[str] = Body(...), params: dict = Body(...)
 ):
-    """添加文档到知识库"""
     logger.debug(f"Add documents for db_id {db_id}: {items} {params=}")
 
     content_type = params.get("content_type", "file")
@@ -351,6 +344,219 @@ async def add_documents(
     except Exception as e:  # noqa: BLE001
         logger.error(f"Failed to enqueue {content_type}s: {e}, {traceback.format_exc()}")
         return {"message": f"Failed to enqueue task: {e}", "status": "failed"}
+
+# =============================================================================
+# === 数据库录入知识 ===
+# =============================================================================
+@knowledge.post("/databases/check")
+async def check_db_and_tables(
+    host: str | None = Body(...),
+    user: str  | None = Body(...),
+    password: str  | None = Body(...),
+    database: str  | None = Body(...),
+    port: int  | None = Body(...),
+    # current_user: User = Depends(get_admin_user)
+):
+    """检查数据库是否存在并返回表名"""
+    try:
+        res, field_res = knowledge_base.check_mysql_connection(host, user, password, database, port)
+        return {'status': 'success', 'result': res, 'field_result': field_res}
+    except Exception as e:
+        return {"status": "failed", "message": str(e)}
+
+@knowledge.post("/databases/{db_id}/upload/database")
+async def process_db_and_upload(
+    db_id: str,
+    host: str | None = Body(...),
+    user: str  | None = Body(...),
+    password: str  | None = Body(...),
+    database: str  | None = Body(...),
+    port: int  | None = Body(...),
+    table: str  | None = Body(...),
+    fields: list | None = Body(...),
+    filename: str | None = Body(...),
+    chunk_params: dict = Body(...),
+    # current_user: User = Depends(get_admin_user)
+):
+    # 1. 从数据库获取文本数据
+    text_data = knowledge_base.get_data_from_db(host, user, password, database, port, table, fields)  # 你的数据库查询函数
+    # 2. 创建临时文件
+    with tempfile.NamedTemporaryFile(mode='w+', suffix='.txt', delete=False, encoding='utf-8') as tmp_file:
+        tmp_file.write(text_data)
+        tmp_file_path = tmp_file.name
+    try: 
+        # 3. 读取临时文件为 UploadFile
+        with open(tmp_file_path, 'r', encoding='utf-8') as file:
+            file_content = file.read()
+
+        with open(tmp_file_path, 'rb') as file:
+            file_bytes = file.read()
+        
+        # 根据db_id获取上传路径，如果db_id为None则使用默认路径
+        if db_id:
+            upload_dir = knowledge_base.get_db_upload_path(db_id)
+        else:
+            upload_dir = os.path.join(config.save_dir, "database", "uploads")
+
+        if not filename.endswith(".txt"):
+            filename = filename.strip() + ".txt"
+
+        basename, ext = os.path.splitext(filename)
+        filename = f"{basename}_{hashstr(basename, 4, with_salt=True)}{ext}".lower()
+        file_path = os.path.join(upload_dir, filename)
+
+        # 在线程池中执行同步文件系统操作，避免阻塞事件循环
+        await asyncio.to_thread(os.makedirs, upload_dir, exist_ok=True)
+
+        # # 在线程池中执行计算密集型操作，避免阻塞事件循环
+        # content_hash = await asyncio.to_thread(calculate_content_hash, file_bytes)
+
+        # # 在线程池中执行同步数据库查询，避免阻塞事件循环
+        # file_exists = await asyncio.to_thread(knowledge_base.file_existed_in_db, db_id, content_hash)
+
+        content_hash = await calculate_content_hash(file_bytes)
+
+        file_exists = await knowledge_base.file_existed_in_db(db_id, content_hash)
+        if file_exists:
+            raise HTTPException(
+                status_code=409,
+                detail="数据库中已经存在了相同内容的文件。File with the same content already exists in this database",
+            )
+
+        # 使用异步文件写入，避免阻塞事件循环
+        async with aiofiles.open(file_path, "w", encoding='utf-8') as buffer:
+            await buffer.write(file_content)
+            
+    finally:
+        # 5. 清理临时文件
+        if os.path.exists(tmp_file_path):
+            os.unlink(tmp_file_path)
+
+    return await _upload_db_file(db_id, [file_path], 
+                         params={ 
+                            "chunk_size": 1000,
+                            "chunk_overlap": 200,
+                            "enable_ocr": 'disable',
+                            "use_qa_split": False,
+                            "qa_separator": '\n\n\n',
+                            "content_type": "file"
+                        }
+                    )
+
+# =============================================================================
+# === 文档管理分组 ===
+# =============================================================================
+
+
+@knowledge.post("/databases/{db_id}/documents")
+async def add_documents(
+    db_id: str, items: list[str] = Body(...), params: dict = Body(...), current_user: User = Depends(get_admin_user)
+):
+    """添加文档到知识库"""
+    return await _upload_db_file(db_id, items, params)
+    # logger.debug(f"Add documents for db_id {db_id}: {items} {params=}")
+
+    # content_type = params.get("content_type", "file")
+
+    # # 禁止 URL 解析与入库
+    # if content_type == "url":
+    #     raise HTTPException(status_code=400, detail="URL 文档上传与解析已禁用")
+
+    # # 安全检查：验证文件路径
+    # if content_type == "file":
+    #     from src.knowledge.utils.kb_utils import validate_file_path
+
+    #     for item in items:
+    #         try:
+    #             validate_file_path(item, db_id)
+    #         except ValueError as e:
+    #             raise HTTPException(status_code=403, detail=str(e))
+
+    # async def run_ingest(context: TaskContext):
+    #     await context.set_message("任务初始化")
+    #     await context.set_progress(5.0, "准备处理文档")
+
+    #     total = len(items)
+    #     processed_items = []
+
+    #     try:
+    #         # 逐个处理文档并更新进度
+    #         for idx, item in enumerate(items, 1):
+    #             await context.raise_if_cancelled()
+
+    #             # 更新进度
+    #             progress = 5.0 + (idx / total) * 90.0  # 5% ~ 95%
+    #             await context.set_progress(progress, f"正在处理第 {idx}/{total} 个文档")
+
+    #             try:
+    #                 result = await knowledge_base.add_content(db_id, [item], params=params)
+    #                 processed_items.extend(result)
+    #             except Exception as doc_error:
+    #                 logger.error(f"Document processing failed for {item}: {doc_error}")
+    #                 error_type = "timeout" if isinstance(doc_error, TimeoutError) else "processing_error"
+    #                 error_msg = "处理超时" if isinstance(doc_error, TimeoutError) else "处理失败"
+    #                 processed_items.append(
+    #                     {
+    #                         "item": item,
+    #                         "status": "failed",
+    #                         "error": f"{error_msg}: {str(doc_error)}",
+    #                         "error_type": error_type,
+    #                     }
+    #                 )
+
+    #     except asyncio.CancelledError:
+    #         await context.set_progress(100.0, "任务已取消")
+    #         raise
+    #     except Exception as task_error:
+    #         # 处理整体任务的其他异常（如内存不足、网络错误等）
+    #         logger.exception(f"Task processing failed: {task_error}")
+    #         await context.set_progress(100.0, f"任务处理失败: {str(task_error)}")
+    #         # 将所有未处理的文档标记为失败
+    #         for item in items[len(processed_items) :]:
+    #             processed_items.append(
+    #                 {
+    #                     "item": item,
+    #                     "status": "failed",
+    #                     "error": f"任务失败: {str(task_error)}",
+    #                     "error_type": "task_failed",
+    #                 }
+    #             )
+    #         raise
+
+    #     item_type = "URL" if content_type == "url" else "文件"
+    #     failed_count = len([_p for _p in processed_items if _p.get("status") == "failed"])
+    #     # success_items = [_p for _p in processed_items if _p.get("status") == "done"]
+    #     summary = {
+    #         "db_id": db_id,
+    #         "item_type": item_type,
+    #         "submitted": len(processed_items),
+    #         "failed": failed_count,
+    #     }
+    #     message = f"{item_type}处理完成，失败 {failed_count} 个" if failed_count else f"{item_type}处理完成"
+    #     await context.set_result(summary | {"items": processed_items})
+    #     await context.set_progress(100.0, message)
+    #     return summary | {"items": processed_items}
+
+    # try:
+    #     task = await tasker.enqueue(
+    #         name=f"知识库文档处理({db_id})",
+    #         task_type="knowledge_ingest",
+    #         payload={
+    #             "db_id": db_id,
+    #             "items": items,
+    #             "params": params,
+    #             "content_type": content_type,
+    #         },
+    #         coroutine=run_ingest,
+    #     )
+    #     return {
+    #         "message": "任务已提交，请在任务中心查看进度",
+    #         "status": "queued",
+    #         "task_id": task.id,
+    #     }
+    # except Exception as e:  # noqa: BLE001
+    #     logger.error(f"Failed to enqueue {content_type}s: {e}, {traceback.format_exc()}")
+    #     return {"message": f"Failed to enqueue task: {e}", "status": "failed"}
 
 
 @knowledge.get("/databases/{db_id}/documents/{doc_id}")

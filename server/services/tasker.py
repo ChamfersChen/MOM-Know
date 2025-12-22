@@ -188,6 +188,27 @@ class Tasker:
         logger.info("Cancellation requested for task {}", task_id)
         return True
 
+    async def delete_task(self, task_id: str) -> bool:
+        """
+        删除已完成的任务
+        
+        Args:
+            task_id: 任务ID
+            
+        Returns:
+            bool: 删除成功返回True，如果任务不存在或仍在运行则返回False
+        """
+        async with self._lock:
+            task = self._tasks.get(task_id)
+            if not task:
+                return False
+            if task.status not in TERMINAL_STATUSES:
+                return False
+            del self._tasks[task_id]
+            await self._persist_state()
+        logger.info("Deleted task {}", task_id)
+        return True
+
     async def _worker_loop(self) -> None:
         while True:
             try:

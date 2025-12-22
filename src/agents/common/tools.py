@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from src import config, graph_base, knowledge_base
 from src.utils import logger
 
-search = TavilySearch(max_results=10)
+search = TavilySearch(max_results=2)
 search.metadata = {"name": "Tavily 网页搜索"}
 
 

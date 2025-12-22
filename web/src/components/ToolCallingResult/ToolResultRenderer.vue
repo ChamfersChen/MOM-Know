@@ -29,7 +29,16 @@
     <div v-else-if="isImageResult" class="image-result">
       <img :src="parsedData" />
     </div>
-
+    <!-- Markdown结果 -->
+    <div v-else-if="isMdResult">
+      <MdPreview
+          :modelValue="parsedData[0].text"
+          :theme="theme"
+          :previewTheme="previewTheme"
+          :codeTheme="codeTheme"
+          class="markdown-content"
+      />
+    </div>
     <!-- 默认的原始数据展示 -->
     <div v-else class="default-result">
       <!-- <div class="default-header">
@@ -45,11 +54,16 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { ToolOutlined } from '@ant-design/icons-vue'
+import { MdPreview } from 'md-editor-v3';
 import WebSearchResult from './WebSearchResult.vue'
 import KnowledgeBaseResult from './KnowledgeBaseResult.vue'
 import KnowledgeGraphResult from './KnowledgeGraphResult.vue'
 import CalculatorResult from './CalculatorResult.vue'
 import { useAgentStore } from '@/stores/agent';
+
+const theme = ref('light');
+const previewTheme = ref('github');
+const codeTheme = ref('atom');
 
 const agentStore = useAgentStore()
 
@@ -121,6 +135,20 @@ const isKnowledgeBaseResult = computed(() => {
     }
   }
 
+  return false
+})
+
+const isMdResult = computed(() => {
+  // 包含 chart 且返回值是url
+  const data = parsedData.value
+  const toolNameLower = props.toolName.toLowerCase()
+  const isChartTool = toolNameLower.includes('chart')
+  if (!isChartTool) return false
+  // 如果 data 是数组且非空，取第一个元素的 text 字段
+  if (Array.isArray(data) && data.length > 0 && data[0].text) {
+    const text = data[0].text
+    return text && typeof text === 'string' && text.includes('```')
+  }
   return false
 })
 

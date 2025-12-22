@@ -11,22 +11,22 @@ export const useInfoStore = defineStore('info', () => {
 
   // 计算属性 - 组织信息
   const organization = computed(() => infoConfig.value.organization || {
-    name: "江南语析",
+    name: "LCMOM",
     logo: "/favicon.svg",
     avatar: "/avatar.jpg"
   })
 
   // 计算属性 - 品牌信息
   const branding = computed(() => infoConfig.value.branding || {
-    name: "Yuxi-Know",
-    title: "Yuxi-Know",
-    subtitle: "大模型驱动的知识库管理工具",
-    description: "结合知识库与知识图谱，提供更准确、更全面的回答"
+    name: "MOM-Know",
+    title: "MOM-Know",
+    subtitle: "MOM-Know: 更智能的MOM智能体平台",
+    description: "结合知识库与工具，提供更准确、更全面的回答"
   })
 
   // 计算属性 - 功能特性
   const features = computed(() => infoConfig.value.features || [{
-    label: "GitHub Stars",
+    label: "📚 灵活知识库",
     value: "2600+",
     description: "开发者社区的认可与支持",
     icon: "stars"

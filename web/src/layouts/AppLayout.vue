@@ -183,7 +183,7 @@ provide('settingsModal', {
       ></div>
 
 
-      <div class="github nav-item">
+      <!-- <div class="github nav-item">
         <a-tooltip placement="right">
           <template #title>欢迎 Star</template>
           <a href="https://github.com/xerrors/Yuxi-Know" target="_blank" class="github-link">
@@ -193,7 +193,7 @@ provide('settingsModal', {
             </span>
           </a>
         </a-tooltip>
-      </div>
+      </div> -->
 
 
         <!-- <div class="nav-item api-docs">

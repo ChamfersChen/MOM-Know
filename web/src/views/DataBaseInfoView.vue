@@ -6,6 +6,10 @@
     v-model:visible="addFilesModalVisible"
     @success="onFileUploadSuccess"
   />
+  
+  <DatabaseUploadModal
+    v-model:visible="uploadDatabaseModalVisible"
+  />
 
   <div class="unified-layout">
     <div class="left-panel" :style="{ width: leftPanelWidth + '%' }">
@@ -14,6 +18,7 @@
         :right-panel-visible="state.rightPanelVisible"
         @show-add-files-modal="showAddFilesModal"
         @toggle-right-panel="toggleRightPanel"
+        @show-upload-database-modal="showUploadDatabaseModal"
       />
     </div>
 
@@ -103,6 +108,8 @@ import QuerySection from '@/components/QuerySection.vue';
 import MindMapSection from '@/components/MindMapSection.vue';
 import RAGEvaluationTab from '@/components/RAGEvaluationTab.vue';
 import EvaluationBenchmarks from '@/components/EvaluationBenchmarks.vue';
+import DatabaseUploadModal from '@/components/DatabaseUploadModal.vue';
+
 
 const route = useRoute();
 const store = useDatabaseStore();
@@ -196,6 +203,14 @@ const isInitialLoad = ref(true);
 // 显示添加文件弹窗
 const showAddFilesModal = () => {
   addFilesModalVisible.value = true;
+};
+
+// 添加导入数据库数据弹窗
+const uploadDatabaseModalVisible = ref(false);
+
+// 显示添加文件弹窗
+const showUploadDatabaseModal = () => {
+  uploadDatabaseModalVisible.value = true;
 };
 
 // 文件上传成功回调

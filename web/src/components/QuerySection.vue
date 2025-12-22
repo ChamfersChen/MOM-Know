@@ -22,7 +22,7 @@
                     class="config-label-btn"
                     @click="openSearchConfigModal"
                   >
-                    <SettingOutlined />
+                    <SettingOutlined /> 检索配置
                   </a-button>
                 </a-tooltip>
                 <div class="examples-label-group">
@@ -33,7 +33,7 @@
                       class="examples-label-btn"
                       @click="() => generateSampleQuestions(false)"
                     >
-                      示例<ReloadOutlined />:
+                      <ReloadOutlined />示例:
                     </a-button>
                   </a-tooltip>
                 </div>
