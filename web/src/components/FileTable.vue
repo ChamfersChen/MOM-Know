@@ -8,12 +8,6 @@
           :loading="refreshing"
           :icon="h(PlusOutlined)"
         >添加文件</a-button>
-        <a-button
-          type="secondary"
-          @click="showUploadDatabaseModal"
-          :loading="refreshing"
-          :icon="h(HddOutlined)"
-        >从数据库导入</a-button>
       </div>
       <div class="panel-actions">
         <a-input
@@ -177,7 +171,6 @@ import {
   CloseCircleFilled,
   ClockCircleFilled,
   PlusOutlined,
-  HddOutlined,
 } from '@ant-design/icons-vue';
 import {
   Trash2,
@@ -201,7 +194,6 @@ const props = defineProps({
 const emit = defineEmits([
   'showAddFilesModal',
   'toggleRightPanel',
-  'showUploadDatabaseModal',
 ]);
 
 const files = computed(() => Object.values(store.database.files || {}));
@@ -333,10 +325,6 @@ const canBatchRechunk = computed(() => {
 
 const showAddFilesModal = () => {
   emit('showAddFilesModal');
-};
-
-const showUploadDatabaseModal = () => {
-  emit('showUploadDatabaseModal');
 };
 
 const handleRefresh = () => {

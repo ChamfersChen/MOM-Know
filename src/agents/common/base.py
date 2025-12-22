@@ -43,7 +43,6 @@ class BaseAgent:
         return self.__class__.__name__
 
     async def get_info(self):
-        import ipdb; ipdb.set_trace()
         # Load metadata from file
         metadata = self.load_metadata()
 
