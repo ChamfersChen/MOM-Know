@@ -55,9 +55,9 @@ class ChatbotAgent(BaseAgent):
                 context_based_model,  # 动态模型选择
                 dynamic_tool_middleware,  # 动态工具选择（支持 MCP 工具注册）
                 ModelRetryMiddleware(),  # 模型重试中间件
-                HumanInTheLoopMiddleware({
-                    "执行 SQL 查询": True,  # No editing allowed
-                    "计算器": True,  # No editing allowed
+                HumanInTheLoopMiddleware({ # 人工审批中间件
+                    "执行 SQL 查询": True, 
+                    "计算器": True, 
                 })
             ],
             checkpointer=await self._get_checkpointer(),
