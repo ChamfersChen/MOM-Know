@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# run mcp
+cd mcp_server
+uv run mcp run -t streamable-http echarts_server.py:mcp
+
 # Start the MinerU API
 # export MINERU_MODEL_SOURCE=local 
 set MINERU_MODEL_SOURCE=local

@@ -6,7 +6,7 @@ from src.agents.common.middlewares import context_aware_prompt, context_based_mo
 from src.agents.common.toolkits.mysql import get_mysql_tools
 from src.utils import logger
 
-_mcp_servers = {"mcp-server-chart": {"command": "npx", "args": ["-y", "@antv/mcp-server-chart"], "transport": "stdio"}}
+# _mcp_servers = {"mcp-server-chart": {"command": "npx", "args": ["-y", "@antv/mcp-server-chart"], "transport": "stdio"}}
 
 
 class SqlReporterAgent(BaseAgent):
@@ -17,7 +17,7 @@ class SqlReporterAgent(BaseAgent):
         super().__init__(**kwargs)
 
     async def get_tools(self):
-        chart_tools = await get_mcp_tools("mcp-server-chart", additional_servers=_mcp_servers)
+        chart_tools = await get_mcp_tools("mcp-server-mychart") # , additional_servers=_mcp_servers)
         mysql_tools = get_mysql_tools()
         return chart_tools + mysql_tools
 
