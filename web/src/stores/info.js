@@ -14,6 +14,7 @@ export const useInfoStore = defineStore('info', () => {
     name: "LCMOM",
     logo: "/favicon.svg",
     avatar: "/avatar.jpg"
+    // avatar: "/avatar.jpg"
   })
 
   // 计算属性 - 品牌信息
