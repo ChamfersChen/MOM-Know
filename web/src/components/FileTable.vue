@@ -28,7 +28,7 @@
           type="text"
           @click="handleRefresh"
           :loading="refreshing"
-          :icon="h(RefreshCcw)"
+          :icon="h(ReloadOutlined)"
           title="刷新"
           class="panel-action-btn"
         />
@@ -177,6 +177,7 @@ import {
   CloseCircleFilled,
   ClockCircleFilled,
   PlusOutlined,
+  ReloadOutlined,
   HddOutlined,
 } from '@ant-design/icons-vue';
 import {
@@ -184,7 +185,6 @@ import {
   Download,
   RefreshCw,
   ChevronLast,
-  RefreshCcw,
   Ellipsis,
 } from 'lucide-vue-next';
 
