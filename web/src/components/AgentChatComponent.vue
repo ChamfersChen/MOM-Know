@@ -1125,7 +1125,6 @@ watch(conversations, () => {
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
-  background: var(--gray-0);
   position: relative;
   box-sizing: border-box;
   overflow-y: scroll;
