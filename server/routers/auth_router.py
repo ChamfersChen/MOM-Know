@@ -89,9 +89,11 @@ class UserIdGeneration(BaseModel):
 # === 认证分组 ===
 # =============================================================================
 
+access_token_old = None
 
 @auth.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
+    global access_token_old
     # 查找用户 - 支持user_id和phone_number登录
     login_identifier = form_data.username  # OAuth2表单中的username字段作为登录标识符
 
@@ -161,7 +163,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     # 生成访问令牌
     token_data = {"sub": str(user.id)}
     access_token = AuthUtils.create_access_token(token_data)
-
+    access_token_old = access_token
     # 记录登录操作
     await log_operation(db, user.id, "登录")
 
@@ -176,6 +178,12 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         "role": user.role,
     }
 
+@auth.get("/token-check")
+async def token_check(
+    current_user: User = Depends(get_current_user)
+):
+    global access_token_old
+    return {"access_token": access_token_old}
 
 # 路由：校验是否需要初始化管理员
 @auth.get("/check-first-run")
