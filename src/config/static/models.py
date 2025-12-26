@@ -7,7 +7,11 @@
 - 重排序模型（Reranker）
 """
 
+import os
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 class ChatModelProvider(BaseModel):
@@ -47,11 +51,14 @@ class RerankerInfo(BaseModel):
 DEFAULT_CHAT_MODEL_PROVIDERS: dict[str, ChatModelProvider] = {
     "openai": ChatModelProvider(
         name="OpenAI",
-        url="http://127.0.0.1:9998/v1/models",
-        base_url="http://127.0.0.1:9998/v1",
-        default="/models/Qwen3-4B-Instruct-2507",
+        # url="http://127.0.0.1:9998/v1/models",
+        url=f"{os.environ.get("OPENAI_API_BASE", "http://127.0.0.1:9998/v1")}/models",
+        # base_url="http://127.0.0.1:9998/v1",
+        base_url=os.environ.get("OPENAI_API_BASE", "http://127.0.0.1:9998/v1"),
+        default="../models/Qwen3-8B-GGUF/Qwen3-8B-Q8_0.gguf",
+        # default="/models/Qwen3-4B-Instruct-2507",
         env="NO_API_KEY",
-        models=["qwen3", "/models/Qwen3-4B-Instruct-2507"],
+        models=["../models/Qwen3-8B-GGUF/Qwen3-8B-Q8_0.gguf", "/models/Qwen3-4B-Instruct-2507"],
     ),
     # "deepseek": ChatModelProvider(
     #     name="DeepSeek",
