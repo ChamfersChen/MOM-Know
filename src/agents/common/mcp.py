@@ -13,10 +13,10 @@ _mcp_tools_cache: dict[str, list[Callable[..., Any]]] = {}
 
 # MCP Server configurations
 MCP_SERVERS = {
-    "sequentialthinking": {
-        "url": "https://remote.mcpservers.org/sequentialthinking/mcp",
-        "transport": "streamable_http",
-    },
+    # "sequentialthinking": {
+    #     "url": "https://remote.mcpservers.org/sequentialthinking/mcp",
+    #     "transport": "streamable_http",
+    # },
     "mcp-server-mychart": {
         "url": "http://localhost:8001/mcp",
         "transport": "streamable_http",
