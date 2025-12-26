@@ -228,6 +228,7 @@ const userRoleClass = computed(() => {
 // 退出登录
 const logout = () => {
   userStore.logout();
+  localStorage.setItem('FORCE_LOGOUT', Date.now().toString())
   message.success('已退出登录');
   // 跳转到首页
   router.push('/login');
