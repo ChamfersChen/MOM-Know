@@ -78,6 +78,8 @@
       </div>
     </div> -->
 
+    <ProjectOverview />
+
     <footer class="footer">
       <div class="footer-content">
         <p class="copyright">{{ infoStore.footer?.copyright || '© 2025 All rights reserved' }}</p>
@@ -94,6 +96,7 @@ import { useInfoStore } from '@/stores/info'
 import { useAgentStore } from '@/stores/agent'
 import { useThemeStore } from '@/stores/theme'
 import UserInfoComponent from '@/components/UserInfoComponent.vue'
+import ProjectOverview from '@/components/ProjectOverview.vue'
 import {
   BookText,
   Bug,
@@ -221,7 +224,7 @@ const actionLinks = computed(() => {
 
 <style lang="less" scoped>
 .home-container {
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   color: var(--main-900);
@@ -229,7 +232,6 @@ const actionLinks = computed(() => {
   position: relative;
   overflow-x: hidden;
 }
-
 .glass-header {
   display: flex;
   justify-content: space-between;
@@ -268,8 +270,6 @@ const actionLinks = computed(() => {
 
   &:hover {
     color: var(--gray-900);
-
-
 
     svg {
       transform: scale(1.1);
@@ -514,7 +514,7 @@ const actionLinks = computed(() => {
 .section {
   width: 100%;
   max-width: 1200px;
-  margin: 0 auto;
+  margin: 50px auto 0px auto;
   padding: 2rem 0;
 }
 
