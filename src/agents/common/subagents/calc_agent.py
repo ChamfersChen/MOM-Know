@@ -8,7 +8,7 @@ from src.agents.common.tools import calculator
 calc_agent = create_agent(
     model=load_chat_model(config.default_model),
     tools=[calculator],
-    system_prompt="你可以使用计算器工具，处理各种数学计算任务。",
+    system_prompt="你可以使用计算器工具，处理各种数学计算任务。/no_think",
 )
 
 
