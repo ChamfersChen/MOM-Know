@@ -104,7 +104,7 @@ class DeepContext(BaseContext):
         metadata={"name": "系统提示词", "description": "Deep智能体的角色和行为指导"},
     )
     subagents_model: Annotated[str, {"__template_metadata__": {"kind": "llm"}}] = field(
-        default="siliconflow/deepseek-ai/DeepSeek-V3.2",
+        default="openai/../models/Qwen3-8B-GGUF/Qwen3-8B-Q8_0.gguf",
         metadata={
             "name": "Sub-agent Model",
             "description": "The model used by sub-agents (e.g., critique-agent, research-agent).",
