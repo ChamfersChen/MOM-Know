@@ -256,7 +256,6 @@ const folderTree = computed(() => {
 
     return roots;
 });
-};
 
 // 添加导入数据库数据弹窗
 const uploadDatabaseModalVisible = ref(false);
