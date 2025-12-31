@@ -34,6 +34,8 @@ class ChatbotAgent(BaseAgent):
             for tool_name in tools:
                 if tool_name in tools_map:
                     selected_tools.append(tools_map[tool_name])
+        else:
+            selected_tools = all_basic_tools
 
         # 2. 知识库工具
         if knowledges:
