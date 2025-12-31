@@ -68,7 +68,7 @@ class ChatbotAgent(BaseAgent):
                 ModelRetryMiddleware(),  # 模型重试中间件
                 HumanInTheLoopMiddleware({ # 人工审批中间件
                     # "执行 SQL 查询": True, 
-                    "计算器": True, 
+                    # "计算器": True, 
                 })
             ],
             checkpointer=await self._get_checkpointer(),
