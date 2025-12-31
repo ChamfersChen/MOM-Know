@@ -287,6 +287,7 @@ export const useAgentStore = defineStore('agent', () => {
 
     try {
       const response = await agentApi.getTools(selectedAgentId.value)
+      console.log('Fetch tools successful', response)
       availableTools.value = response.tools
     } catch (err) {
       console.error('Failed to fetch tools:', err)
