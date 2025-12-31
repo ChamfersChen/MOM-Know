@@ -69,7 +69,7 @@ const getRemoteConfig = () => {
 }
 
 const getRemoteDatabase = () => {
-  databaseStore.getDatabaseInfo(undefined, false) // Explicitly load query params for remote database
+  databaseStore.loadDatabases()
 }
 
 // Fetch GitHub stars count

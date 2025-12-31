@@ -8,7 +8,7 @@ from langchain.agents.middleware import ModelRequest, SummarizationMiddleware, T
 from langchain_anthropic.middleware import AnthropicPromptCachingMiddleware
 
 from src.agents.common import BaseAgent, load_chat_model
-from src.agents.common.middlewares import context_based_model, inject_attachment_context
+from src.agents.common.middlewares import inject_attachment_context
 from src.agents.common.tools import search
 
 from .context import DeepContext
@@ -65,7 +65,6 @@ class DeepAgent(BaseAgent):
         "file_upload",
         "todo",
         "files",
-        "reload_graph",
     ]
 
     def __init__(self, **kwargs):
@@ -106,8 +105,8 @@ class DeepAgent(BaseAgent):
         graph = create_agent(
             model=model,
             tools=tools,
+            system_prompt=context.system_prompt,
             middleware=[
-                context_based_model,  # 动态模型选择
                 context_aware_prompt,  # 动态系统提示词
                 inject_attachment_context,  # 附件上下文注入
                 TodoListMiddleware(),
@@ -117,8 +116,8 @@ class DeepAgent(BaseAgent):
                     default_tools=tools,
                     subagents=[critique_sub_agent, research_sub_agent],
                     default_middleware=[
-                        TodoListMiddleware(),
-                        FilesystemMiddleware(),
+                        TodoListMiddleware(),  # 子智能体也有 todo 列表
+                        FilesystemMiddleware(),  # 当前的两个文件系统是隔离的
                         SummarizationMiddleware(
                             model=model,
                             trigger=trigger,
