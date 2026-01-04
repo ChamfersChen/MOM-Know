@@ -39,6 +39,14 @@
           title="刷新"
           class="panel-action-btn"
         />
+        <a-button
+          type="text"
+          @click="toggleSelectionMode"
+          :icon="h(CheckSquare)"
+          title="多选"
+          class="panel-action-btn"
+          :class="{ 'active': isSelectionMode }"
+        />
         <!-- <a-button
           @click="toggleAutoRefresh"
           size="small"
@@ -136,11 +144,11 @@
         :pagination="paginationCompact"
         v-model:expandedRowKeys="expandedRowKeys"
         :custom-row="customRow"
-        :row-selection="{
+        :row-selection="isSelectionMode ? {
           selectedRowKeys: selectedRowKeys,
           onChange: onSelectChange,
           getCheckboxProps: getCheckboxProps
-        }"
+        } : null"
         :locale="{
           emptyText: emptyText
         }">
@@ -237,6 +245,7 @@ import {
   ChevronLast,
   Ellipsis,
   FolderPlus,
+  CheckSquare,
 } from 'lucide-vue-next';
 
 const store = useDatabaseStore();
@@ -267,6 +276,8 @@ const selectedRowKeys = computed({
   set: (keys) => store.selectedRowKeys = keys,
 });
 
+const isSelectionMode = ref(false);
+
 const expandedRowKeys = ref([]);
 
 // 新建文件夹相关
@@ -293,6 +304,13 @@ const toggleExpand = (record) => {
     expandedRowKeys.value.splice(index, 1);
   } else {
     expandedRowKeys.value.push(record.file_id);
+  }
+};
+
+const toggleSelectionMode = () => {
+  isSelectionMode.value = !isSelectionMode.value;
+  if (!isSelectionMode.value) {
+    selectedRowKeys.value = [];
   }
 };
 
@@ -387,8 +405,7 @@ const rechunkModalLoading = computed(() => store.state.chunkLoading);
 const rechunkParams = ref({
   chunk_size: 1000,
   chunk_overlap: 200,
-  use_qa_split: false,
-  qa_separator: '\n\n\n'
+  qa_separator: '\\n\\n\\n'
 });
 const currentRechunkFileIds = ref([]);
 const isBatchRechunk = ref(false);
@@ -800,8 +817,7 @@ const handleRechunkConfirm = async () => {
       rechunkParams.value = {
         chunk_size: 1000,
         chunk_overlap: 200,
-        use_qa_split: false,
-        qa_separator: '\n\n\n'
+        qa_separator: '\\n\\n\\n'
       };
     } else {
       message.error(`重新分块失败: ${result.message}`);
@@ -823,8 +839,7 @@ const handleRechunkCancel = () => {
   rechunkParams.value = {
     chunk_size: 1000,
     chunk_overlap: 200,
-    use_qa_split: false,
-    qa_separator: '\n\n\n'
+    qa_separator: '\\n\\n\\n'
   };
 };
 
@@ -878,7 +893,7 @@ import ChunkParamsConfig from '@/components/ChunkParamsConfig.vue';
 .panel-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0px;
 
   .action-searcher {
     width: 120px;
@@ -1043,6 +1058,11 @@ import ChunkParamsConfig from '@/components/ChunkParamsConfig.vue';
   background-color: var(--gray-50);
   color: var(--main-color);
   /* border: 1px solid var(--main-100); */
+}
+
+.panel-action-btn.active {
+  color: var(--main-color);
+  background-color: var(--main-10);
 }
 
 .action-trigger-btn {

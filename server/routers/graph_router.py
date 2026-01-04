@@ -2,11 +2,12 @@ import traceback
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
-from src.storage.db.models import User
 from server.utils.auth_middleware import get_admin_user
 from src import graph_base, knowledge_base
-from src.knowledge.adapters.factory import GraphAdapterFactory
 from src.knowledge.adapters.base import GraphAdapter
+from src.knowledge.adapters.factory import GraphAdapterFactory
+from src.storage.db.models import User
+from src.storage.minio.client import StorageError
 from src.utils.logging_config import logger
 
 graph = APIRouter(prefix="/graph", tags=["graph"])
@@ -251,7 +252,7 @@ async def index_neo4j_entities(data: dict = Body(default={}), current_user: User
             raise HTTPException(status_code=400, detail="图数据库未启动")
 
         kgdb_name = data.get("kgdb_name", "neo4j")
-        count = graph_base.add_embedding_to_nodes(kgdb_name=kgdb_name)
+        count = await graph_base.add_embedding_to_nodes(kgdb_name=kgdb_name)
 
         return {
             "success": True,
@@ -266,23 +267,23 @@ async def index_neo4j_entities(data: dict = Body(default={}), current_user: User
 
 @graph.post("/neo4j/add-entities")
 async def add_neo4j_entities(
-    file_path: str = Body(...), kgdb_name: str | None = Body(None), current_user: User = Depends(get_admin_user)
+    file_path: str = Body(...),
+    kgdb_name: str | None = Body(None),
+    embed_model_name: str | None = Body(None),
+    batch_size: int | None = Body(None),
+    current_user: User = Depends(get_admin_user),
 ):
-    """通过JSONL文件添加图谱实体到Neo4j"""
+    """通过JSONL文件添加图谱实体到Neo4j（只接受 MinIO URL）"""
     try:
-        # 验证文件路径
-        if not file_path or not isinstance(file_path, str):
-            return {"success": False, "message": "文件路径不能为空", "status": "failed"}
-
-        file_path = file_path.strip()
-        if not file_path:
-            return {"success": False, "message": "文件路径不能为空", "status": "failed"}
-
-        if not file_path.endswith(".jsonl"):
-            return {"success": False, "message": "文件格式错误，请上传jsonl文件", "status": "failed"}
-
-        await graph_base.jsonl_file_add_entity(file_path, kgdb_name)
+        # 服务层会验证 URL 并从 MinIO 下载文件
+        await graph_base.jsonl_file_add_entity(file_path, kgdb_name, embed_model_name, batch_size)
         return {"success": True, "message": "实体添加成功", "status": "success"}
+    except StorageError as e:
+        # MinIO 验证或下载错误
+        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        # 本地路径拒绝错误
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"添加实体失败: {e}, {traceback.format_exc()}")
         return {"success": False, "message": f"添加实体失败: {e}", "status": "failed"}

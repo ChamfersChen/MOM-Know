@@ -115,6 +115,35 @@
         <div class="note">
           <p>上传的文件内容参考 test/data/A_Dream_of_Red_Mansions_tiny.jsonl 中的格式：</p>
         </div>
+        <div class="upload-config">
+          <div class="config-row">
+            <label class="config-label">嵌入模型</label>
+            <div class="config-field">
+              <EmbeddingModelSelector
+                v-model:value="state.embedModelName"
+                :disabled="!embedModelConfigurable"
+                :style="{ width: '100%' }"
+              />
+            </div>
+          </div>
+          <div v-if="!embedModelConfigurable" class="config-hint-row">
+            * 图数据库已有数据或已设定模型，不可更改
+          </div>
+          <div class="config-row">
+            <label class="config-label">批处理大小</label>
+            <div class="config-field">
+              <a-input-number
+                v-model:value="state.batchSize"
+                :min="1"
+                :max="1000"
+                style="width: 100%"
+              />
+            </div>
+          </div>
+          <div class="config-hint-row">
+            默认值: 40，范围: 1-1000
+          </div>
+        </div>
         <a-upload-dragger
           class="upload-dragger"
           v-model:fileList="fileList"
@@ -174,7 +203,7 @@ import { neo4jApi, unifiedApi } from '@/apis/graph_api';
 import { useUserStore } from '@/stores/user';
 import GraphCanvas from '@/components/GraphCanvas.vue';
 import GraphDetailPanel from '@/components/GraphDetailPanel.vue';
-import UploadModal from '@/components/FileUploadModal.vue';
+import EmbeddingModelSelector from '@/components/EmbeddingModelSelector.vue';
 import { useGraph } from '@/composables/useGraph';
 
 const configStore = useConfigStore();
@@ -203,11 +232,17 @@ const state = reactive({
   selectedDbId: 'neo4j',
   dbOptions: [],
   lightragStats: null,
+  embedModelName: '',
+  batchSize: 40,
 })
 
 const isNeo4j = computed(() => {
   return state.selectedDbId === 'neo4j';
 });
+
+const embedModelConfigurable = computed(() => {
+  return graphInfo.value?.embed_model_configurable ?? true
+})
 
 // 检查是否有有效的已上传文件
 const hasValidFile = computed(() => {
@@ -287,6 +322,12 @@ const loadGraphInfo = () => {
     .then(data => {
       console.log(data)
       graphInfo.value = data.data
+      if (graphInfo.value?.embed_model_name) {
+        state.embedModelName = graphInfo.value.embed_model_name
+      } else {
+         // Default if not set (though backend usually sends default)
+         state.embedModelName = cur_embed_model.value
+      }
       state.loadingGraphInfo = false
     })
     .catch(error => {
@@ -303,6 +344,11 @@ const addDocumentByFile = () => {
     return
   }
 
+  if (!state.embedModelName) {
+     message.error('请选择嵌入模型')
+     return
+  }
+
   state.processing = true
 
   // 获取已上传的文件路径
@@ -316,7 +362,7 @@ const addDocumentByFile = () => {
     return
   }
 
-  neo4jApi.addEntities(filePath)
+  neo4jApi.addEntities(filePath, 'neo4j', state.embedModelName, state.batchSize)
     .then((data) => {
       if (data.status === 'success') {
         message.success(data.message);
@@ -612,6 +658,49 @@ const goToDatabasePage = () => {
 
   .upload-dragger {
     margin: 0px;
+  }
+
+  .upload-config {
+    margin: 24px 0;
+    padding: 16px;
+    background-color: var(--gray-0);
+    border-radius: 4px;
+
+    .config-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 16px;
+
+      &:last-of-type {
+        margin-bottom: 0;
+      }
+
+      .config-label {
+        width: 100px;
+        flex-shrink: 0;
+        font-size: 14px;
+        color: var(--color-text);
+        text-align: right;
+        margin-right: 16px;
+      }
+
+      .config-field {
+        flex: 1;
+        min-width: 0;
+      }
+    }
+
+    .config-hint-row {
+      margin-bottom: 16px;
+      padding-left: 116px;
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
   }
 }
 

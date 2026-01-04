@@ -1,6 +1,5 @@
 import json
 import os
-import tempfile
 import traceback
 import warnings
 from urllib.parse import urlparse
@@ -25,10 +24,11 @@ class UploadGraphService:
         self.connection = db_manager or Neo4jConnectionManager()
         self.files = []
         self.kgdb_name = "neo4j"
-        self.embed_model_name = os.getenv("GRAPH_EMBED_MODEL_NAME") or "siliconflow/BAAI/bge-m3"
-        self.embed_model = select_embedding_model(self.embed_model_name)
+        self.embed_model_name = None  # self.load_graph_info() 时加载
+        self.embed_model = None  # self.load_graph_info() 时加载
         self.work_dir = os.path.join(config.save_dir, "knowledge_graph", self.kgdb_name)
         os.makedirs(self.work_dir, exist_ok=True)
+        self.is_initialized_from_file = False
 
         # 尝试加载已保存的图数据库信息
         if not self.load_graph_info():
@@ -50,8 +50,6 @@ class UploadGraphService:
         if not self.connection.is_running():
             self.connection._connect()
             logger.info(f"Connected to Neo4j: {self.get_graph_info(self.kgdb_name)}")
-            # 连接成功后保存图数据库信息
-            self.save_graph_info(self.kgdb_name)
 
     def close(self):
         """关闭数据库连接"""
@@ -84,7 +82,7 @@ class UploadGraphService:
         if self.status == "closed":
             self.start()
 
-    async def jsonl_file_add_entity(self, file_path, kgdb_name="neo4j"):
+    async def jsonl_file_add_entity(self, file_path, kgdb_name="neo4j", embed_model_name=None, batch_size=None):
         """从JSONL文件添加实体三元组到Neo4j"""
         assert self.driver is not None, "Database is not connected"
         self.connection.status = "processing"
@@ -94,66 +92,42 @@ class UploadGraphService:
 
         # 检测 file_path 是否是 URL
         parsed_url = urlparse(file_path)
-        temp_file_path = None
 
         try:
             if parsed_url.scheme in ("http", "https"):  # 如果是 URL
                 logger.info(f"检测到 URL，正在从 MinIO 下载文件: {file_path}")
 
-                # 从 URL 解析 bucket_name 和 object_name
-                # URL 格式: http://host:port/bucket_name/object_name
-                path_parts = parsed_url.path.lstrip("/").split("/", 1)
-                if len(path_parts) < 2:
-                    raise ValueError(f"无法解析 MinIO URL: {file_path}")
-
-                bucket_name = path_parts[0]
-                object_name = path_parts[1]
-
-                # 从 MinIO 下载文件
+                # 使用 MinIO 客户端下载到临时文件（使用上下文管理器）
                 minio_client = get_minio_client()
-                file_data = await minio_client.adownload_file(bucket_name, object_name)
+                async with minio_client.temp_file_from_url(
+                    file_path, allowed_extensions=[".jsonl"]
+                ) as actual_file_path:
 
-                # 创建临时文件保存下载的内容
-                with tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".jsonl", delete=False, encoding="utf-8"
-                ) as temp_file:
-                    temp_file.write(file_data.decode("utf-8"))
-                    temp_file_path = temp_file.name
+                    def read_triples(file_path):
+                        with open(file_path, encoding="utf-8") as file:
+                            for line in file:
+                                if line.strip():
+                                    yield json.loads(line.strip())
 
-                logger.info(f"文件已下载到临时路径: {temp_file_path}")
-                actual_file_path = temp_file_path
+                    triples = list(read_triples(actual_file_path))
+                    await self.txt_add_vector_entity(triples, kgdb_name, embed_model_name, batch_size)
+                    # 退出 with 块后，临时文件自动清理
+
             else:
-                # 本地文件路径
-                actual_file_path = file_path
-
-            def read_triples(file_path):
-                with open(file_path, encoding="utf-8") as file:
-                    for line in file:
-                        if line.strip():
-                            yield json.loads(line.strip())
-
-            triples = list(read_triples(actual_file_path))
-
-            await self.txt_add_vector_entity(triples, kgdb_name)
+                # 本地文件路径 - 拒绝不安全的本地路径
+                raise ValueError("不支持本地文件路径，只允许 MinIO URL。请先通过文件上传接口上传文件。")
 
         except Exception as e:
             logger.error(f"处理文件失败: {e}")
             raise
         finally:
-            # 清理临时文件
-            if temp_file_path and os.path.exists(temp_file_path):
-                try:
-                    os.unlink(temp_file_path)
-                    logger.info(f"已删除临时文件: {temp_file_path}")
-                except Exception as e:
-                    logger.warning(f"删除临时文件失败: {e}")
+            self.connection.status = "open"
 
-        self.connection.status = "open"
         # 更新并保存图数据库信息
         self.save_graph_info()
         return kgdb_name
 
-    async def txt_add_vector_entity(self, triples, kgdb_name="neo4j"):
+    async def txt_add_vector_entity(self, triples, kgdb_name="neo4j", embed_model_name=None, batch_size=None):
         """添加实体三元组"""
         assert self.driver is not None, "Database is not connected"
         self.use_database(kgdb_name)
@@ -258,13 +232,23 @@ class UploadGraphService:
                     embedding=embedding,
                 )
 
+        # 检查是否允许更新模型
+        if embed_model_name and not self.is_initialized_from_file:
+            if embed_model_name != self.embed_model_name:
+                logger.info(f"Changing embedding model from {self.embed_model_name} to {embed_model_name}")
+                self.embed_model_name = embed_model_name
+                self.embed_model = select_embedding_model(self.embed_model_name)
+
         # 判断模型名称是否匹配
-        self.embed_model_name = self.embed_model_name or config.embed_model
+        if not self.embed_model_name:
+            self.embed_model_name = config.embed_model
+
         cur_embed_info = config.embed_model_names.get(self.embed_model_name)
         logger.warning(f"embed_model_name={self.embed_model_name}, {cur_embed_info=}")
-        assert self.embed_model_name == config.embed_model or self.embed_model_name is None, (
-            f"embed_model_name={self.embed_model_name}, {config.embed_model=}"
-        )
+
+        # 允许 self.embed_model_name 与 config.embed_model 不同（用户自定义选择的情况）
+        # 但必须在支持的模型列表中
+        assert self.embed_model_name in config.embed_model_names, f"Unsupported embed model: {self.embed_model_name}"
 
         with self.driver.session() as session:
             logger.info(f"Adding entity to {kgdb_name}")
@@ -304,7 +288,7 @@ class UploadGraphService:
                 )
 
                 # 批量获取嵌入向量
-                batch_embeddings = await self.aget_embedding(batch_entities)
+                batch_embeddings = await self.aget_embedding(batch_entities, batch_size=batch_size)
 
                 # 将实体名称和嵌入向量配对
                 entity_embedding_pairs = list(zip(batch_entities, batch_embeddings))
@@ -315,12 +299,13 @@ class UploadGraphService:
             # 数据添加完成后保存图信息
             self.save_graph_info()
 
-    def add_embedding_to_nodes(self, node_names=None, kgdb_name="neo4j"):
+    async def add_embedding_to_nodes(self, node_names=None, kgdb_name="neo4j", batch_size=None):
         """为节点添加嵌入向量
 
         Args:
             node_names (list, optional): 要添加嵌入向量的节点名称列表，None表示所有没有嵌入向量的节点
             kgdb_name (str, optional): 图数据库名称，默认为'neo4j'
+            batch_size (int, optional): 嵌入批次大小
 
         Returns:
             int: 成功添加嵌入向量的节点数量
@@ -336,7 +321,7 @@ class UploadGraphService:
         with self.driver.session() as session:
             for node_name in node_names:
                 try:
-                    embedding = self.get_embedding(node_name)
+                    embedding = await self.aget_embedding(node_name, batch_size=batch_size)
                     session.execute_write(self.set_embedding, node_name, embedding)
                     count += 1
                 except Exception as e:
@@ -412,6 +397,7 @@ class UploadGraphService:
                 "labels": labels,
                 "status": self.status,
                 "embed_model_name": self.embed_model_name,
+                "embed_model_configurable": not self.is_initialized_from_file,
                 "unindexed_node_count": len(self.query_nodes_without_embedding(graph_name)),
             }
 
@@ -448,6 +434,8 @@ class UploadGraphService:
                 json.dump(graph_info, f, ensure_ascii=False, indent=2)
 
             # logger.info(f"图数据库信息已保存到：{info_file_path}")
+            # 保存成功后，标记为从文件初始化（锁定配置）
+            self.is_initialized_from_file = True
             return True
         except Exception as e:
             logger.error(f"保存图数据库信息失败：{e}")
@@ -471,32 +459,38 @@ class UploadGraphService:
             if graph_info.get("embed_model_name"):
                 self.embed_model_name = graph_info["embed_model_name"]
 
+            # 重新选择embedding model
+            if self.embed_model_name:
+                self.embed_model = select_embedding_model(self.embed_model_name)
+
             # 如果需要，可以加载更多信息
             # 注意：这里不更新self.kgdb_name，因为它是在初始化时设置的
 
+            self.is_initialized_from_file = True
             logger.info(f"已加载图数据库信息，最后更新时间：{graph_info.get('last_updated')}")
             return True
         except Exception as e:
             logger.error(f"加载图数据库信息失败：{e}")
             return False
 
-    async def aget_embedding(self, text):
+    async def aget_embedding(self, text, batch_size=40):
         if isinstance(text, list):
-            outputs = await self.embed_model.abatch_encode(text, batch_size=40)
+            outputs = await self.embed_model.abatch_encode(text, batch_size=batch_size)
             return outputs
         else:
             outputs = await self.embed_model.aencode(text)
             return outputs
 
-    def get_embedding(self, text):
+    def get_embedding(self, text, batch_size=40):
         if isinstance(text, list):
-            outputs = self.embed_model.batch_encode(text, batch_size=40)
+            outputs = self.embed_model.batch_encode(text, batch_size=batch_size)
             return outputs
         else:
             outputs = self.embed_model.encode([text])[0]
             return outputs
 
     def set_embedding(self, tx, entity_name, embedding):
+        """为单个实体设置嵌入向量"""
         tx.run(
             """
         MATCH (e:Entity {name: $name})
@@ -544,9 +538,8 @@ class UploadGraphService:
                 entity_to_score[name] = max(entity_to_score.get(name, 0.0), 0.3)
 
         # 排序并截断
-        qualified_entities = [name for name, _ in sorted(entity_to_score.items(), key=lambda x: x[1], reverse=True)][
-            :max_entities
-        ]
+        sorted_entity_to_score = sorted(entity_to_score.items(), key=lambda x: x[1], reverse=True)
+        qualified_entities = [name for name, _ in sorted_entity_to_score][:max_entities]
 
         logger.debug(f"Graph Query Entities: {keyword}, {qualified_entities=}")
 

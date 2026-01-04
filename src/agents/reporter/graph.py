@@ -1,6 +1,5 @@
 from langchain.agents import create_agent
 
-from src import config
 from src.agents.common import BaseAgent, get_mcp_tools, load_chat_model
 from src.utils import logger
 from .context import Context
@@ -47,7 +46,6 @@ class SqlReporterAgent(BaseAgent):
 
         # 创建 SqlReporterAgent
         graph = create_agent(
-            # model=load_chat_model(config.default_model),  # 默认模型，会被 middleware 覆盖
             model=load_chat_model(context.model),  # 使用 context 中的模型配置
             system_prompt=context.system_prompt,
             # tools=await self.get_tools(),

@@ -24,13 +24,6 @@
           <div class="card-header">
             <component :is="getKbTypeIcon(typeKey)" class="type-icon" />
             <span class="type-title">{{ getKbTypeLabel(typeKey) }}</span>
-            <a-tooltip
-              v-if="typeKey === 'chroma'"
-              title="Chroma 已标记为弃用状态，建议使用 Milvus 替代。同时会在下个正式版本中移除。"
-              placement="top"
-            >
-              <span class="deprecated-badge">弃用</span>
-            </a-tooltip>
           </div>
           <div class="card-description">{{ typeInfo.description }}</div>
         </div>
@@ -103,7 +96,7 @@
       </div>
 
       <div
-        v-if="['chroma', 'milvus'].includes(newDatabase.kb_type)"
+        v-if="['milvus'].includes(newDatabase.kb_type)"
         class="reranker-config"
       >
         <div class="reranker-row">
@@ -238,7 +231,7 @@ import { useRouter, useRoute } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useConfigStore } from '@/stores/config';
 import { useDatabaseStore } from '@/stores/database';
-import { Database, FileDigit, Waypoints, Building2 } from 'lucide-vue-next';
+import { Database, FileDigit, Waypoints, Building2, DatabaseZap } from 'lucide-vue-next';
 import { LockOutlined, InfoCircleOutlined, QuestionCircleOutlined, PlusOutlined } from '@ant-design/icons-vue';
 import { typeApi } from '@/apis/knowledge_api';
 import HeaderComponent from '@/components/HeaderComponent.vue';
@@ -304,7 +297,7 @@ const rerankerOptions = computed(() =>
   }))
 )
 
-const isVectorKb = computed(() => ['chroma', 'milvus'].includes(newDatabase.kb_type))
+const isVectorKb = computed(() => ['milvus'].includes(newDatabase.kb_type))
 
 const llmModelSpec = computed(() => {
   const provider = newDatabase.llm_info?.provider || ''
@@ -318,26 +311,8 @@ const llmModelSpec = computed(() => {
 // 支持的知识库类型
 const supportedKbTypes = ref({})
 
-// 有序的知识库类型（Chroma 排在最后）
-const orderedKbTypes = computed(() => {
-  const types = { ...supportedKbTypes.value }
-  const ordered = {}
-  const chromaData = types.chroma
-
-  // 先添加除了 Chroma 之外的所有类型
-  Object.keys(types).forEach(key => {
-    if (key !== 'chroma') {
-      ordered[key] = types[key]
-    }
-  })
-
-  // 最后添加 Chroma（如果存在）
-  if (chromaData) {
-    ordered.chroma = chromaData
-  }
-
-  return ordered
-})
+// 有序的知识库类型
+const orderedKbTypes = computed(() => supportedKbTypes.value)
 
 // 加载支持的知识库类型
 const loadSupportedKbTypes = async () => {
@@ -371,7 +346,6 @@ const cancelCreateDatabase = () => {
 const getKbTypeLabel = (type) => {
   const labels = {
     lightrag: 'LightRAG',
-    chroma: 'Chroma',
     milvus: 'CommonRAG'
   }
   return labels[type] || type
@@ -380,8 +354,7 @@ const getKbTypeLabel = (type) => {
 const getKbTypeIcon = (type) => {
   const icons = {
     lightrag: Waypoints,
-    chroma: FileDigit,
-    milvus: Building2
+    milvus: DatabaseZap
   }
   return icons[type] || Database
 }
@@ -389,7 +362,6 @@ const getKbTypeIcon = (type) => {
 const getKbTypeColor = (type) => {
   const colors = {
     lightrag: 'purple',
-    chroma: 'orange',
     milvus: 'red'
   }
   return colors[type] || 'blue'
@@ -431,7 +403,7 @@ const handleKbTypeChange = (type) => {
   console.log('知识库类型改变:', type)
   resetNewDatabase()
   newDatabase.kb_type = type
-  if (!['chroma', 'milvus'].includes(type)) {
+  if (!['milvus'].includes(type)) {
     newDatabase.reranker.enabled = false
   }
 }
@@ -462,7 +434,7 @@ const buildRequestData = () => {
   }
 
   // 根据类型添加特定配置
-  if (['chroma', 'milvus'].includes(newDatabase.kb_type)) {
+  if (['milvus'].includes(newDatabase.kb_type)) {
     if (newDatabase.storage) {
       requestData.additional_params.storage = newDatabase.storage
     }
@@ -760,14 +732,7 @@ onMounted(() => {
       .top {
         .info {
           h3 {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
-
-            .kb-type-tag {
-              margin-left: auto;
-            }
+            display: block;
           }
         }
       }
@@ -840,6 +805,9 @@ onMounted(() => {
     }
 
     .info {
+      flex: 1;
+      min-width: 0;
+
       h3, p {
         margin: 0;
         color: var(--gray-10000);
@@ -850,6 +818,9 @@ onMounted(() => {
         font-weight: 600;
         letter-spacing: -0.02em;
         line-height: 1.4;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       p {
@@ -863,7 +834,7 @@ onMounted(() => {
         font-weight: 400;
 
         .created-time-inline {
-          color: var(--gray-500);
+          color: var(--gray-700);
           font-size: 11px;
           font-weight: 400;
           background: var(--gray-50);
