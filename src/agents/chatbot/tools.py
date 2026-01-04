@@ -51,6 +51,6 @@ async def text_to_img_demo(text: str) -> str:
 def get_tools() -> list[Any]:
     """获取所有可运行的工具（给大模型使用）"""
     tools = get_buildin_tools()
-    tools.append(text_to_img_demo)
-    tools.append(calc_agent_tool)
+    # tools.append(text_to_img_demo)
+    # tools.append(calc_agent_tool)
     return tools

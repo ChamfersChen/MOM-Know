@@ -97,7 +97,8 @@ def query_knowledge_graph(query: Annotated[str, "The keyword to query knowledge 
 
 def get_static_tools() -> list:
     """注册静态工具"""
-    static_tools = [query_knowledge_graph, get_approved_user_goal, calculator]
+    # static_tools = [query_knowledge_graph, get_approved_user_goal, calculator]
+    static_tools = [calculator]
 
     # 检查是否启用网页搜索
     if config.enable_web_search:
@@ -125,7 +126,8 @@ class KnowledgeRetrieverModel(BaseModel):
 class CommonKnowledgeRetriever(KnowledgeRetrieverModel):
     """Common knowledge retriever model."""
 
-    file_name: str = Field(description="限定文件名称，当操作类型为 'search' 时，可以指定文件名称，支持模糊匹配")
+    # file_name: str = Field(description="限定文件名称，当操作类型为 'search' 时，可以指定文件名称，支持模糊匹配")
+    file_name: str = Field(description="限定文件名称，当操作类型为 'search' 时，可以指定文件名关键词，支持模糊匹配")
 
 
 def get_kb_based_tools(db_names: list[str] | None = None) -> list:

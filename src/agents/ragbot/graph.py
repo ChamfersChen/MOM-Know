@@ -21,7 +21,8 @@ DB_CHECK_PROMPT = """你是一个知识库判断助手，请根据用户输入�
 }
 ```
 # 用户问题
-{{query}}"""
+{{query}}
+/no_think"""
 
 class RagState(TypedDict):
     messages: list[str]
@@ -68,7 +69,7 @@ class RagbotAgent(BaseAgent):
             if not results:
                 return {"messages": messages}
 
-            _msg = "## 上下文\n"+"\n".join(results) + "\n## 用户需求\n" + messages[-1].content
+            _msg = "## 上下文\n"+"\n".join(results) + "\n## 用户需求\n" + messages[-1].content + "\n/no_think"
             messages[-1] = {'role':'user', 'content': _msg}
             return {"messages": messages}
 
