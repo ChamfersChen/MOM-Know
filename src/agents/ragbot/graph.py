@@ -32,8 +32,8 @@ class RagState(TypedDict):
     
 
 class RagbotAgent(BaseAgent):
-    name = "知识库问答助手"
-    description = "基于知识库的问答智能体。"
+    name = "知识库问答流程"
+    description = "基于知识库的智能问答流程。"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
