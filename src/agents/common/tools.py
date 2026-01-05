@@ -222,8 +222,8 @@ def get_kb_based_tools(db_names: list[str] | None = None) -> list:
             safename = retrieve_info["name"].replace(" ", "_")[:20]
 
             args_schema = KnowledgeRetrieverModel
-            if retrieve_info["metadata"]["kb_type"] in ["milvus"]:
-                args_schema = CommonKnowledgeRetriever
+            # if retrieve_info["metadata"]["kb_type"] in ["milvus"]:
+            #     args_schema = CommonKnowledgeRetriever
 
             # 使用 StructuredTool.from_function 创建异步工具
             tool = StructuredTool.from_function(
