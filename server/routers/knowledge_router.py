@@ -16,7 +16,7 @@ from server.utils.auth_middleware import get_admin_user
 from server.services.tasker import TaskContext, tasker
 from src import config, knowledge_base
 from src.knowledge.indexing import SUPPORTED_FILE_EXTENSIONS, is_supported_file_extension, process_file_to_markdown
-from src.knowledge.utils import calculate_content_hash, merge_processing_params
+from src.knowledge.utils import calculate_content_hash
 from src.models.embed import test_embedding_model_status, test_all_embedding_models_status
 from src.storage.minio.client import aupload_file_to_minio, get_minio_client, StorageError
 from src.utils import logger, hashstr
@@ -241,6 +241,7 @@ async def export_database(
 async def _upload_db_file(
     db_id: str, items: list[str] = Body(...), params: dict = Body(...)
 ):
+    """添加文档到知识库（上传 -> 解析）"""
     logger.debug(f"Add documents for db_id {db_id}: {items} {params=}")
 
     content_type = params.get("content_type", "file")
@@ -266,27 +267,64 @@ async def _upload_db_file(
         total = len(items)
         processed_items = []
 
+        # 存储第一阶段成功添加的文件记录 {item: (file_id, file_meta)}
+        added_files = {}
+
         try:
-            # 逐个处理文档并更新进度
+            # ========== 第一阶段：批量添加文件记录 ==========
+            await context.set_message("第一阶段：添加文件记录")
             for idx, item in enumerate(items, 1):
                 await context.raise_if_cancelled()
 
-                # 更新进度
-                progress = 5.0 + (idx / total) * 90.0  # 5% ~ 95%
-                await context.set_progress(progress, f"正在处理第 {idx}/{total} 个文档")
+                # 第一阶段进度：5% ~ 30%
+                progress = 5.0 + (idx / total) * 25.0
+                await context.set_progress(progress, f"[1/2] 添加记录 {idx}/{total}")
 
                 try:
-                    result = await knowledge_base.add_content(db_id, [item], params=params)
-                    processed_items.extend(result)
-                except Exception as doc_error:
-                    logger.error(f"Document processing failed for {item}: {doc_error}")
-                    error_type = "timeout" if isinstance(doc_error, TimeoutError) else "processing_error"
-                    error_msg = "处理超时" if isinstance(doc_error, TimeoutError) else "处理失败"
+                    # 1. Add file record (UPLOADED)
+                    file_meta = await knowledge_base.add_file_record(
+                        db_id, item, params=params, operator_id=current_user.id
+                    )
+                    file_id = file_meta["file_id"]
+                    added_files[item] = (file_id, file_meta)
+                except Exception as add_error:
+                    logger.error(f"添加文件记录失败 {item}: {add_error}")
+                    error_type = "timeout" if isinstance(add_error, TimeoutError) else "add_failed"
+                    error_msg = "添加超时" if isinstance(add_error, TimeoutError) else "添加记录失败"
                     processed_items.append(
                         {
                             "item": item,
                             "status": "failed",
-                            "error": f"{error_msg}: {str(doc_error)}",
+                            "error": f"{error_msg}: {str(add_error)}",
+                            "error_type": error_type,
+                        }
+                    )
+
+            # ========== 第二阶段：批量解析文件 ==========
+            await context.set_message("第二阶段：解析文件")
+            parse_success_count = 0
+
+            for idx, (item, (file_id, add_file_meta)) in enumerate(added_files.items(), 1):
+                await context.raise_if_cancelled()
+
+                # 第二阶段进度：30% ~ 95%
+                progress = 30.0 + (idx / len(added_files)) * 65.0
+                await context.set_progress(progress, f"[2/2] 解析文件 {idx}/{len(added_files)}")
+
+                try:
+                    # 2. Parse file (PARSING -> PARSED)
+                    file_meta = await knowledge_base.parse_file(db_id, file_id, operator_id=current_user.id)
+                    processed_items.append(file_meta)
+                    parse_success_count += 1
+                except Exception as parse_error:
+                    logger.error(f"解析文件失败 {item} (file_id={file_id}): {parse_error}")
+                    error_type = "timeout" if isinstance(parse_error, TimeoutError) else "parse_failed"
+                    error_msg = "解析超时" if isinstance(parse_error, TimeoutError) else "解析失败"
+                    processed_items.append(
+                        {
+                            "item": item,
+                            "status": "failed",
+                            "error": f"{error_msg}: {str(parse_error)}",
                             "error_type": error_type,
                         }
                     )
@@ -298,21 +336,16 @@ async def _upload_db_file(
             # 处理整体任务的其他异常（如内存不足、网络错误等）
             logger.exception(f"Task processing failed: {task_error}")
             await context.set_progress(100.0, f"任务处理失败: {str(task_error)}")
-            # 将所有未处理的文档标记为失败
-            for item in items[len(processed_items) :]:
-                processed_items.append(
-                    {
-                        "item": item,
-                        "status": "failed",
-                        "error": f"任务失败: {str(task_error)}",
-                        "error_type": "task_failed",
-                    }
-                )
+            # 注意：不需要手动标记未处理的文件为失败，因为：
+            # 1. 内层异常处理已记录所有处理过的文件（成功/失败）
+            # 2. 未处理的文件没有进入 processed_items，前端会正确显示
+            # 3. 用户可以重新提交未处理的文件
             raise
 
         item_type = "URL" if content_type == "url" else "文件"
-        failed_count = len([_p for _p in processed_items if _p.get("status") == "failed"])
-        # success_items = [_p for _p in processed_items if _p.get("status") == "done"]
+        # Check for failed status (including ERROR_PARSING)
+        failed_count = len([_p for _p in processed_items if "error" in _p or _p.get("status") == "failed"])
+
         summary = {
             "db_id": db_id,
             "item_type": item_type,
@@ -345,218 +378,130 @@ async def _upload_db_file(
         logger.error(f"Failed to enqueue {content_type}s: {e}, {traceback.format_exc()}")
         return {"message": f"Failed to enqueue task: {e}", "status": "failed"}
 
-# =============================================================================
-# === 数据库录入知识 ===
-# =============================================================================
-@knowledge.post("/databases/check")
-async def check_db_and_tables(
-    host: str | None = Body(...),
-    user: str  | None = Body(...),
-    password: str  | None = Body(...),
-    database: str  | None = Body(...),
-    port: int  | None = Body(...),
-    # current_user: User = Depends(get_admin_user)
-):
-    """检查数据库是否存在并返回表名"""
+
+@knowledge.post("/databases/{db_id}/documents/parse")
+async def parse_documents(db_id: str, file_ids: list[str] = Body(...), current_user: User = Depends(get_admin_user)):
+    """手动触发文档解析"""
+    logger.debug(f"Parse documents for db_id {db_id}: {file_ids}")
+
+    async def run_parse(context: TaskContext):
+        await context.set_message("任务初始化")
+        await context.set_progress(5.0, "准备解析文档")
+
+        total = len(file_ids)
+        processed_items = []
+
+        try:
+            for idx, file_id in enumerate(file_ids, 1):
+                await context.raise_if_cancelled()
+                progress = 5.0 + (idx / total) * 90.0
+                await context.set_progress(progress, f"正在解析第 {idx}/{total} 个文档")
+
+                try:
+                    result = await knowledge_base.parse_file(db_id, file_id, operator_id=current_user.id)
+                    processed_items.append(result)
+                except Exception as e:
+                    logger.error(f"Parse failed for {file_id}: {e}")
+                    processed_items.append({"file_id": file_id, "status": "failed", "error": str(e)})
+
+        except Exception as e:
+            logger.exception(f"Parse task failed: {e}")
+            raise
+
+        failed_count = len([p for p in processed_items if "error" in p])
+        message = f"解析完成，失败 {failed_count} 个"
+        await context.set_result({"items": processed_items})
+        await context.set_progress(100.0, message)
+        return {"items": processed_items}
+
     try:
-        res, field_res = knowledge_base.check_mysql_connection(host, user, password, database, port)
-        return {'status': 'success', 'result': res, 'field_result': field_res}
+        task = await tasker.enqueue(
+            name=f"文档解析({db_id})",
+            task_type="knowledge_parse",
+            payload={"db_id": db_id, "file_ids": file_ids},
+            coroutine=run_parse,
+        )
+        return {"message": "解析任务已提交", "status": "queued", "task_id": task.id}
     except Exception as e:
-        return {"status": "failed", "message": str(e)}
+        return {"message": f"提交失败: {e}", "status": "failed"}
 
-@knowledge.post("/databases/{db_id}/upload/database")
-async def process_db_and_upload(
+
+@knowledge.post("/databases/{db_id}/documents/index")
+async def index_documents(
     db_id: str,
-    host: str | None = Body(...),
-    user: str  | None = Body(...),
-    password: str  | None = Body(...),
-    database: str  | None = Body(...),
-    port: int  | None = Body(...),
-    table: str  | None = Body(...),
-    fields: list | None = Body(...),
-    filename: str | None = Body(...),
-    chunk_params: dict = Body(...),
-    # current_user: User = Depends(get_admin_user)
+    file_ids: list[str] = Body(...),
+    params: dict = Body({}),
+    current_user: User = Depends(get_admin_user),
 ):
-    # 1. 从数据库获取文本数据
-    text_data = knowledge_base.get_data_from_db(host, user, password, database, port, table, fields)  # 你的数据库查询函数
-    # 2. 创建临时文件
-    with tempfile.NamedTemporaryFile(mode='w+', suffix='.txt', delete=False, encoding='utf-8') as tmp_file:
-        tmp_file.write(text_data)
-        tmp_file_path = tmp_file.name
-    try: 
-        # 3. 读取临时文件为 UploadFile
-        with open(tmp_file_path, 'r', encoding='utf-8') as file:
-            file_content = file.read()
+    """手动触发文档入库（Indexing），支持更新参数"""
+    logger.debug(f"Index documents for db_id {db_id}: {file_ids} {params=}")
 
-        with open(tmp_file_path, 'rb') as file:
-            file_bytes = file.read()
-        
-        # 根据db_id获取上传路径，如果db_id为None则使用默认路径
-        if db_id:
-            upload_dir = knowledge_base.get_db_upload_path(db_id)
-        else:
-            upload_dir = os.path.join(config.save_dir, "database", "uploads")
+    # extract operator_id safely before background task
+    operator_id = current_user.id
 
-        if not filename.endswith(".txt"):
-            filename = filename.strip() + ".txt"
+    async def run_index(context: TaskContext):
+        await context.set_message("任务初始化")
+        await context.set_progress(5.0, "准备入库文档")
 
-        basename, ext = os.path.splitext(filename)
-        filename = f"{basename}_{hashstr(basename, 4, with_salt=True)}{ext}".lower()
-        file_path = os.path.join(upload_dir, filename)
+        total = len(file_ids)
+        processed_items = []
 
-        # 在线程池中执行同步文件系统操作，避免阻塞事件循环
-        await asyncio.to_thread(os.makedirs, upload_dir, exist_ok=True)
+        # Track files that failed param update
+        param_update_failed = set()
 
-        # # 在线程池中执行计算密集型操作，避免阻塞事件循环
-        # content_hash = await asyncio.to_thread(calculate_content_hash, file_bytes)
+        try:
+            # Update params if provided
+            if params:
+                for file_id in file_ids:
+                    try:
+                        await knowledge_base.update_file_params(db_id, file_id, params, operator_id=operator_id)
+                    except Exception as e:
+                        logger.error(f"Failed to update params for {file_id}: {e}")
+                        param_update_failed.add(file_id)
+                        processed_items.append({
+                            "file_id": file_id,
+                            "status": "failed",
+                            "error": f"参数更新失败: {str(e)}"
+                        })
 
-        # # 在线程池中执行同步数据库查询，避免阻塞事件循环
-        # file_exists = await asyncio.to_thread(knowledge_base.file_existed_in_db, db_id, content_hash)
+            for idx, file_id in enumerate(file_ids, 1):
+                await context.raise_if_cancelled()
 
-        content_hash = await calculate_content_hash(file_bytes)
+                # Skip files that failed param update
+                if file_id in param_update_failed:
+                    logger.debug(f"Skipping {file_id} due to param update failure")
+                    continue
 
-        file_exists = await knowledge_base.file_existed_in_db(db_id, content_hash)
-        if file_exists:
-            raise HTTPException(
-                status_code=409,
-                detail="数据库中已经存在了相同内容的文件。File with the same content already exists in this database",
-            )
+                progress = 5.0 + (idx / total) * 90.0
+                await context.set_progress(progress, f"正在入库第 {idx}/{total} 个文档")
 
-        # 使用异步文件写入，避免阻塞事件循环
-        async with aiofiles.open(file_path, "w", encoding='utf-8') as buffer:
-            await buffer.write(file_content)
-            
-    finally:
-        # 5. 清理临时文件
-        if os.path.exists(tmp_file_path):
-            os.unlink(tmp_file_path)
+                try:
+                    result = await knowledge_base.index_file(db_id, file_id, operator_id=operator_id)
+                    processed_items.append(result)
+                except Exception as e:
+                    logger.error(f"Index failed for {file_id}: {e}")
+                    processed_items.append({"file_id": file_id, "status": "failed", "error": str(e)})
 
-    return await _upload_db_file(db_id, [file_path], 
-                         params={ 
-                            "chunk_size": 1000,
-                            "chunk_overlap": 200,
-                            "enable_ocr": 'disable',
-                            "use_qa_split": False,
-                            "qa_separator": '\n\n\n',
-                            "content_type": "file"
-                        }
-                    )
+        except Exception as e:
+            logger.exception(f"Index task failed: {e}")
+            raise
 
-# =============================================================================
-# === 文档管理分组 ===
-# =============================================================================
+        failed_count = len([p for p in processed_items if "error" in p])
+        message = f"入库完成，失败 {failed_count} 个"
+        await context.set_result({"items": processed_items})
+        await context.set_progress(100.0, message)
+        return {"items": processed_items}
 
-
-@knowledge.post("/databases/{db_id}/documents")
-async def add_documents(
-    db_id: str, items: list[str] = Body(...), params: dict = Body(...), current_user: User = Depends(get_admin_user)
-):
-    """添加文档到知识库"""
-    return await _upload_db_file(db_id, items, params)
-    # logger.debug(f"Add documents for db_id {db_id}: {items} {params=}")
-
-    # content_type = params.get("content_type", "file")
-
-    # # 禁止 URL 解析与入库
-    # if content_type == "url":
-    #     raise HTTPException(status_code=400, detail="URL 文档上传与解析已禁用")
-
-    # # 安全检查：验证文件路径
-    # if content_type == "file":
-    #     from src.knowledge.utils.kb_utils import validate_file_path
-
-    #     for item in items:
-    #         try:
-    #             validate_file_path(item, db_id)
-    #         except ValueError as e:
-    #             raise HTTPException(status_code=403, detail=str(e))
-
-    # async def run_ingest(context: TaskContext):
-    #     await context.set_message("任务初始化")
-    #     await context.set_progress(5.0, "准备处理文档")
-
-    #     total = len(items)
-    #     processed_items = []
-
-    #     try:
-    #         # 逐个处理文档并更新进度
-    #         for idx, item in enumerate(items, 1):
-    #             await context.raise_if_cancelled()
-
-    #             # 更新进度
-    #             progress = 5.0 + (idx / total) * 90.0  # 5% ~ 95%
-    #             await context.set_progress(progress, f"正在处理第 {idx}/{total} 个文档")
-
-    #             try:
-    #                 result = await knowledge_base.add_content(db_id, [item], params=params)
-    #                 processed_items.extend(result)
-    #             except Exception as doc_error:
-    #                 logger.error(f"Document processing failed for {item}: {doc_error}")
-    #                 error_type = "timeout" if isinstance(doc_error, TimeoutError) else "processing_error"
-    #                 error_msg = "处理超时" if isinstance(doc_error, TimeoutError) else "处理失败"
-    #                 processed_items.append(
-    #                     {
-    #                         "item": item,
-    #                         "status": "failed",
-    #                         "error": f"{error_msg}: {str(doc_error)}",
-    #                         "error_type": error_type,
-    #                     }
-    #                 )
-
-    #     except asyncio.CancelledError:
-    #         await context.set_progress(100.0, "任务已取消")
-    #         raise
-    #     except Exception as task_error:
-    #         # 处理整体任务的其他异常（如内存不足、网络错误等）
-    #         logger.exception(f"Task processing failed: {task_error}")
-    #         await context.set_progress(100.0, f"任务处理失败: {str(task_error)}")
-    #         # 将所有未处理的文档标记为失败
-    #         for item in items[len(processed_items) :]:
-    #             processed_items.append(
-    #                 {
-    #                     "item": item,
-    #                     "status": "failed",
-    #                     "error": f"任务失败: {str(task_error)}",
-    #                     "error_type": "task_failed",
-    #                 }
-    #             )
-    #         raise
-
-    #     item_type = "URL" if content_type == "url" else "文件"
-    #     failed_count = len([_p for _p in processed_items if _p.get("status") == "failed"])
-    #     # success_items = [_p for _p in processed_items if _p.get("status") == "done"]
-    #     summary = {
-    #         "db_id": db_id,
-    #         "item_type": item_type,
-    #         "submitted": len(processed_items),
-    #         "failed": failed_count,
-    #     }
-    #     message = f"{item_type}处理完成，失败 {failed_count} 个" if failed_count else f"{item_type}处理完成"
-    #     await context.set_result(summary | {"items": processed_items})
-    #     await context.set_progress(100.0, message)
-    #     return summary | {"items": processed_items}
-
-    # try:
-    #     task = await tasker.enqueue(
-    #         name=f"知识库文档处理({db_id})",
-    #         task_type="knowledge_ingest",
-    #         payload={
-    #             "db_id": db_id,
-    #             "items": items,
-    #             "params": params,
-    #             "content_type": content_type,
-    #         },
-    #         coroutine=run_ingest,
-    #     )
-    #     return {
-    #         "message": "任务已提交，请在任务中心查看进度",
-    #         "status": "queued",
-    #         "task_id": task.id,
-    #     }
-    # except Exception as e:  # noqa: BLE001
-    #     logger.error(f"Failed to enqueue {content_type}s: {e}, {traceback.format_exc()}")
-    #     return {"message": f"Failed to enqueue task: {e}", "status": "failed"}
+    try:
+        task = await tasker.enqueue(
+            name=f"文档入库({db_id})",
+            task_type="knowledge_index",
+            payload={"db_id": db_id, "file_ids": file_ids, "params": params},
+            coroutine=run_index,
+        )
+        return {"message": "入库任务已提交", "status": "queued", "task_id": task.id}
+    except Exception as e:
+        return {"message": f"提交失败: {e}", "status": "failed"}
 
 
 @knowledge.get("/databases/{db_id}/documents/{doc_id}")
@@ -627,113 +572,6 @@ async def delete_document(db_id: str, doc_id: str, current_user: User = Depends(
     except Exception as e:
         logger.error(f"删除文档失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"删除文档失败: {e}")
-
-
-@knowledge.post("/databases/{db_id}/documents/rechunks")
-async def rechunks_documents(
-    db_id: str, file_ids: list[str] = Body(...), params: dict = Body(...), current_user: User = Depends(get_admin_user)
-):
-    """重新分块文档"""
-    logger.debug(f"Rechunks documents for db_id {db_id}: {file_ids} {params=}")
-
-    async def run_rechunks(context: TaskContext):
-        await context.set_message("任务初始化")
-        await context.set_progress(5.0, "准备重新分块文档")
-
-        total = len(file_ids)
-        processed_items = []
-
-        try:
-            # 逐个处理文档并更新进度
-            for idx, file_id in enumerate(file_ids, 1):
-                await context.raise_if_cancelled()
-
-                # 更新进度
-                progress = 5.0 + (idx / total) * 90.0  # 5% ~ 95%
-                await context.set_progress(progress, f"正在重新分块第 {idx}/{total} 个文档")
-
-                # 获取文档元数据中的处理参数
-                metadata_params = None
-                try:
-                    file_info = await knowledge_base.get_file_basic_info(db_id, file_id)
-                    metadata_params = file_info.get("meta", {}).get("processing_params")
-                except Exception as meta_error:
-                    logger.warning(f"Failed to get metadata for file {file_id}: {meta_error}")
-
-                # 合并参数：优先使用请求参数，缺失时使用元数据参数
-                merged_params = merge_processing_params(metadata_params, params)
-
-                # 处理单个文档
-                try:
-                    result = await knowledge_base.update_content(db_id, [file_id], params=merged_params)
-                    processed_items.extend(result)
-                except Exception as doc_error:
-                    # 处理单个文档处理的所有异常（包括超时）
-                    logger.error(f"Document rechunking failed for {file_id}: {doc_error}")
-
-                    # 判断是否是超时异常
-                    error_type = "timeout" if isinstance(doc_error, TimeoutError) else "processing_error"
-                    error_msg = "处理超时" if isinstance(doc_error, TimeoutError) else "处理失败"
-
-                    processed_items.append(
-                        {
-                            "file_id": file_id,
-                            "status": "failed",
-                            "error": f"{error_msg}: {str(doc_error)}",
-                            "error_type": error_type,
-                        }
-                    )
-
-        except asyncio.CancelledError:
-            await context.set_progress(100.0, "任务已取消")
-            raise
-        except Exception as task_error:
-            # 处理整体任务的其他异常（如内存不足、网络错误等）
-            logger.exception(f"Task rechunking failed: {task_error}")
-            await context.set_progress(100.0, f"任务处理失败: {str(task_error)}")
-            # 将所有未处理的文档标记为失败
-            for file_id in file_ids[len(processed_items) :]:
-                processed_items.append(
-                    {
-                        "file_id": file_id,
-                        "status": "failed",
-                        "error": f"任务失败: {str(task_error)}",
-                        "error_type": "task_failed",
-                    }
-                )
-            raise
-
-        failed_count = len([_p for _p in processed_items if _p.get("status") == "failed"])
-        summary = {
-            "db_id": db_id,
-            "submitted": len(processed_items),
-            "failed": failed_count,
-        }
-        message = f"文档重新分块完成，失败 {failed_count} 个" if failed_count else "文档重新分块完成"
-        await context.set_result(summary | {"items": processed_items})
-        await context.set_progress(100.0, message)
-        return summary | {"items": processed_items}
-
-    try:
-        task = await tasker.enqueue(
-            name=f"文档重新分块({db_id})",
-            task_type="knowledge_rechunks",
-            payload={
-                "db_id": db_id,
-                "file_ids": file_ids,
-                "params": params,
-            },
-            coroutine=run_rechunks,
-        )
-        return {
-            "message": "任务已提交，请在任务中心查看进度",
-            "status": "queued",
-            "task_id": task.id,
-        }
-    except Exception as e:  # noqa: BLE001
-        logger.error(f"Failed to enqueue rechunks task: {e}, {traceback.format_exc()}")
-        return {"message": f"Failed to enqueue task: {e}", "status": "failed"}
-
 
 @knowledge.get("/databases/{db_id}/documents/{doc_id}/download")
 async def download_document(db_id: str, doc_id: str, request: Request, current_user: User = Depends(get_admin_user)):
