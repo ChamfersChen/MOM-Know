@@ -14,19 +14,12 @@
         :folder-tree="folderTree"
         :current-folder-id="currentFolderId"
         @success="onFileUploadSuccess"
-      />
-
-    v-model:visible="addFilesModalVisible"
-    @success="onFileUploadSuccess"
   />
   
   <DatabaseUploadModal
     v-model:visible="uploadDatabaseModalVisible"
   />
 
-    v-model:visible="addFilesModalVisible"
-    @success="onFileUploadSuccess"
-  />
   
   <DatabaseUploadModal
     v-model:visible="uploadDatabaseModalVisible"
