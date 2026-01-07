@@ -43,7 +43,6 @@ class ChatbotAgent(BaseAgent):
             for tool in selected_tools:
                 extras = tool.extras
                 if extras:
-                    import ipdb; ipdb.set_trace()
                     min_role = extras.get("min_role", "user")
                     if ROLE_LEVEL[role] >= ROLE_LEVEL[min_role]:
                         filtered_tools.append(tool)
