@@ -239,8 +239,9 @@ async def export_database(
         raise HTTPException(status_code=500, detail=f"导出数据库失败: {e}")
 
 async def _upload_db_file(
-    db_id: str, items: list[str] = Body(...), params: dict = Body(...)
+    db_id: str, items: list[str], params: dict, current_user: User
 ):
+    """添加文档到知识库（上传 -> 解析）"""
     logger.debug(f"Add documents for db_id {db_id}: {items} {params=}")
 
     content_type = params.get("content_type", "file")
@@ -408,7 +409,7 @@ async def process_db_and_upload(
     fields: list | None = Body(...),
     filename: str | None = Body(...),
     chunk_params: dict = Body(...),
-    # current_user: User = Depends(get_admin_user)
+    current_user: User = Depends(get_admin_user)
 ):
     # 1. 从数据库获取文本数据
     text_data = knowledge_base.get_data_from_db(host, user, password, database, port, table, fields)  # 你的数据库查询函数
@@ -472,7 +473,8 @@ async def process_db_and_upload(
                             "use_qa_split": False,
                             "qa_separator": '\n\n\n',
                             "content_type": "file"
-                        }
+                        },
+                        current_user=current_user
                     )
 
 # =============================================================================
@@ -485,110 +487,7 @@ async def add_documents(
     db_id: str, items: list[str] = Body(...), params: dict = Body(...), current_user: User = Depends(get_admin_user)
 ):
     """添加文档到知识库"""
-    return await _upload_db_file(db_id, items, params)
-    # logger.debug(f"Add documents for db_id {db_id}: {items} {params=}")
-
-    # content_type = params.get("content_type", "file")
-
-    # # 禁止 URL 解析与入库
-    # if content_type == "url":
-    #     raise HTTPException(status_code=400, detail="URL 文档上传与解析已禁用")
-
-    # # 安全检查：验证文件路径
-    # if content_type == "file":
-    #     from src.knowledge.utils.kb_utils import validate_file_path
-
-    #     for item in items:
-    #         try:
-    #             validate_file_path(item, db_id)
-    #         except ValueError as e:
-    #             raise HTTPException(status_code=403, detail=str(e))
-
-    # async def run_ingest(context: TaskContext):
-    #     await context.set_message("任务初始化")
-    #     await context.set_progress(5.0, "准备处理文档")
-
-    #     total = len(items)
-    #     processed_items = []
-
-    #     try:
-    #         # 逐个处理文档并更新进度
-    #         for idx, item in enumerate(items, 1):
-    #             await context.raise_if_cancelled()
-
-    #             # 更新进度
-    #             progress = 5.0 + (idx / total) * 90.0  # 5% ~ 95%
-    #             await context.set_progress(progress, f"正在处理第 {idx}/{total} 个文档")
-
-    #             try:
-    #                 result = await knowledge_base.add_content(db_id, [item], params=params)
-    #                 processed_items.extend(result)
-    #             except Exception as doc_error:
-    #                 logger.error(f"Document processing failed for {item}: {doc_error}")
-    #                 error_type = "timeout" if isinstance(doc_error, TimeoutError) else "processing_error"
-    #                 error_msg = "处理超时" if isinstance(doc_error, TimeoutError) else "处理失败"
-    #                 processed_items.append(
-    #                     {
-    #                         "item": item,
-    #                         "status": "failed",
-    #                         "error": f"{error_msg}: {str(doc_error)}",
-    #                         "error_type": error_type,
-    #                     }
-    #                 )
-
-    #     except asyncio.CancelledError:
-    #         await context.set_progress(100.0, "任务已取消")
-    #         raise
-    #     except Exception as task_error:
-    #         # 处理整体任务的其他异常（如内存不足、网络错误等）
-    #         logger.exception(f"Task processing failed: {task_error}")
-    #         await context.set_progress(100.0, f"任务处理失败: {str(task_error)}")
-    #         # 将所有未处理的文档标记为失败
-    #         for item in items[len(processed_items) :]:
-    #             processed_items.append(
-    #                 {
-    #                     "item": item,
-    #                     "status": "failed",
-    #                     "error": f"任务失败: {str(task_error)}",
-    #                     "error_type": "task_failed",
-    #                 }
-    #             )
-    #         raise
-
-    #     item_type = "URL" if content_type == "url" else "文件"
-    #     failed_count = len([_p for _p in processed_items if _p.get("status") == "failed"])
-    #     # success_items = [_p for _p in processed_items if _p.get("status") == "done"]
-    #     summary = {
-    #         "db_id": db_id,
-    #         "item_type": item_type,
-    #         "submitted": len(processed_items),
-    #         "failed": failed_count,
-    #     }
-    #     message = f"{item_type}处理完成，失败 {failed_count} 个" if failed_count else f"{item_type}处理完成"
-    #     await context.set_result(summary | {"items": processed_items})
-    #     await context.set_progress(100.0, message)
-    #     return summary | {"items": processed_items}
-
-    # try:
-    #     task = await tasker.enqueue(
-    #         name=f"知识库文档处理({db_id})",
-    #         task_type="knowledge_ingest",
-    #         payload={
-    #             "db_id": db_id,
-    #             "items": items,
-    #             "params": params,
-    #             "content_type": content_type,
-    #         },
-    #         coroutine=run_ingest,
-    #     )
-    #     return {
-    #         "message": "任务已提交，请在任务中心查看进度",
-    #         "status": "queued",
-    #         "task_id": task.id,
-    #     }
-    # except Exception as e:  # noqa: BLE001
-    #     logger.error(f"Failed to enqueue {content_type}s: {e}, {traceback.format_exc()}")
-    #     return {"message": f"Failed to enqueue task: {e}", "status": "failed"}
+    return await _upload_db_file(db_id, items, params, current_user)
 
 
 @knowledge.get("/databases/{db_id}/documents/{doc_id}")
@@ -820,6 +719,19 @@ async def query_test(
     except Exception as e:
         logger.error(f"测试查询失败 {e}, {traceback.format_exc()}")
         return {"message": f"测试查询失败: {e}", "status": "failed"}
+
+@knowledge.post("/databases/{db_id}/query-for-bot")
+async def query_knowledge_for_bot(
+    db_id: str, query: str = Body(...), meta: dict = Body(...)
+):
+    """对于Bot查询知识库"""
+    logger.debug(f"Query knowledge base {db_id}: {query}")
+    try:
+        result = await knowledge_base.aquery(query, db_id=db_id, **meta)
+        return {"result": result, "status": "success"}
+    except Exception as e:
+        logger.error(f"知识库查询失败 {e}, {traceback.format_exc()}")
+        return {"message": f"知识库查询失败: {e}", "status": "failed"}
 
 
 @knowledge.put("/databases/{db_id}/query-params")

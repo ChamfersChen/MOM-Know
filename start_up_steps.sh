@@ -7,7 +7,11 @@ uv run mcp run -t streamable-http echarts_server.py:mcp
 # Start the MinerU API
 # export MINERU_MODEL_SOURCE=local 
 set MINERU_MODEL_SOURCE=local
-uv run mineru-api --host 0.0.0.0 --port 30001
+set MINERU_DEVICE_MODE=cuda:0
+conda activate base
+mineru-api --host 0.0.0.0 --port 30001
+
+# uv run mineru-api --host 0.0.0.0 --port 30001
 
 # Start the UI
 pnpm run dev
