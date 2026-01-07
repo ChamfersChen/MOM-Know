@@ -54,7 +54,7 @@ class TableListModel(BaseModel):
     pass
 
 
-@tool(name_or_callable="查询表名及说明", args_schema=TableListModel, extras={"min_role": Roles.ADMIN})
+@tool(name_or_callable="查询表名及说明", args_schema=TableListModel)
 def mysql_list_tables() -> str:
     """获取数据库中的所有表名
 
