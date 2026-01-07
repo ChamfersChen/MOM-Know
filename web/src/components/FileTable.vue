@@ -113,8 +113,14 @@
       </div>
     </div>
 
-    <div class="batch-actions" v-if="selectedRowKeys.length > 0">
+    <div class="batch-actions" v-if="isSelectionMode">
       <div class="batch-info">
+        <a-checkbox
+          :checked="isAllSelected"
+          :indeterminate="isPartiallySelected"
+          @change="onSelectAllChange"
+          style="margin-right: 8px;"
+        />
         <span>{{ selectedRowKeys.length }} 项</span>
       </div>
       <div style="display: flex; gap: 4px;">
@@ -186,7 +192,7 @@
         class="my-table"
         size="small"
         :show-header="false"
-        :pagination="paginationCompact"
+        :pagination="false"
         v-model:expandedRowKeys="expandedRowKeys"
         :custom-row="customRow"
         :row-selection="isSelectionMode ? {
@@ -205,7 +211,7 @@
               {{ record.filename }}
             </span>
           </template>
-          <a-popover v-else placement="right" overlayClassName="file-info-popover" :mouseEnterDelay="1">
+          <a-popover v-else placement="right" overlayClassName="file-info-popover" :mouseEnterDelay="0.5">
             <template #content>
               <div class="file-info-card">
                  <div class="info-row"><span class="label">ID:</span> <span class="value">{{ record.file_id }}</span></div>
@@ -393,6 +399,46 @@ const selectedRowKeys = computed({
 });
 
 const isSelectionMode = ref(false);
+
+const allSelectableFiles = computed(() => {
+  const nameFilter = filenameFilter.value.trim().toLowerCase();
+  const status = statusFilter.value;
+
+  return files.value.filter(file => {
+    if (file.is_folder) return false;
+    // Follow getCheckboxProps logic
+    if (lock.value || file.status === 'processing' || file.status === 'waiting') return false;
+
+    if (nameFilter || status) {
+      const nameMatch = !nameFilter || (file.filename && file.filename.toLowerCase().includes(nameFilter));
+      const statusMatch = !status || file.status === status ||
+                          (status === 'indexed' && file.status === 'done') ||
+                          (status === 'error_indexing' && file.status === 'failed');
+      return nameMatch && statusMatch;
+    }
+    return true;
+  });
+});
+
+const isAllSelected = computed(() => {
+  const selectableIds = allSelectableFiles.value.map(f => f.file_id);
+  if (selectableIds.length === 0) return false;
+  return selectableIds.every(id => selectedRowKeys.value.includes(id));
+});
+
+const isPartiallySelected = computed(() => {
+  const selectableIds = allSelectableFiles.value.map(f => f.file_id);
+  const selectedCount = selectableIds.filter(id => selectedRowKeys.value.includes(id)).length;
+  return selectedCount > 0 && selectedCount < selectableIds.length;
+});
+
+const onSelectAllChange = (e) => {
+  if (e.target.checked) {
+    selectedRowKeys.value = allSelectableFiles.value.map(f => f.file_id);
+  } else {
+    selectedRowKeys.value = [];
+  }
+};
 
 const expandedRowKeys = ref([]);
 
@@ -731,27 +777,6 @@ const filteredFiles = computed(() => {
 const emptyText = computed(() => {
   return filenameFilter.value ? `没有找到包含"${filenameFilter.value}"的文件` : '暂无文件';
 });
-
-// 紧凑分页配置
-const paginationCompact = ref({
-  pageSize: 20,
-  current: 1,
-  total: 0,
-  showSizeChanger: false,
-  showTotal: (total) => `${total}`,
-  size: 'small',
-  showQuickJumper: false,
-  onChange: (page, pageSize) => {
-    paginationCompact.value.current = page;
-    paginationCompact.value.pageSize = pageSize;
-    selectedRowKeys.value = [];
-  },
-});
-
-// 监听过滤后的文件列表变化，更新分页总数
-watch(filteredFiles, (newFiles) => {
-  paginationCompact.value.total = newFiles.length;
-}, { immediate: true });
 
 // 计算是否可以批量删除
 const canBatchDelete = computed(() => {
