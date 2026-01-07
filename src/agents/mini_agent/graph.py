@@ -11,7 +11,7 @@ class MiniAgent(BaseAgent):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    def get_tools(self):
+    def get_tools(self, **kwargs):
         return get_buildin_tools()
 
     async def get_graph(self, **kwargs):

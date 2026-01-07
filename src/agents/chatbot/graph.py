@@ -1,12 +1,14 @@
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelRetryMiddleware
 from langchain.agents.middleware import HumanInTheLoopMiddleware
+from loguru import logger
 from src.agents.common import BaseAgent, load_chat_model
 from src.agents.common.mcp import get_mcp_tools
 from src.agents.common.middlewares import (
     inject_attachment_context,
 )
 from src.agents.common.tools import get_kb_based_tools
+from src.storage.db.models import User, ROLE_LEVEL, Roles
 
 from .context import Context
 from .tools import get_tools
@@ -21,7 +23,7 @@ class ChatbotAgent(BaseAgent):
         super().__init__(**kwargs)
         self.context_schema = Context
 
-    async def get_tools(self, tools: list[str] = None, mcps=None, knowledges=None):
+    async def get_tools(self, tools: list[str] = None, mcps=None, knowledges=None, user:User=None):
         # 1. 基础工具 (从 context.tools 中筛选)
         all_basic_tools = get_tools()
         selected_tools = []
@@ -34,6 +36,23 @@ class ChatbotAgent(BaseAgent):
                     selected_tools.append(tools_map[tool_name])
         else:
             selected_tools = all_basic_tools
+        # 根据角色过滤工具
+        if user:
+            filtered_tools = []
+            role = user.role
+            for tool in selected_tools:
+                extras = tool.extras
+                if extras:
+                    import ipdb; ipdb.set_trace()
+                    min_role = extras.get("min_role", "user")
+                    if ROLE_LEVEL[role] >= ROLE_LEVEL[min_role]:
+                        filtered_tools.append(tool)
+                    else:
+                        logger.debug(f">> {tool.name} Access denied")
+                else:
+                    filtered_tools.append(tool)
+
+            selected_tools = filtered_tools
 
         # 2. 知识库工具
         if knowledges:

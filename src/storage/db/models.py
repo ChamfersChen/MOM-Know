@@ -3,7 +3,7 @@ import datetime as dt
 from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-
+from enum import Enum 
 from src.utils.datetime_utils import coerce_datetime, utc_isoformat, utc_now
 
 Base = declarative_base()
@@ -182,6 +182,16 @@ class ConversationStats(Base):
             "updated_at": format_utc_datetime(self.updated_at),
         }
 
+class Roles(str, Enum):
+    SUPERADMIN = "superadmin"
+    ADMIN = "admin"
+    USER = "user"
+
+ROLE_LEVEL = {
+    "user": 1,
+    "admin": 2,
+    "super_admin": 3,
+}
 
 class User(Base):
     """用户模型"""

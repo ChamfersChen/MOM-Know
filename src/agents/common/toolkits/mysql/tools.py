@@ -3,7 +3,7 @@ from typing import Annotated, Any
 from asyncpg import connect
 from langchain.tools import tool
 from pydantic import BaseModel, Field
-
+from src.storage.db.models import Roles
 from src.utils import logger
 
 from .connection import (
@@ -54,7 +54,7 @@ class TableListModel(BaseModel):
     pass
 
 
-@tool(name_or_callable="查询表名及说明", args_schema=TableListModel)
+@tool(name_or_callable="查询表名及说明", args_schema=TableListModel, extras={"min_role": Roles.ADMIN})
 def mysql_list_tables() -> str:
     """获取数据库中的所有表名
 

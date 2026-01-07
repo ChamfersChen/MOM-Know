@@ -1,6 +1,8 @@
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelRetryMiddleware
 from langchain.agents.middleware import HumanInTheLoopMiddleware
+
+from src.storage.db.models import User
 from src.agents.common import BaseAgent, load_chat_model
 from src.agents.common.mcp import get_mcp_tools
 from src.agents.common.middlewares import (
@@ -21,7 +23,7 @@ class KBChatbotAgent(BaseAgent):
         super().__init__(**kwargs)
         self.context_schema = Context
 
-    async def get_tools(self, tools: list[str] = None, mcps=None, knowledges=None):
+    async def get_tools(self, tools: list[str] = None, mcps=None, knowledges=None, user:User=None):
         selected_tools = []
         # # 1. 基础工具 (从 context.tools 中筛选)
         # all_basic_tools = get_tools()

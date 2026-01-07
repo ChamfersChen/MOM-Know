@@ -16,7 +16,7 @@ class SqlReporterAgent(BaseAgent):
         super().__init__(**kwargs)
         self.context_schema = Context
 
-    async def get_tools(self, tools: list[str] = None, mcps=None, knowledges=None):
+    async def get_tools(self, tools: list[str] = None, mcps=None, knowledges=None, **kwargs):
         # 1. 基础工具 (从 context.tools 中筛选)
         all_basic_tools = get_tools()
         selected_tools = []

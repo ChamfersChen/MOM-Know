@@ -72,7 +72,7 @@ class DeepAgent(BaseAgent):
         self.graph = None
         self.checkpointer = None
 
-    async def get_tools(self):
+    async def get_tools(self, **kwargs):
         """返回 Deep Agent 的专用工具"""
         tools = search_tools
         return tools

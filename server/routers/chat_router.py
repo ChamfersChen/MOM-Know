@@ -748,9 +748,9 @@ async def get_tools(agent_id: str, current_user: User = Depends(get_required_use
 
     if hasattr(agent, "get_tools") and callable(agent.get_tools):
         if asyncio.iscoroutinefunction(agent.get_tools):
-            tools = await agent.get_tools()
+            tools = await agent.get_tools(user=current_user)
         else:
-            tools = agent.get_tools()
+            tools = agent.get_tools(user=current_user)
     else:
         tools = get_buildin_tools()
 
