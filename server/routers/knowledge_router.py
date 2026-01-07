@@ -489,6 +489,130 @@ async def add_documents(
     """添加文档到知识库"""
     return await _upload_db_file(db_id, items, params, current_user)
 
+@knowledge.post("/databases/{db_id}/documents/parse")
+async def parse_documents(db_id: str, file_ids: list[str] = Body(...), current_user: User = Depends(get_admin_user)):
+    """手动触发文档解析"""
+    logger.debug(f"Parse documents for db_id {db_id}: {file_ids}")
+
+    async def run_parse(context: TaskContext):
+        await context.set_message("任务初始化")
+        await context.set_progress(5.0, "准备解析文档")
+
+        total = len(file_ids)
+        processed_items = []
+
+        try:
+            for idx, file_id in enumerate(file_ids, 1):
+                await context.raise_if_cancelled()
+                progress = 5.0 + (idx / total) * 90.0
+                await context.set_progress(progress, f"正在解析第 {idx}/{total} 个文档")
+
+                try:
+                    result = await knowledge_base.parse_file(db_id, file_id, operator_id=current_user.id)
+                    processed_items.append(result)
+                except Exception as e:
+                    logger.error(f"Parse failed for {file_id}: {e}")
+                    processed_items.append({"file_id": file_id, "status": "failed", "error": str(e)})
+
+        except Exception as e:
+            logger.exception(f"Parse task failed: {e}")
+            raise
+
+        failed_count = len([p for p in processed_items if "error" in p])
+        message = f"解析完成，失败 {failed_count} 个"
+        await context.set_result({"items": processed_items})
+        await context.set_progress(100.0, message)
+        return {"items": processed_items}
+
+    try:
+        task = await tasker.enqueue(
+            name=f"文档解析({db_id})",
+            task_type="knowledge_parse",
+            payload={"db_id": db_id, "file_ids": file_ids},
+            coroutine=run_parse,
+        )
+        return {"message": "解析任务已提交", "status": "queued", "task_id": task.id}
+    except Exception as e:
+        return {"message": f"提交失败: {e}", "status": "failed"}
+
+
+@knowledge.post("/databases/{db_id}/documents/index")
+async def index_documents(
+    db_id: str,
+    file_ids: list[str] = Body(...),
+    params: dict = Body({}),
+    current_user: User = Depends(get_admin_user),
+):
+    """手动触发文档入库（Indexing），支持更新参数"""
+    logger.debug(f"Index documents for db_id {db_id}: {file_ids} {params=}")
+
+    # extract operator_id safely before background task
+    operator_id = current_user.id
+
+    async def run_index(context: TaskContext):
+        await context.set_message("任务初始化")
+        await context.set_progress(5.0, "准备入库文档")
+
+        total = len(file_ids)
+        processed_items = []
+
+        # Track files that failed param update
+        param_update_failed = set()
+
+        try:
+            # Update params if provided
+            if params:
+                for file_id in file_ids:
+                    try:
+                        await knowledge_base.update_file_params(db_id, file_id, params, operator_id=operator_id)
+                    except Exception as e:
+                        logger.error(f"Failed to update params for {file_id}: {e}")
+                        param_update_failed.add(file_id)
+                        processed_items.append({
+                            "file_id": file_id,
+                            "status": "failed",
+                            "error": f"参数更新失败: {str(e)}"
+                        })
+
+            for idx, file_id in enumerate(file_ids, 1):
+                await context.raise_if_cancelled()
+
+                # Skip files that failed param update
+                if file_id in param_update_failed:
+                    logger.debug(f"Skipping {file_id} due to param update failure")
+                    continue
+
+                progress = 5.0 + (idx / total) * 90.0
+                await context.set_progress(progress, f"正在入库第 {idx}/{total} 个文档")
+
+                try:
+                    result = await knowledge_base.index_file(db_id, file_id, operator_id=operator_id)
+                    processed_items.append(result)
+                except Exception as e:
+                    logger.error(f"Index failed for {file_id}: {e}")
+                    processed_items.append({"file_id": file_id, "status": "failed", "error": str(e)})
+
+        except Exception as e:
+            logger.exception(f"Index task failed: {e}")
+            raise
+
+        failed_count = len([p for p in processed_items if "error" in p])
+        message = f"入库完成，失败 {failed_count} 个"
+        await context.set_result({"items": processed_items})
+        await context.set_progress(100.0, message)
+        return {"items": processed_items}
+
+    try:
+        task = await tasker.enqueue(
+            name=f"文档入库({db_id})",
+            task_type="knowledge_index",
+            payload={"db_id": db_id, "file_ids": file_ids, "params": params},
+            coroutine=run_index,
+        )
+        return {"message": "入库任务已提交", "status": "queued", "task_id": task.id}
+    except Exception as e:
+        return {"message": f"提交失败: {e}", "status": "failed"}
+
 
 @knowledge.get("/databases/{db_id}/documents/{doc_id}")
 async def get_document_info(db_id: str, doc_id: str, current_user: User = Depends(get_admin_user)):
