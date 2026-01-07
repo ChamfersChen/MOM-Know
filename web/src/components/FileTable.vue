@@ -16,33 +16,22 @@
               <a-menu-item key="upload-folder" @click="showAddFilesModal({ isFolder: true })" :icon="h(FolderUp, { size: 16 })">
                 上传文件夹
               </a-menu-item>
+              <a-menu-item key="upload-folder" @click="showUploadDatabaseModal" :icon="h(HddOutlined, { size: 16 })">
+                从数据库导入
+              </a-menu-item>
             </a-menu>
+            <!-- <a-button
+            type="secondary"
+            @click="showUploadDatabaseModal"
+            :loading="refreshing"
+            :icon="h(HddOutlined)"
+          >从数据库导入</a-button> -->
           </template>
         </a-dropdown>
 
         <a-button class="panel-action-btn" type="text" size="small" @click="showCreateFolderModal" title="新建文件夹">
             <template #icon><FolderPlus size="16" /></template>
         </a-button>
-      <div class="search-container">
-        <a-button
-          type="secondary"
-          @click="showAddFilesModal"
-          :loading="refreshing"
-          :icon="h(PlusOutlined)"
-        >添加文件</a-button>
-        <a-button
-          type="secondary"
-          @click="showCreateFolderModal"
-          :loading="refreshing"
-          :icon="h(FolderAddOutlined)"
-          style="margin-left: 8px;"
-        >新建文件夹</a-button>
-        <a-button
-          type="secondary"
-          @click="showUploadDatabaseModal"
-          :loading="refreshing"
-          :icon="h(HddOutlined)"
-        >从数据库导入</a-button>
       </div>
       <div class="panel-actions">
         <a-input
