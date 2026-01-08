@@ -7,6 +7,7 @@ from langchain.tools import tool
 
 from src.agents.common import get_buildin_tools
 from src.agents.common.subagents import calc_agent_tool
+from src.agents.common.toolkits.mom.tools import add_mom_system_news_tool, fetch_mom_organization_info
 from src.storage.minio import aupload_file_to_minio
 from src.utils import logger
 
@@ -51,6 +52,8 @@ async def text_to_img_demo(text: str) -> str:
 def get_tools() -> list[Any]:
     """获取所有可运行的工具（给大模型使用）"""
     tools = get_buildin_tools()
-    # tools.append(text_to_img_demo)
+    #TODO 添加MOM相关工具
+    # tools.append(fetch_mom_organization_info)
+    # tools.append(add_mom_system_news_tool)
     # tools.append(calc_agent_tool)
     return tools

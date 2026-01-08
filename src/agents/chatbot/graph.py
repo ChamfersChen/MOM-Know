@@ -2,6 +2,8 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import ModelRetryMiddleware
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 from loguru import logger
+from datetime import datetime
+
 from src.agents.common import BaseAgent, load_chat_model
 from src.agents.common.mcp import get_mcp_tools
 from src.agents.common.middlewares import (
@@ -71,6 +73,7 @@ class ChatbotAgent(BaseAgent):
         if self.graph:
             return self.graph
 
+        now_date = datetime.now().strftime('%Y-%m-%d %A')
         # 获取上下文配置
         context = self.context_schema.from_file(module_name=self.module_name)
 
@@ -78,11 +81,12 @@ class ChatbotAgent(BaseAgent):
         graph = create_agent(
             model=load_chat_model(context.model),  # 使用 context 中的模型配置
             tools=await self.get_tools(context.tools, context.mcps, context.knowledges),
-            system_prompt=context.system_prompt,
+            system_prompt=f"**当前日期**: {now_date}\n\n" + context.system_prompt,
             middleware=[
                 inject_attachment_context,  # 附件上下文注入
                 ModelRetryMiddleware(),  # 模型重试中间件
                 HumanInTheLoopMiddleware({ # 人工审批中间件
+                    # "add_mom_system_news": True
                     # "执行 SQL 查询": True, 
                     # "计算器": True, 
                 })
