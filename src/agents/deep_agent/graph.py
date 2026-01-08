@@ -121,8 +121,8 @@ class DeepAgent(BaseAgent):
                         FilesystemMiddleware(),  # 当前的两个文件系统是隔离的
                         SummarizationMiddleware(
                             model=model,
-                            trigger=trigger,
-                            keep=keep,
+                            trigger=("tokens", 110000),
+                            keep=("messages", 10),
                             trim_tokens_to_summarize=None,
                         ),
                         AnthropicPromptCachingMiddleware(unsupported_model_behavior="ignore"),
@@ -132,8 +132,8 @@ class DeepAgent(BaseAgent):
                 ),
                 SummarizationMiddleware(
                     model=model,
-                    trigger=trigger,
-                    keep=keep,
+                    trigger=("tokens", 110000),
+                    keep=("messages", 10),
                     trim_tokens_to_summarize=None,
                 ),
                 AnthropicPromptCachingMiddleware(unsupported_model_behavior="ignore"),
