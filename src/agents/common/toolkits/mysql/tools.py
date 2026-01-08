@@ -81,47 +81,6 @@ def mysql_list_tables() -> str:
         error_msg = f"获取表名失败: {str(e)}"
         return error_msg
 
-    #     conn_manager = get_connection_manager()
-
-    #     with conn_manager.get_cursor() as cursor:
-    #         # 获取表名
-    #         cursor.execute("SHOW TABLES")
-    #         logger.debug("Executed `SHOW TABLES` query")
-    #         tables = cursor.fetchall()
-
-    #         if not tables:
-    #             return "数据库中没有找到任何表"
-
-    #         # 提取表名
-    #         table_names = []
-    #         for table in tables:
-    #             table_name = list(table.values())[0]
-    #             table_names.append(table_name)
-
-    #         # 获取每个表的行数信息
-    #         # table_info = []
-    #         # for table_name in table_names:
-    #         #     try:
-    #         #         cursor.execute(f"SELECT COUNT(*) as count FROM `{table_name}`")
-    #         #         logger.debug(f"Executed `SELECT COUNT(*) FROM {table_name}` query")
-    #         #         count_result = cursor.fetchone()
-    #         #         row_count = count_result["count"]
-    #         #         table_info.append(f"- {table_name} (约 {row_count} 行)")
-    #         #     except Exception:
-    #         #         table_info.append(f"- {table_name} (无法获取行数)")
-
-    #         all_table_names = "\n".join(table_names)
-    #         result = f"数据库中的表:\n{all_table_names}"
-    #         if db_note := conn_manager.config.get("description"):
-    #             result = f"数据库说明: {db_note}\n\n" + result
-    #         logger.info(f"Retrieved {len(table_names)} tables from database")
-    #         return result
-
-    # except Exception as e:
-    #     error_msg = f"获取表名失败: {str(e)}"
-    #     logger.error(error_msg)
-    #     return error_msg
-
 
 class TableDescribeModel(BaseModel):
     """获取表结构的参数模型"""
