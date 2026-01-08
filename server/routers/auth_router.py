@@ -1,5 +1,6 @@
 import re
 import uuid
+import requests
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File
 from fastapi.security import OAuth2PasswordRequestForm
@@ -7,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.storage import global_variable
 from src.storage.db.manager import db_manager
 from src.storage.db.models import User
 from server.utils.auth_middleware import get_admin_user, get_current_user, get_db, get_required_user
@@ -91,6 +93,17 @@ class UserIdGeneration(BaseModel):
 
 access_token_old = None
 
+def get_mom_organization_by_username(username: str):
+    #T根据MOM用户名获得MOM用户登录信息，便于Agent与MOM系统进行交互
+    resp = requests.get(f"http://192.168.137.100:18901/system/user_organization/{username}")
+    try:
+        resp.raise_for_status()
+        mom_user_info = resp.json()
+        global_variable.set("mom_user_info", mom_user_info)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @auth.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
     global access_token_old
@@ -166,6 +179,9 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     access_token_old = access_token
     # 记录登录操作
     await log_operation(db, user.id, "登录")
+
+    # 获取组织信息
+    # get_mom_organization_by_username("fhj2") # TODO 根据用户名称获取组织信息
 
     return {
         "access_token": access_token,
