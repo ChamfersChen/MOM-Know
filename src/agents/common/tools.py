@@ -8,6 +8,7 @@ from langchain_tavily import TavilySearch
 from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
+from src.storage.db.models import Roles
 from src import config, graph_base, knowledge_base
 from src.utils import logger
 
@@ -15,7 +16,7 @@ search = TavilySearch(max_results=10)
 search.metadata = {"name": "Tavily 网页搜索"}
 
 
-@tool(name_or_callable="计算器", description="可以对给定的2个数字选择进行 add, subtract, multiply, divide 运算")
+@tool(name_or_callable="计算器", description="可以对给定的2个数字选择进行 add, subtract, multiply, divide 运算", extras={"min_role": Roles.ADMIN})
 def calculator(a: float, b: float, operation: str) -> float:
     try:
         if operation == "add":
