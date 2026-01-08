@@ -211,8 +211,7 @@ provide('settingsModal', {
       <div class="nav-item user-info">
         <UserInfoComponent />
       </div>
-
-      </div>
+    </div>
     <div class="header-mobile">
       <RouterLink to="/agent" class="nav-item" active-class="active">对话</RouterLink>
       <RouterLink to="/database" class="nav-item" active-class="active">知识</RouterLink>
