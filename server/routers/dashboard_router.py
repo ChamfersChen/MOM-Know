@@ -381,10 +381,12 @@ async def get_knowledge_stats(
         import os
 
         # 从知识库管理系统获取数据
-        kb_manager = KnowledgeBaseManager(work_dir="/app/saves/knowledge_base_data")
+        # kb_manager = KnowledgeBaseManager(work_dir="/app/saves/knowledge_base_data")
+        kb_manager = KnowledgeBaseManager(work_dir="saves/knowledge_base_data")
 
         # 读取全局元数据文件
-        metadata_file = "/app/saves/knowledge_base_data/global_metadata.json"
+        # metadata_file = "/app/saves/knowledge_base_data/global_metadata.json"
+        metadata_file = "saves/knowledge_base_data/global_metadata.json"
         if os.path.exists(metadata_file):
             with open(metadata_file, encoding="utf-8") as f:
                 global_metadata = json.load(f)
