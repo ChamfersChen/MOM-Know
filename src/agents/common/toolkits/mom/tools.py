@@ -24,7 +24,7 @@ class SystemNewsModel(BaseModel):
     organization_id: str = Field(description="添加公告的组织ID")
 
 
-@tool(name_or_callable="fetch_mom_organization_info", description="需要操作MOM系统前需要先查看MOM组织信息, 为操作MOM系统提供组织信息")
+@tool(name_or_callable="fetch_mom_system_info", description="需要操作MOM系统前需要先查看当前MOM系统信息, 为操作MOM系统提供必要的信息")
 def fetch_mom_organization_info() -> str:
     mom_user_info:dict = global_variable.get("mom_user_info")
     organizations = mom_user_info.get("organizations")
@@ -35,7 +35,7 @@ def fetch_mom_organization_info() -> str:
 def random_bigint():
     return random.randint(10**18, 10**19 - 1)
 
-@tool(name_or_callable="add_mom_system_news", description="在获得MOM组织信息完成之后执行，为MOM系统添加系统公告", args_schema=SystemNewsModel)
+@tool(name_or_callable="add_mom_system_news", description="在获得MOM系统信息完成之后执行，为MOM系统添加系统公告", args_schema=SystemNewsModel)
 def add_mom_system_news_tool(title: str, content: str, start_time: str, end_time: str, organization_id: str) -> str:
     """为MOM系统添加系统公告
 
@@ -93,14 +93,50 @@ def add_mom_system_news_tool(title: str, content: str, start_time: str, end_time
     logger.debug(headers)
 
     logger.debug(body)
-    # try:
-    resp = requests.post(MOM_API_BASE_URL+"/admin/sysNews", headers=headers,
-        json=body
-    )
-    resp.raise_for_status()
-    # except httpx.HTTPStatusError as e:
-    #     logger.debug(str(e))
-    #     return f"创建系统公告失败！{str(e)}"
+    try:
+        resp = requests.post(MOM_API_BASE_URL+"/admin/sysNews", headers=headers,
+            json=body
+        )
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        logger.debug(str(e))
+        return f"创建系统公告失败！{str(e)}"
 
     return f"创建系统公告成功！"
 
+
+class SystemScheduleModel(BaseModel):
+    """MOM系统添加系统公告的参数模型"""
+    title: str = Field(description="日程标题", example="关于天津项目的进度沟通会")
+    description: str = Field(description="日程具体描述", example="同步项目当前核心进展。讨论并解决当前遇到的主要问题或障碍。明确下一阶段的重点任务与分工。...")
+    start_time: str = Field(description="日程开始时间 (精确到具体时间点)", example="2025-12-01 14:00:00")
+    end_time: str = Field(description="日程结束时间 (精确到具体时间点)", example="2025-12-01 15:30:00")
+
+@tool(name_or_callable="add_mom_system_schedule", description="在获得MOM系统信息完成之后执行，为MOM系统添加日程信息", args_schema=SystemScheduleModel)
+def add_mom_system_schedule_tool(title: str, description: str, start_time: str, end_time: str) -> str:
+    mom_user_info:dict = global_variable.get("mom_user_info")
+    tenant_id = mom_user_info.get("tenant_id")
+    token = mom_user_info.get("token")
+
+    body = {
+            "title": title,
+            "description": description,
+            "startTime": start_time,
+            "endTime": end_time,
+        }
+    headers = {
+            "Authorization": "Bearer " + token,
+            "Accept": "application/json, text/plain, */*",
+            "skipToken": "True",
+            "TENANT-ID": str(tenant_id)
+        }
+    try:
+        resp = requests.post(MOM_API_BASE_URL+"/admin/schedule", headers=headers,
+            json=body
+        )
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        logger.debug(str(e))
+        return f"创建日程失败！{str(e)}"
+
+    return f"创建日程成功！"
