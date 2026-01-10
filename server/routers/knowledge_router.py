@@ -13,6 +13,7 @@ from starlette.responses import StreamingResponse
 
 from server.services.tasker import TaskContext, tasker
 from server.utils.auth_middleware import get_admin_user
+from src.storage.db.models import User
 from src import config, knowledge_base
 from src.knowledge.indexing import SUPPORTED_FILE_EXTENSIONS, is_supported_file_extension, process_file_to_markdown
 from src.knowledge.utils import calculate_content_hash

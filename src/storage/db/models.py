@@ -190,7 +190,7 @@ class Roles(str, Enum):
 ROLE_LEVEL = {
     "user": 1,
     "admin": 2,
-    "super_admin": 3,
+    "superadmin": 3,
 }
 
 class User(Base):
