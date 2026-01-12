@@ -41,17 +41,16 @@ class TasksState(AgentState):
     todos: Annotated[NotRequired[list[Todo]], OmitFromInput]
     """List of todo items for tracking task progress."""
 
-UPDATE_TODO_TOOL_DESCRIPTION = """Use this tool to update a structured todo task list for your current work session. This helps you organize task.
+UPDATE_TODO_TOOL_DESCRIPTION = """Use this tool to update a structured todo task list for your current work session. This helps you organize tasks.
 
 ## When to Use This Tool
 Use this tool in these scenarios:
-
 - The plan may need future revisions or updates based on results from the first few steps
 
 ## How to Use This Tool
-2. After completing a task - Mark it as completed and add any new follow-up tasks discovered during implementation.
-3. You can also update future tasks, such as deleting them if they are no longer necessary, or adding new tasks that are necessary. Don't change previously completed tasks.
-4. You can make several updates to the todo list at once. For example, when you complete a task, you can mark the next task you need to start as in_progress.
+1. After completing a task - Mark it as completed and add any new follow-up tasks discovered during implementation.
+2. You can also update future tasks, such as deleting them if they are no longer necessary, or adding new tasks that are necessary. Don't change previously completed tasks.
+3. You can make several updates to the todo list at once. For example, when you complete a task, you can mark the next task you need to start as in_progress.
 
 ## Task States and Management
 
@@ -122,16 +121,6 @@ This skill is very helpful for planning complex tasks and breaking down those la
 A key point is that once you complete a step, you must immediately mark that todo item as completed using the `update_todos` tool. Do not wait to mark multiple steps at once.
 For simple tasks that require only a few steps, it's better to achieve the goal directly without using this skill.
 Writing todo lists takes time and token count; please use it when it helps manage complex, multi-step problems! However, do not use it for simple requests with few steps."""  # noqa: E501
-
-# WRITE_TODOS_SKILL_SYSTEM_PROMPT = """## 任务规划技能
-
-# 你可以使用此技能提供的工具[`write_todos`, `update_todos`]来帮助规划和管理复杂任务。
-# 对于复杂任务，请使用此技能，以确保你跟踪每个必要步骤，并让用户清楚了解你的进展。
-# 此技能对于规划复杂任务以及将这些较大的复杂目标拆分为更小的步骤非常有帮助。
-
-# 关键的一点是，一旦你完成某个步骤，就必须使用`update_todos`工具立即将该待办事项标记为已完成。不要等到完成多个步骤后再统一标记。
-# 对于只需几个步骤的简单任务，最好直接完成目标，而不要使用此技能。
-# 撰写待办事项会花费时间和令牌数，请在它有助于管理复杂多步骤问题时使用！但不要用于简单的少量步骤请求。"""  # noqa: E501
 
 
 def _format_todos(todos: list[Todo]):
