@@ -1,5 +1,6 @@
 from langchain.agents import create_agent
 
+from src.agents.common.middlewares import TaskSkillMiddleware
 from src.agents.common import BaseAgent, get_mcp_tools, load_chat_model
 from src.utils import logger
 from .context import Context
@@ -51,6 +52,9 @@ class SqlReporterAgent(BaseAgent):
             # tools=await self.get_tools(),
             tools=await self.get_tools(context.tools, context.mcps),
             checkpointer=await self._get_checkpointer(),
+            middleware=[
+                TaskSkillMiddleware(),
+            ]
         )
 
         self.graph = graph

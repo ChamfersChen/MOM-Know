@@ -113,7 +113,7 @@ const isKnowledgeGraphResult = computed(() => {
 });
 
 const isTodoListResult = computed(() => {
-  return toolName.value === 'write_todos';
+  return toolName.value === 'write_todos' || toolName.value === 'update_todos';
 });
 
 const isCalculatorResult = computed(() => {

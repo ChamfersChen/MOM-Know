@@ -115,11 +115,20 @@ const todoListData = (content) => {
     if (str.startsWith('Updated todo list to ')) {
       str = str.replace('Updated todo list to ', '');
     }
+    console.log('content', content);
     const items = [];
     const contentRegex = /'content':\s*'((?:[^'\\]|\\.)*)'/;
     const statusRegex = /'status':\s*'((?:[^'\\]|\\.)*)'/;
-    const dictRegex = /\{.*?\}/g;
+    // const dictRegex = /\{.*?\}/g;
+      // 修改1：将单引号改为双引号
+    // const contentRegex = /"content":\s*"((?:[^"\\]|\\.)*)"/;
+    // const statusRegex = /"status":\s*"((?:[^"\\]|\\.)*)"/;
+    let dictRegex = /\{.*?\}/g;
+    if (str.includes('- Task')) {
+      dictRegex = /- Task \d+(?:\n\s+[^\n]*)*/g;
+    }
     const dictMatches = str.match(dictRegex);
+    console.log('dictMatches', dictMatches);
     if (dictMatches) {
       for (const dictStr of dictMatches) {
         const contentMatch = dictStr.match(contentRegex);
