@@ -18,7 +18,7 @@ MCP_SERVERS = {
     #     "transport": "streamable_http",
     # },
     "mcp-server-mychart": {
-        "url": "http://localhost:8001/mcp",
+        "url": "http://127.0.0.1:8001/mcp",
         "transport": "streamable_http",
     },
     # "zhipu-web-search-sse": {

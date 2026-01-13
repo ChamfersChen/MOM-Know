@@ -9,16 +9,17 @@ from fastapi.responses import FileResponse
 from starlette.responses import FileResponse as StarletteFileResponse
 from sympy import EX
 
+from server.utils.auth_middleware import get_admin_user
 from src.storage.db.models import User
 from src import sql_database
 from src.utils import logger
 
-sql_db = APIRouter(prefix="/db", tags=["database"])
+sql_db = APIRouter(prefix="/db", tags=["sql database"])
 
 
 @sql_db.get("/databases")
 async def get_databases(
-    # current_user: User = Depends(get_admin_user)
+    current_user: User = Depends(get_admin_user)
     ):
     """获取所有数据库"""
     try:
@@ -35,7 +36,7 @@ async def create_database(
     description: str = Body(...),
     db_type: str = Body("mysql"),
     connection_info: dict = Body({}),
-    # current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """创建数据库"""
     logger.debug(
@@ -61,7 +62,7 @@ async def create_database(
 @sql_db.get("/database/{db_id}")
 async def get_database_info(
     db_id: str, 
-    # current_user: User = Depends(get_admin_user)
+    current_user: User = Depends(get_admin_user)
     ):
     """获取数据库详细信息"""
     database = sql_database.get_database_info(db_id)
