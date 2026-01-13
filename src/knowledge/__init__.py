@@ -15,10 +15,13 @@ KnowledgeBaseFactory.register("milvus", MilvusKB, {"description": "基于 Milvus
 work_dir = os.path.join(config.save_dir, "knowledge_base_data")
 knowledge_base = KnowledgeBaseManager(work_dir)
 
+work_dir = os.path.join(config.save_dir, "sql_knowledge_base_data")
+sql_knowledge_base = KnowledgeBaseManager(work_dir)
+
 # 创建图数据库实例
 graph_base = UploadGraphService()
 
 # 向后兼容：让 GraphDatabase 指向 UploadGraphService
 GraphDatabase = UploadGraphService
 
-__all__ = ["GraphDatabase", "UploadGraphService", "knowledge_base", "graph_base"]
+__all__ = ["GraphDatabase", "UploadGraphService", "knowledge_base", "sql_knowledge_base", "graph_base"]

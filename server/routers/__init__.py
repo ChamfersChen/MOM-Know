@@ -10,6 +10,7 @@ from server.routers.mindmap_router import mindmap
 from server.routers.system_router import system
 from server.routers.task_router import tasks
 from server.routers.sql_database_router import sql_db
+from server.routers.sql_knowledge_router import sql_kb
 
 router = APIRouter()
 
@@ -24,3 +25,4 @@ router.include_router(mindmap)  # /api/mindmap/*
 router.include_router(graph)  # /api/graph/*
 router.include_router(tasks)  # /api/tasks/*
 router.include_router(sql_db)  # /api/tasks/*
+router.include_router(sql_kb)  # /api/tasks/*

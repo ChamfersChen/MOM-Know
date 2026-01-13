@@ -7,6 +7,8 @@ from concurrent.futures import ThreadPoolExecutor  # noqa: E402
 from src.config import config as config  # noqa: E402
 from src.knowledge import graph_base as graph_base  # noqa: E402
 from src.knowledge import knowledge_base as knowledge_base  # noqa: E402
+from src.knowledge import sql_knowledge_base as sql_knowledge_base  # noqa: E402
 from src.sql_database import sql_database as sql_database  # noqa: E402
+# from src.sql_knowledge import sql_knowledge_base as sql_knowledge_base # noqa: E402
 
 executor = ThreadPoolExecutor()  # noqa: E402
