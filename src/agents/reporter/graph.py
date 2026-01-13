@@ -3,11 +3,13 @@ from langchain.agents import create_agent
 from src.agents.common.middlewares import TaskSkillMiddleware
 from src.agents.common import BaseAgent, get_mcp_tools, load_chat_model
 from src.utils import logger
+from .middlewares.sql_retrieval_middleware import SqlRetrievalMiddleware
 from .context import Context
 from .tools import get_tools
 
 # _mcp_servers = {"mcp-server-chart": {"command": "npx", "args": ["-y", "@antv/mcp-server-chart"], "transport": "stdio"}}
 
+SQL_PAIRS_KB_ID = "kb_8d6732060fbf23a102aab44a50ffe953"
 
 class SqlReporterAgent(BaseAgent):
     name = "数据库报表助手"
@@ -54,6 +56,7 @@ class SqlReporterAgent(BaseAgent):
             checkpointer=await self._get_checkpointer(),
             middleware=[
                 TaskSkillMiddleware(),
+                SqlRetrievalMiddleware(SQL_PAIRS_KB_ID)
             ]
         )
 

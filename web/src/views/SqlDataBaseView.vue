@@ -20,7 +20,7 @@
           width="800px"
         >
           <!-- 知识库类型选择 -->
-          <h3>数据库类型<span style="color: var(--error-color)">*</span></h3>
+          <!-- <h3>数据库类型<span style="color: var(--error-color)">*</span></h3> -->
           <div class="kb-type-cards">
             <div
               v-for="(typeInfo, typeKey) in supportedDbTypes"
@@ -86,7 +86,13 @@
           class="new-database-modal" 
           width="800px"
         >
-          <h3>选择数据库表<span style="color: var(--error-color)">*</span></h3>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3>选择数据库表<span style="color: var(--error-color)">*</span></h3>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <a-checkbox v-model:checked="selectAll" @change="handleSelectAllChange" />
+              <span>全选</span>
+            </div>
+          </div>
           <!-- 数据库表多选列表 -->
           <div class="table-cards">
             <a-empty v-if="!state.database.tables || state.database.tables.length === 0" description="暂无数据库表" />
@@ -418,6 +424,7 @@ const state = reactive({
 
 const selectedTableIds = ref([]);
 const selectedTableIdsBack = ref([]);
+const selectAll = ref(false);
 
 
 const navigateToDatabase = (database) => {
@@ -520,6 +527,22 @@ const toggleTable = (table) => {
   selectedTableIds.value = selectedTableIds.value.includes(table_id)
     ? selectedTableIds.value.filter(t => t !== table_id)
     : [...selectedTableIds.value, table_id]
+  
+  // Update selectAll state based on current selection of tables with comments
+  const tablesWithComments = tableList.value.filter(table => table.table_comment && table.table_comment.trim() !== '');
+  selectAll.value = selectedTableIds.value.length === tablesWithComments.length;
+}
+
+const handleSelectAllChange = () => {
+  if (selectAll.value) {
+    // Select all tables except those with empty table_comment
+    selectedTableIds.value = tableList.value
+      .filter(table => table.table_comment && table.table_comment.trim() !== '')
+      .map(table => table.table_id);
+  } else {
+    // Deselect all tables
+    selectedTableIds.value = [];
+  }
 }
 
 const loadDatabases = () => {

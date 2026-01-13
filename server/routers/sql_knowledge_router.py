@@ -15,8 +15,8 @@ from server.services.tasker import TaskContext, tasker
 from server.utils.auth_middleware import get_admin_user
 from src.storage.db.models import User
 from src import config, sql_knowledge_base
-from src.sql_knowledge.indexing import SUPPORTED_FILE_EXTENSIONS, is_supported_file_extension, process_file_to_markdown
-from src.sql_knowledge.utils import calculate_content_hash
+from src.knowledge.indexing import SUPPORTED_FILE_EXTENSIONS, is_supported_file_extension, process_file_to_markdown
+from src.knowledge.utils import calculate_content_hash
 from src.models.embed import test_embedding_model_status, test_all_embedding_models_status
 from src.storage.minio.client import aupload_file_to_minio, get_minio_client, StorageError
 from src.utils import logger, hashstr
