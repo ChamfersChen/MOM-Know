@@ -111,7 +111,6 @@ export const documentApi = {
     })
   },
 
-
   /**
    * 添加文档到知识库
    * @param {string} dbId - 知识库ID
@@ -178,8 +177,7 @@ export const documentApi = {
       file_ids: fileIds,
       params
     })
-  },
-
+  }
 }
 
 // =============================================================================
@@ -271,9 +269,7 @@ export const fileApi = {
     const formData = new FormData()
     formData.append('file', file)
 
-    const url = dbId
-      ? `/api/knowledge/files/upload?db_id=${dbId}`
-      : '/api/knowledge/files/upload'
+    const url = dbId ? `/api/knowledge/files/upload?db_id=${dbId}` : '/api/knowledge/files/upload'
 
     return apiAdminPost(url, formData, {
       headers: {
@@ -301,11 +297,16 @@ export const fileApi = {
     formData.append('file', file)
 
     // 使用 apiRequest 直接发送 FormData，但使用统一的错误处理
-    return apiRequest(`/api/knowledge/files/upload-folder?db_id=${dbId}`, {
-      method: 'POST',
-      body: formData,
-      // 不设置 Content-Type，让浏览器自动设置 boundary
-    }, true, 'json')  // 需要认证，期望JSON响应
+    return apiRequest(
+      `/api/knowledge/files/upload-folder?db_id=${dbId}`,
+      {
+        method: 'POST',
+        body: formData
+        // 不设置 Content-Type，让浏览器自动设置 boundary
+      },
+      true,
+      'json'
+    ) // 需要认证，期望JSON响应
   },
 
   /**
@@ -464,7 +465,6 @@ export const evaluationApi = {
     return apiAdminPost(`/api/evaluation/databases/${dbId}/run`, params)
   },
 
-
   /**
    * 获取评估结果
    * @param {string} taskId - 任务ID
@@ -487,14 +487,14 @@ export const evaluationApi = {
 
   // 新接口：带 db_id 的评估结果查询与删除
   getEvaluationResultsByDb: async (dbId, taskId, params = {}) => {
-    const queryParams = new URLSearchParams();
+    const queryParams = new URLSearchParams()
 
-    if (params.page) queryParams.append('page', params.page);
-    if (params.pageSize) queryParams.append('page_size', params.pageSize);
-    if (params.errorOnly !== undefined) queryParams.append('error_only', params.errorOnly);
+    if (params.page) queryParams.append('page', params.page)
+    if (params.pageSize) queryParams.append('page_size', params.pageSize)
+    if (params.errorOnly !== undefined) queryParams.append('error_only', params.errorOnly)
 
-    const url = `/api/evaluation/databases/${dbId}/results/${taskId}${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
-    return apiAdminGet(url);
+    const url = `/api/evaluation/databases/${dbId}/results/${taskId}${queryParams.toString() ? '?' + queryParams.toString() : ''}`
+    return apiAdminGet(url)
   },
   deleteEvaluationResultByDb: async (dbId, taskId) => {
     return apiAdminDelete(`/api/evaluation/databases/${dbId}/results/${taskId}`)

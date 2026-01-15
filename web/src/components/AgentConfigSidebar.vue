@@ -1,16 +1,11 @@
 <template>
-  <div class="agent-config-sidebar" :class="{ 'open': isOpen }">
+  <div class="agent-config-sidebar" :class="{ open: isOpen }">
     <!-- 侧边栏头部 -->
     <div class="sidebar-header">
-      <div class="sidebar-title">
-        <span>配置</span>
+      <div class="header-center">
+        <a-segmented v-model:value="activeTab" :options="segmentedOptions" />
       </div>
-      <a-button
-        type="text"
-        size="small"
-        @click="closeSidebar"
-        class="close-btn"
-      >
+      <a-button type="text" size="small" @click="closeSidebar" class="close-btn">
         <CloseOutlined />
       </a-button>
     </div>
@@ -45,6 +40,7 @@
             <!-- 统一显示所有配置项 -->
             <template v-for="(value, key) in configurableItems" :key="key">
               <a-form-item
+                v-if="shouldShowConfig(key, value)"
                 :label="getConfigLabel(key, value)"
                 :name="key"
                 class="config-item"
@@ -74,11 +70,7 @@
                     ref="systemPromptTextarea"
                   />
                   <!-- 显示模式 -->
-                  <div
-                    v-else
-                    class="system-prompt-display"
-                    @click="enterEditMode"
-                  >
+                  <div v-else class="system-prompt-display" @click="enterEditMode">
                     <div
                       class="system-prompt-content"
                       :class="{ 'is-placeholder': !agentConfig[key] }"
@@ -135,7 +127,9 @@
 
                 <!-- 单选 -->
                 <a-select
-                  v-else-if="value?.options && (value?.type === 'str' || value?.type === 'select')"
+                  v-else-if="
+                    value?.options.length > 0 && (value?.type === 'str' || value?.type === 'select')
+                  "
                   :value="agentConfig[key]"
                   @update:value="(val) => agentStore.updateAgentConfig({ [key]: val })"
                   class="config-select"
@@ -146,7 +140,10 @@
                 </a-select>
 
                 <!-- 多选 -->
-                <div v-else-if="value?.options && value?.type === 'list'" class="multi-select-cards">
+                <div
+                  v-else-if="value?.options.length > 0 && value?.type === 'list'"
+                  class="multi-select-cards"
+                >
                   <div class="multi-select-label">
                     <span>已选择 {{ getSelectedCount(key) }} 项</span>
                     <a-button
@@ -165,8 +162,8 @@
                       :key="option"
                       class="option-card"
                       :class="{
-                        'selected': isOptionSelected(key, option),
-                        'unselected': !isOptionSelected(key, option)
+                        selected: isOptionSelected(key, option),
+                        unselected: !isOptionSelected(key, option)
                       }"
                       @click="toggleOption(key, option)"
                     >
@@ -211,18 +208,21 @@
                 />
               </a-form-item>
             </template>
-
           </a-form>
         </div>
       </div>
+    </div>
 
-      <!-- 固定在底部的操作按钮 -->
-      <div class="sidebar-footer" v-if="!isEmptyConfig">
-        <div class="form-actions">
-          <a-button @click="saveConfig" class="save-btn" :class="{'changed': agentStore.hasConfigChanges}">
-            保存配置并重新加载
-          </a-button>
-        </div>
+    <!-- 固定在底部的操作按钮 -->
+    <div class="sidebar-footer" v-if="!isEmptyConfig">
+      <div class="form-actions">
+        <a-button
+          @click="saveConfig"
+          class="save-btn"
+          :class="{ changed: agentStore.hasConfigChanges }"
+        >
+          保存配置并重新加载
+        </a-button>
       </div>
     </div>
 
@@ -254,7 +254,7 @@
             v-for="tool in filteredTools"
             :key="tool.id"
             class="tool-item"
-            :class="{ 'selected': selectedTools.includes(tool.id) }"
+            :class="{ selected: selectedTools.includes(tool.id) }"
             @click="toggleToolSelection(tool.id)"
           >
             <div class="tool-content">
@@ -271,9 +271,7 @@
         </div>
 
         <div class="tools-modal-footer">
-          <div class="selected-count">
-            已选择 {{ selectedTools.length }} 个工具
-          </div>
+          <div class="selected-count">已选择 {{ selectedTools.length }} 个工具</div>
           <div class="modal-actions">
             <a-button @click="cancelToolsSelection">取消</a-button>
             <a-button type="primary" @click="confirmToolsSelection">确认</a-button>
@@ -285,18 +283,18 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue'
 import {
   SettingOutlined,
   CloseOutlined,
   CheckCircleOutlined,
   PlusCircleOutlined,
   SearchOutlined
-} from '@ant-design/icons-vue';
-import { message } from 'ant-design-vue';
-import ModelSelectorComponent from '@/components/ModelSelectorComponent.vue';
-import { useAgentStore } from '@/stores/agent';
-import { storeToRefs } from 'pinia';
+} from '@ant-design/icons-vue'
+import { message } from 'ant-design-vue'
+import ModelSelectorComponent from '@/components/ModelSelectorComponent.vue'
+import { useAgentStore } from '@/stores/agent'
+import { storeToRefs } from 'pinia'
 
 // Props
 const props = defineProps({
@@ -304,272 +302,305 @@ const props = defineProps({
     type: Boolean,
     default: false
   }
-});
+})
 
 // Emits
-const emit = defineEmits([
-  'close'
-]);
+const emit = defineEmits(['close'])
 
 // Store 管理
-const agentStore = useAgentStore();
-const {
-  availableTools,
-  selectedAgent,
-  selectedAgentId,
-  agentConfig,
-  configurableItems
-} = storeToRefs(agentStore);
+const agentStore = useAgentStore()
+const { availableTools, selectedAgent, selectedAgentId, agentConfig, configurableItems } =
+  storeToRefs(agentStore)
 
 // console.log(availableTools.value)
 
 // 本地状态
-const toolsModalOpen = ref(false);
-const selectedTools = ref([]);
-const toolsSearchText = ref('');
-const systemPromptEditMode = ref(false);
-
+const toolsModalOpen = ref(false)
+const selectedTools = ref([])
+const toolsSearchText = ref('')
+const systemPromptEditMode = ref(false)
+const activeTab = ref('basic')
 
 const isEmptyConfig = computed(() => {
-  return !selectedAgentId.value || Object.keys(configurableItems.value).length === 0;
-});
+  return !selectedAgentId.value || Object.keys(configurableItems.value).length === 0
+})
+
+const hasOtherConfigs = computed(() => {
+  if (isEmptyConfig.value) return false
+  return Object.entries(configurableItems.value).some(([key, value]) => {
+    // 检查是否属于 basic (System Prompt, LLM)
+    const isBasic = key === 'system_prompt' || value.template_metadata?.kind === 'llm'
+    // 检查是否属于 tools (mcps, knowledges, tools)
+    const isTools =
+      key === 'mcps' ||
+      key === 'knowledges' ||
+      value.template_metadata?.kind === 'tools' ||
+      key === 'tools'
+    return !isBasic && !isTools
+  })
+})
+
+const segmentedOptions = computed(() => {
+  const options = [
+    { label: '基础', value: 'basic' },
+    { label: '工具', value: 'tools' }
+  ]
+
+  if (hasOtherConfigs.value) {
+    options.push({ label: '其他', value: 'other' })
+  }
+
+  return options
+})
 
 const filteredTools = computed(() => {
-  const toolsList = availableTools.value ? Object.values(availableTools.value) : [];
+  const toolsList = availableTools.value ? Object.values(availableTools.value) : []
   if (!toolsSearchText.value) {
-    return toolsList;
+    return toolsList
   }
-  const searchLower = toolsSearchText.value.toLowerCase();
-  return toolsList.filter(tool =>
-    tool.name.toLowerCase().includes(searchLower) ||
-    tool.description.toLowerCase().includes(searchLower)
-  );
-});
+  const searchLower = toolsSearchText.value.toLowerCase()
+  return toolsList.filter(
+    (tool) =>
+      tool.name.toLowerCase().includes(searchLower) ||
+      tool.description.toLowerCase().includes(searchLower)
+  )
+})
 
 // 方法
+const shouldShowConfig = (key, value) => {
+  if (activeTab.value === 'basic') {
+    // 基础：System Prompt, LLM Model
+    return key === 'system_prompt' || value.template_metadata?.kind === 'llm'
+  } else if (activeTab.value === 'tools') {
+    // 工具：Tools, MCPs, Knowledges
+    return (
+      key === 'mcps' ||
+      key === 'knowledges' ||
+      value.template_metadata?.kind === 'tools' ||
+      key === 'tools'
+    )
+  } else {
+    // 其他：剩余所有配置
+    const isBasic = key === 'system_prompt' || value.template_metadata?.kind === 'llm'
+    const isTools =
+      key === 'mcps' ||
+      key === 'knowledges' ||
+      value.template_metadata?.kind === 'tools' ||
+      key === 'tools'
+    return !isBasic && !isTools
+  }
+}
+
 const closeSidebar = () => {
-  emit('close');
-};
+  emit('close')
+}
 
 const getConfigLabel = (key, value) => {
   // console.log(configurableItems)
   if (value.description && value.name !== key) {
-    return `${value.name}`;
+    return `${value.name}`
     // return `${value.name}（${key}）`;
   }
-  return key;
-};
+  return key
+}
 
 const getPlaceholder = (key, value) => {
-  return `（默认: ${value.default}）`;
-};
+  return `（默认: ${value.default}）`
+}
 
 const handleModelChange = (key, spec) => {
-  if (typeof spec !== 'string' || !spec) return;
+  if (typeof spec !== 'string' || !spec) return
   agentStore.updateAgentConfig({
     [key]: spec
-  });
-};
+  })
+}
 
 // 多选相关方法
 const ensureArray = (key) => {
-  const config = agentConfig.value || {};
+  const config = agentConfig.value || {}
   if (!config[key] || !Array.isArray(config[key])) {
-    return [];
+    return []
   }
-  return config[key];
-};
+  return config[key]
+}
 
 const isOptionSelected = (key, option) => {
-  const currentOptions = ensureArray(key);
-  return currentOptions.includes(option);
-};
+  const currentOptions = ensureArray(key)
+  return currentOptions.includes(option)
+}
 
 const getSelectedCount = (key) => {
-  const currentOptions = ensureArray(key);
-  return currentOptions.length;
-};
+  const currentOptions = ensureArray(key)
+  return currentOptions.length
+}
 
 const toggleOption = (key, option) => {
-  const currentOptions = [...ensureArray(key)];
-  const index = currentOptions.indexOf(option);
+  const currentOptions = [...ensureArray(key)]
+  const index = currentOptions.indexOf(option)
 
   if (index > -1) {
-    currentOptions.splice(index, 1);
+    currentOptions.splice(index, 1)
   } else {
-    currentOptions.push(option);
+    currentOptions.push(option)
   }
 
   agentStore.updateAgentConfig({
     [key]: currentOptions
-  });
-};
+  })
+}
 
 const clearSelection = (key) => {
   agentStore.updateAgentConfig({
     [key]: []
-  });
-};
+  })
+}
 
 // 工具相关方法
 const getToolNameById = (toolId) => {
-  const toolsList = availableTools.value ? Object.values(availableTools.value) : [];
-  const tool = toolsList.find(t => t.id === toolId);
-  return tool ? tool.name : toolId;
-};
-
-const loadAvailableTools = async () => {
-  try {
-    await agentStore.fetchTools();
-  } catch (error) {
-    console.error('加载工具列表失败:', error);
-  }
-};
+  const toolsList = availableTools.value ? Object.values(availableTools.value) : []
+  const tool = toolsList.find((t) => t.id === toolId)
+  return tool ? tool.name : toolId
+}
 
 const openToolsModal = async () => {
+  console.log('availableTools.value', availableTools.value)
   try {
     // 强制刷新智能体详情以获取最新工具列表
     if (selectedAgentId.value) {
-      await agentStore.fetchAgentDetail(selectedAgentId.value, true);
+      await agentStore.fetchAgentDetail(selectedAgentId.value, true)
     }
-    selectedTools.value = [...(agentConfig.value?.tools || [])];
-    toolsModalOpen.value = true;
+    selectedTools.value = [...(agentConfig.value?.tools || [])]
+    toolsModalOpen.value = true
   } catch (error) {
-    console.error('打开工具选择弹窗失败:', error);
-    message.error('打开工具选择弹窗失败');
+    console.error('打开工具选择弹窗失败:', error)
+    message.error('打开工具选择弹窗失败')
   }
-};
+}
 
 const toggleToolSelection = (toolId) => {
-  const index = selectedTools.value.indexOf(toolId);
+  const index = selectedTools.value.indexOf(toolId)
   if (index > -1) {
-    selectedTools.value.splice(index, 1);
+    selectedTools.value.splice(index, 1)
   } else {
-    selectedTools.value.push(toolId);
+    selectedTools.value.push(toolId)
   }
-};
+}
 
 const removeSelectedTool = (toolId) => {
-  const currentTools = [...(agentConfig.value?.tools || [])];
-  const index = currentTools.indexOf(toolId);
+  const currentTools = [...(agentConfig.value?.tools || [])]
+  const index = currentTools.indexOf(toolId)
   if (index > -1) {
-    currentTools.splice(index, 1);
+    currentTools.splice(index, 1)
     agentStore.updateAgentConfig({
       tools: currentTools
-    });
+    })
   }
-};
+}
 
 const confirmToolsSelection = () => {
   agentStore.updateAgentConfig({
     tools: [...selectedTools.value]
-  });
-  toolsModalOpen.value = false;
-  toolsSearchText.value = '';
-};
+  })
+  toolsModalOpen.value = false
+  toolsSearchText.value = ''
+}
 
 const cancelToolsSelection = () => {
-  toolsModalOpen.value = false;
-  toolsSearchText.value = '';
-  selectedTools.value = [];
-};
+  toolsModalOpen.value = false
+  toolsSearchText.value = ''
+  selectedTools.value = []
+}
 
 // 系统提示词编辑相关方法
 const enterEditMode = () => {
-  systemPromptEditMode.value = true;
+  systemPromptEditMode.value = true
   // 使用 nextTick 确保 DOM 更新后再聚焦
   nextTick(() => {
-    const textarea = document.querySelector('.system-prompt-input');
+    const textarea = document.querySelector('.system-prompt-input')
     if (textarea) {
-      textarea.focus();
+      textarea.focus()
     }
-  });
-};
+  })
+}
 
 // 验证和过滤配置项
 const validateAndFilterConfig = () => {
-  const validatedConfig = { ...agentConfig.value };
-  const configItems = configurableItems.value;
+  const validatedConfig = { ...agentConfig.value }
+  const configItems = configurableItems.value
 
   // 遍历所有配置项
-  Object.keys(configItems).forEach(key => {
-    const configItem = configItems[key];
-    const currentValue = validatedConfig[key];
+  Object.keys(configItems).forEach((key) => {
+    const configItem = configItems[key]
+    const currentValue = validatedConfig[key]
 
     // 检查工具配置
     if (configItem.template_metadata?.kind === 'tools' && Array.isArray(currentValue)) {
-      const availableToolIds = availableTools.value ? Object.values(availableTools.value).map(tool => tool.id) : [];
-      validatedConfig[key] = currentValue.filter(toolId => availableToolIds.includes(toolId));
+      const availableToolIds = availableTools.value
+        ? Object.values(availableTools.value).map((tool) => tool.id)
+        : []
+      validatedConfig[key] = currentValue.filter((toolId) => availableToolIds.includes(toolId))
 
       if (validatedConfig[key].length !== currentValue.length) {
-        console.warn(`工具配置 ${key} 中包含无效的工具ID，已自动过滤`);
+        console.warn(`工具配置 ${key} 中包含无效的工具ID，已自动过滤`)
       }
     }
 
     // 检查多选配置项 (type === 'list' 且有 options)
     else if (configItem.type === 'list' && configItem.options && Array.isArray(currentValue)) {
-      const validOptions = configItem.options;
-      validatedConfig[key] = currentValue.filter(value => validOptions.includes(value));
+      const validOptions = configItem.options
+      validatedConfig[key] = currentValue.filter((value) => validOptions.includes(value))
 
       if (validatedConfig[key].length !== currentValue.length) {
-        console.warn(`配置项 ${key} 中包含无效的选项，已自动过滤`);
+        console.warn(`配置项 ${key} 中包含无效的选项，已自动过滤`)
       }
     }
-  });
+  })
 
-  return validatedConfig;
-};
+  return validatedConfig
+}
 
 // 配置保存和重置
 const saveConfig = async () => {
   if (!selectedAgentId.value) {
-    message.error('没有选择智能体');
-    return;
+    message.error('没有选择智能体')
+    return
   }
 
   try {
     // 验证和过滤配置
-    const validatedConfig = validateAndFilterConfig();
+    const validatedConfig = validateAndFilterConfig()
 
     // 如果配置有变化，先更新到store
     if (JSON.stringify(validatedConfig) !== JSON.stringify(agentConfig.value)) {
-      agentStore.updateAgentConfig(validatedConfig);
-      message.info('检测到无效配置项，已自动过滤');
+      agentStore.updateAgentConfig(validatedConfig)
+      message.info('检测到无效配置项，已自动过滤')
     }
 
-    await agentStore.saveAgentConfig();
-    message.success('配置已保存到服务器');
+    await agentStore.saveAgentConfig()
+    message.success('配置已保存到服务器')
   } catch (error) {
-    console.error('保存配置到服务器出错:', error);
-    message.error('保存配置到服务器失败');
+    console.error('保存配置到服务器出错:', error)
+    message.error('保存配置到服务器失败')
   }
-};
+}
 
 const resetConfig = async () => {
   if (!selectedAgentId.value) {
-    message.error('没有选择智能体');
-    return;
+    message.error('没有选择智能体')
+    return
   }
 
   try {
-    agentStore.resetAgentConfig();
-    message.info('配置已重置');
+    agentStore.resetAgentConfig()
+    message.info('配置已重置')
   } catch (error) {
-    console.error('重置配置出错:', error);
-    message.error('重置配置失败');
+    console.error('重置配置出错:', error)
+    message.error('重置配置失败')
   }
-};
-
-// 监听器
-watch(() => props.isOpen, (newVal) => {
-  if (newVal && (!availableTools.value || Object.keys(availableTools.value).length === 0)) {
-    loadAvailableTools();
-  }
-});
+}
 </script>
 
 <style lang="less" scoped>
-
 @padding-bottom: 0px;
 .agent-config-sidebar {
   position: relative;
@@ -591,23 +622,17 @@ watch(() => props.isOpen, (newVal) => {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 20px;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--gray-200);
     background: var(--gray-0);
     flex-shrink: 0;
     min-width: 400px;
+    height: 45px;
 
-    .sidebar-title {
+    .header-center {
+      flex: 1;
       display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 15px;
-      font-weight: 600;
-      color: var(--gray-900);
-
-      .title-icon {
-        color: var(--main-color);
-      }
+      justify-content: center;
     }
 
     .close-btn {
@@ -631,7 +656,6 @@ watch(() => props.isOpen, (newVal) => {
 
     .agent-info {
       .agent-basic-info {
-
         .agent-description {
           margin: 0 0 12px 0;
           font-size: 14px;
@@ -641,55 +665,8 @@ watch(() => props.isOpen, (newVal) => {
       }
     }
 
-    .sidebar-footer {
-      position: sticky;
-      bottom: 0px;
-      padding: 12px 0;
-      border-top: 1px solid var(--gray-100);
-      background: var(--gray-0);
-      // min-width: 400px;
-      z-index: 10;
-
-      .form-actions {
-        display: flex;
-        gap: 12px;
-        justify-content: space-between;
-
-        .save-btn {
-          flex: 1;
-          background-color: var(--gray-100);
-          border: none;
-          border-radius: 6px;
-          font-weight: 500;
-          font-size: 14px;
-
-          &.changed {
-            background-color: var(--main-color);
-            color: var(--gray-0);
-          }
-
-          &:hover {
-            opacity: 0.9;
-          }
-        }
-
-        .reset-btn {
-          flex: 1;
-          border: 1px solid var(--gray-300);
-          border-radius: 6px;
-          color: var(--gray-700);
-          font-size: 14px;
-
-          &:hover {
-            border-color: var(--main-color);
-            color: var(--main-color);
-          }
-        }
-      }
-    }
-
     .config-form-content {
-      margin-bottom: 100px;
+      margin-bottom: 20px;
       .config-form {
         .config-alert {
           margin-bottom: 16px;
@@ -734,10 +711,7 @@ watch(() => props.isOpen, (newVal) => {
 
           .system-prompt-display {
             min-height: 60px;
-            background: var(--gray-50);
-            border: 1px dashed var(--gray-200);
             border-radius: 6px;
-            padding: 6px;
             cursor: pointer;
             position: relative;
             transition: all 0.2s ease;
@@ -752,30 +726,30 @@ watch(() => props.isOpen, (newVal) => {
             }
 
             .system-prompt-content {
-               white-space: pre-wrap;
-               word-break: break-word;
-               line-height: 1.5;
-               color: var(--gray-900);
-               font-size: 14px;
+              white-space: pre-wrap;
+              word-break: break-word;
+              line-height: 1.5;
+              color: var(--gray-900);
+              font-size: 14px;
               //  min-height: 100px;
 
-               &.is-placeholder {
-                 color: var(--gray-400);
-                 font-style: italic;
-               }
+              &.is-placeholder {
+                color: var(--gray-400);
+                font-style: italic;
+              }
 
-               &:empty::before {
-                 content: attr(data-placeholder);
-                 color: var(--gray-400);
-               }
-             }
+              &:empty::before {
+                content: attr(data-placeholder);
+                color: var(--gray-400);
+              }
+            }
 
             .edit-hint {
               position: absolute;
-              top: 8px;
-              right: 12px;
+              top: -32px;
+              right: 0px;
               font-size: 12px;
-              color: var(--gray-800);
+              color: var(--main-800);
               opacity: 0;
               transition: opacity 0.2s ease;
               background: var(--gray-0);
@@ -797,8 +771,54 @@ watch(() => props.isOpen, (newVal) => {
       }
     }
   }
-}
 
+  .sidebar-footer {
+    padding: 8px 12px;
+    border-top: 1px solid var(--gray-100);
+    background: var(--gray-0);
+    // min-width: 400px;
+    z-index: 10;
+    flex-shrink: 0; // Ensure footer doesn't shrink
+
+    .form-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+
+      .save-btn {
+        flex: 1;
+        height: 42px;
+        background-color: var(--gray-100);
+        border: none;
+        border-radius: 6px;
+        font-weight: 500;
+        font-size: 14px;
+
+        &.changed {
+          background-color: var(--main-color);
+          color: var(--gray-0);
+        }
+
+        &:hover {
+          opacity: 0.9;
+        }
+      }
+
+      .reset-btn {
+        flex: 1;
+        border: 1px solid var(--gray-300);
+        border-radius: 6px;
+        color: var(--gray-700);
+        font-size: 14px;
+
+        &:hover {
+          border-color: var(--main-color);
+          color: var(--main-color);
+        }
+      }
+    }
+  }
+}
 
 // 工具选择器样式
 .tools-selector {
@@ -1069,9 +1089,7 @@ watch(() => props.isOpen, (newVal) => {
           .tool-description {
             color: var(--gray-900);
           }
-
         }
-
       }
     }
 
@@ -1131,7 +1149,6 @@ watch(() => props.isOpen, (newVal) => {
   }
 }
 
-
 .clear-btn {
   padding: 0;
   height: auto;
@@ -1147,7 +1164,7 @@ watch(() => props.isOpen, (newVal) => {
 // 响应式适配
 @media (max-width: 768px) {
   .agent-config-sidebar.open {
-    width: 100vw;
+    width: 100%;
   }
 }
 </style>

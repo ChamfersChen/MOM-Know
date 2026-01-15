@@ -41,7 +41,7 @@
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed } from 'vue'
 
 const props = defineProps({
   visible: {
@@ -56,18 +56,21 @@ const props = defineProps({
     type: String,
     default: ''
   }
-});
+})
 
-const emit = defineEmits(['approve', 'reject']);
+const emit = defineEmits(['approve', 'reject'])
 
-const isProcessing = ref(false);
+const isProcessing = ref(false)
 
 // 监听弹窗关闭，重置处理状态
-watch(() => props.visible, (newVal) => {
-  if (!newVal) {
-    isProcessing.value = false;
+watch(
+  () => props.visible,
+  (newVal) => {
+    if (!newVal) {
+      isProcessing.value = false
+    }
   }
-});
+)
 
 const handleOperation = computed(() => {
   try {
@@ -93,17 +96,16 @@ const handleOperation = computed(() => {
 
 
 const handleApprove = () => {
-  if (isProcessing.value) return;
-  isProcessing.value = true;
-  emit('approve', handleOperation.value);
-};
+  if (isProcessing.value) return
+  isProcessing.value = true
+  emit('approve', handleOperation.value)
+}
 
 const handleReject = () => {
-  if (isProcessing.value) return;
-  isProcessing.value = true;
-  emit('reject');
-};
-
+  if (isProcessing.value) return
+  isProcessing.value = true
+  emit('reject')
+}
 </script>
 
 <style scoped>

@@ -6,6 +6,7 @@ from server.routers.dashboard_router import dashboard
 from server.routers.graph_router import graph
 from server.routers.knowledge_router import knowledge
 from server.routers.evaluation_router import evaluation
+from server.routers.mcp_router import mcp
 from server.routers.mindmap_router import mindmap
 from server.routers.system_router import system
 from server.routers.task_router import tasks
@@ -26,3 +27,4 @@ router.include_router(graph)  # /api/graph/*
 router.include_router(tasks)  # /api/tasks/*
 router.include_router(sql_db)  # /api/tasks/*
 router.include_router(sql_kb)  # /api/tasks/*
+router.include_router(mcp)  # /api/system/mcp-servers/*

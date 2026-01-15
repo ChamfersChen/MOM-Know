@@ -26,50 +26,69 @@ export const useInfoStore = defineStore('info', () => {
   })
 
   // 计算属性 - 功能特性
-  const features = computed(() => infoConfig.value.features || [{
-    label: "GitHub Stars",
-    value: "3200+",
-    description: "开发者社区的认可与支持",
-    icon: "stars"
-  }, {
-    label: "已解决 Issues",
-    value: "250+",
-    description: "持续改进和问题解决能力",
-    icon: "issues"
-  }, {
-    label: "累计 Commits",
-    value: "1200+",
-    description: "活跃的开发迭代和功能更新",
-    icon: "commits"
-  }, {
-    label: "开源协议",
-    value: "MIT 协议",
-    description: "完全免费，支持商业使用",
-    icon: "license"
-  }])
+  const features = computed(
+    () =>
+      infoConfig.value.features || [
+        {
+          label: 'GitHub Stars',
+          value: '3200+',
+          description: '开发者社区的认可与支持',
+          icon: 'stars'
+        },
+        {
+          label: '已解决 Issues',
+          value: '250+',
+          description: '持续改进和问题解决能力',
+          icon: 'issues'
+        },
+        {
+          label: '累计 Commits',
+          value: '1200+',
+          description: '活跃的开发迭代和功能更新',
+          icon: 'commits'
+        },
+        {
+          label: '开源协议',
+          value: 'MIT 协议',
+          description: '完全免费，支持商业使用',
+          icon: 'license'
+        }
+      ]
+  )
 
-  const actions = computed(() => infoConfig.value.actions || [{
-    name: "演示视频",
-    icon: "video",
-    url: "https://www.bilibili.com/video/BV1DF14BTETq"
-  }, {
-    name: "文档中心",
-    icon: "docs",
-    url: "https://xerrors.github.io/Yuxi-Know/"
-  }, {
-    name: "提交 Issue",
-    icon: "issue",
-    url: "https://github.com/xerrors/Yuxi-Know/issues/new/choose"
-  }, {
-    name: "开发路线图",
-    icon: "roadmap",
-    url: "https://github.com/xerrors/Yuxi-Know#roadmap"
-  }])
+  const actions = computed(
+    () =>
+      infoConfig.value.actions || [
+        {
+          name: '演示视频',
+          icon: 'video',
+          url: 'https://www.bilibili.com/video/BV1DF14BTETq'
+        },
+        {
+          name: '文档中心',
+          icon: 'docs',
+          url: 'https://xerrors.github.io/Yuxi-Know/'
+        },
+        {
+          name: '提交 Issue',
+          icon: 'issue',
+          url: 'https://github.com/xerrors/Yuxi-Know/issues/new/choose'
+        },
+        {
+          name: '开发路线图',
+          icon: 'roadmap',
+          url: 'https://github.com/xerrors/Yuxi-Know#roadmap'
+        }
+      ]
+  )
 
   // 计算属性 - 页脚信息
-  const footer = computed(() => infoConfig.value.footer || {
-    copyright: "© 江南语析 2025 [WIP] v0.12.138"
-  })
+  const footer = computed(
+    () =>
+      infoConfig.value.footer || {
+        copyright: '© 江南语析 2025 [WIP] v0.12.138'
+      }
+  )
 
   // 动作方法
   function setInfoConfig(newConfig) {
@@ -132,7 +151,7 @@ export const useInfoStore = defineStore('info', () => {
     }
   }
 
-    return {
+  return {
     // 状态
     infoConfig,
     isLoading,
