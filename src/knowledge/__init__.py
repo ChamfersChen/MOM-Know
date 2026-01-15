@@ -9,7 +9,7 @@ from .services.upload_graph_service import UploadGraphService
 
 # 注册知识库类型
 KnowledgeBaseFactory.register("milvus", MilvusKB, {"description": "基于 Milvus 的生产级向量知识库，适合高性能部署"})
-# KnowledgeBaseFactory.register("lightrag", LightRagKB, {"description": "基于图检索的知识库，支持实体关系构建和复杂查询"})
+KnowledgeBaseFactory.register("lightrag", LightRagKB, {"description": "基于图检索的知识库，支持实体关系构建和复杂查询"})
 
 # 创建知识库管理器
 work_dir = os.path.join(config.save_dir, "knowledge_base_data")

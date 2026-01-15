@@ -235,6 +235,15 @@ class MySQLConnector(ConnectorBase):
         if db_id not in self.databases_meta:
             raise ValueError(f"Database {db_id} not found")
 
+        
+        # 删除db_id的表
+        del_table_ids = []
+        for table_id in self.selected_tables_meta.keys():
+            if self.selected_tables_meta[table_id]['database_id'] == db_id:
+                del_table_ids.append(table_id)
+        for did in del_table_ids:
+            del self.selected_tables_meta[did]
+
         processed_items_info = []
         for table_id in table_ids:
             
@@ -242,15 +251,14 @@ class MySQLConnector(ConnectorBase):
             assert table_id in self.tables_meta.keys(), "Table not found"
 
             metadata = self.tables_meta[table_id]
-
             table_record = metadata.copy()
             # del table_record["table_id"]
-            async with self._metadata_lock:
-                self.selected_tables_meta[table_id] = table_record
-                self._save_metadata()
-
+            self.selected_tables_meta[table_id] = table_record
             table_record["table_id"] = table_id
             processed_items_info.append(table_record)
+        
+        async with self._metadata_lock:
+            self._save_metadata()
 
         return processed_items_info
 

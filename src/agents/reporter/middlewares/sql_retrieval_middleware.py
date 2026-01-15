@@ -31,7 +31,7 @@ class SqlRetrievalMiddleware(AgentMiddleware):
         
         user_content  = last_user_message.content
 
-        #TODO sql query intention detection
+        # sql query intention detection
         sql_pair_retrieval = await sql_knowledge_base.aquery(user_content, self.db_id, top_k = 3, similarity_threshold=0.6)
 
         sql_pairs = []

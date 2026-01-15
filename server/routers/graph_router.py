@@ -140,6 +140,7 @@ async def get_subgraph(
             "keyword": node_label,
             "max_depth": max_depth,
             "max_nodes": max_nodes,
+            "threshold": 0.85,
         }
 
         result_data = await adapter.query_nodes(**query_kwargs)

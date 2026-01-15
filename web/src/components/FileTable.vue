@@ -433,8 +433,6 @@ import {
   FolderOpenFilled,
   FileTextFilled,
   HddOutlined,
-} from '@ant-design/icons-vue';
-  FileTextFilled
 } from '@ant-design/icons-vue'
 import {
   Trash2,

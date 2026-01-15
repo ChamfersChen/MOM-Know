@@ -123,9 +123,8 @@ async def get_tables(
 async def choose_tables(
     db_id: str, 
     table_ids: list[str] = Body(...), 
-    # current_user: User = Depends(get_admin_user)
+    current_user: User = Depends(get_admin_user)
 ):
-    logger.debug(f"Choose tables for db_id {db_id}: {table_ids}")
     try:
         if not table_ids:
             raise Exception("Table IDs cannot be empty")

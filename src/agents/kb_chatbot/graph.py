@@ -4,14 +4,13 @@ from langchain.agents.middleware import HumanInTheLoopMiddleware
 
 from src.storage.db.models import User
 from src.agents.common import BaseAgent, load_chat_model
-from src.agents.common.mcp import get_mcp_tools
+from src.services.mcp_service import get_enabled_mcp_tools
 from src.agents.common.middlewares import (
     inject_attachment_context,
 )
 from src.agents.common.tools import get_kb_based_tools
 
 from .context import Context
-from .tools import get_tools
 
 
 class KBChatbotAgent(BaseAgent):
@@ -25,18 +24,6 @@ class KBChatbotAgent(BaseAgent):
 
     async def get_tools(self, tools: list[str] = None, mcps=None, knowledges=None, user:User=None):
         selected_tools = []
-        # # 1. 基础工具 (从 context.tools 中筛选)
-        # all_basic_tools = get_tools()
-
-        # if tools:
-        #     # 创建工具映射表
-        #     tools_map = {t.name: t for t in all_basic_tools}
-        #     for tool_name in tools:
-        #         if tool_name in tools_map:
-        #             selected_tools.append(tools_map[tool_name])
-        # else:
-        #     selected_tools = all_basic_tools
-
         # 2. 知识库工具
         if knowledges:
             kb_tools = get_kb_based_tools(db_names=knowledges)
@@ -45,7 +32,7 @@ class KBChatbotAgent(BaseAgent):
         # 3. MCP 工具
         if mcps:
             for server_name in mcps:
-                mcp_tools = await get_mcp_tools(server_name)
+                mcp_tools = await get_enabled_mcp_tools(server_name)
                 selected_tools.extend(mcp_tools)
 
         return selected_tools
