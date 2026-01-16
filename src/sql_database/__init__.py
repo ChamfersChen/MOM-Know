@@ -13,4 +13,4 @@ DBConnectorBaseFactory.register("mysql", MySQLConnector, {"description": "MySQL 
 work_dir = os.path.join(config.save_dir, "sql_database_data")
 sql_database = SqlDataBaseManager(work_dir)
 
-__all__ = ["db_connection_manager"]
+__all__ = ["sql_database"]
