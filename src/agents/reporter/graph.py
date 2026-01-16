@@ -11,9 +11,10 @@ from src.storage.db.models import User
 from src.utils import logger
 from .middlewares.sql_retrieval_middleware import SqlRetrievalMiddleware
 from .context import Context
-from .tools import get_tools
+from src.agents.common.middlewares import TaskSkillMiddleware
 
 # _mcp_servers = {"mcp-server-chart": {"command": "npx", "args": ["-y", "@antv/mcp-server-chart"], "transport": "stdio"}}
+SQL_PAIRS_KB_ID = "kb_8d6732060fbf23a102aab44a50ffe953"
 
 
 @dataclass(kw_only=True)
