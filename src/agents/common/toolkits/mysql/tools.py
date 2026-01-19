@@ -1,10 +1,10 @@
 from typing import Annotated, Any
 
-from asyncpg import connect
 from langchain.tools import tool
 from pydantic import BaseModel, Field
 from src.storage.db.models import Roles
 from src.utils import logger
+from src.knowledge import graph_base
 
 from .connection import (
     MySQLConnectionManager,
@@ -48,13 +48,63 @@ def get_connection_manager() -> MySQLConnectionManager:
     return _connection_manager
 
 
+class EntityListModel(BaseModel):
+
+    entities: list = Field(description="Query中的实体列表", example="['物料', '部门']")
+
+
+@tool(name_or_callable="查询表名及说明", args_schema=EntityListModel)
+def mysql_list_tables_with_entities(
+    entities: Annotated[list, "Query中的实体列表"],
+) -> str:
+    """通过实体列表获取数据库中的所有表名
+        请从给定文本中抽取所有【业务实体 / 领域概念】，并遵循以下规则：
+
+        抽取规则：
+        1. 只抽取名词性、概念性的实体（如系统、单据、物料、业务对象）
+        2. 不要抽取：
+        - 动作或行为
+        - 具体值或实例
+        - 人员、时间、条件、修饰词
+        3. 对语义相同或从属的概念进行合理拆分
+        4. 不做推理，不补充文本中未出现的概念
+        5. 输出仅包含实体概念本身
+    这个工具通过实体列表来列出当前数据库中所有的表名，帮助你了解数据库的结构。
+    """
+    result = []
+    logger.info(f">> 查询表名及说明 {entities}")
+    try:
+        query_results = graph_base.query_node(" ".join(entities), threshold=0.65)
+        tb_names = [n['name'] for n in query_results['nodes']]
+        databases = sql_database.get_databases()
+        for db_infos in databases.values():
+            for db_info in db_infos:
+                table_names = []
+                db_desc = db_info['description']
+                db_name = db_info['connection_info']['database']
+                tables_info = db_info['selected_tables']
+
+                if not tables_info.values():
+                    continue
+                for table_info in tables_info.values():
+                    if f"{db_name}.{table_info['table_name']}" not in tb_names:
+                        continue
+                    table_name = f"{db_name}.{table_info['table_name']}: {table_info['table_comment']}"
+                    table_names.append(table_name)
+                result.append(f"数据库说明\n{db_name}: {db_desc}\n数据库中的表:\n{'\n'.join(table_names)}")              
+        
+        return "\n---\n".join(result)
+    except Exception as e:
+        error_msg = f"获取表名失败: {str(e)}"
+        return error_msg
+
 class TableListModel(BaseModel):
     """获取表名列表的参数模型"""
 
     pass
 
 
-@tool(name_or_callable="查询表名及说明", args_schema=TableListModel)
+# @tool(name_or_callable="查询表名及说明", args_schema=TableListModel)
 def mysql_list_tables() -> str:
     """获取数据库中的所有表名
 
@@ -301,4 +351,5 @@ def mysql_query(
 
 def get_mysql_tools() -> list[Any]:
     """获取MySQL工具列表"""
-    return [mysql_list_tables, mysql_describe_table, mysql_query]
+    # return [mysql_list_tables, mysql_list_tables_with_entities, mysql_describe_table, mysql_query]
+    return [mysql_list_tables_with_entities, mysql_describe_table, mysql_query]
