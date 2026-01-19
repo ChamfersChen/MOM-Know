@@ -4,10 +4,8 @@ from typing import Annotated
 from langchain.agents import create_agent
 
 from src.agents.common import BaseAgent, BaseContext, load_chat_model
-from src.agents.common.tools import gen_tool_info, get_buildin_tools
 from src.agents.common.toolkits.mysql import get_mysql_tools
-from src.agents.common.tools import get_tools_from_context
-from src.storage.db.models import User
+from src.agents.common.tools import gen_tool_info, get_buildin_tools, get_tools_from_context
 from src.utils import logger
 from .middlewares.sql_retrieval_middleware import SqlRetrievalMiddleware
 from .context import Context
@@ -19,7 +17,6 @@ SQL_PAIRS_KB_ID = "kb_8d6732060fbf23a102aab44a50ffe953"
 
 @dataclass(kw_only=True)
 class ReporterContext(BaseContext):
-
     # 覆盖默认的工具列表，添加 MySQL 工具包
     tools: Annotated[list[dict], {"__template_metadata__": {"kind": "tools"}}] = field(
         default_factory=lambda: [t.name for t in get_mysql_tools()],
