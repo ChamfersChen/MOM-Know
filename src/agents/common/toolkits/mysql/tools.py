@@ -48,34 +48,32 @@ def get_connection_manager() -> MySQLConnectionManager:
     return _connection_manager
 
 
-class EntityListModel(BaseModel):
+class QueryModel(BaseModel):
 
-    entities: list = Field(description="Query中的实体列表", example="['物料', '部门']")
+    query: str = Field(description="改写后的用户问题", example="")
 
 
-@tool(name_or_callable="查询表名及说明", args_schema=EntityListModel)
-def mysql_list_tables_with_entities(
-    entities: Annotated[list, "Query中的实体列表"],
+@tool(name_or_callable="mysql_list_tables_with_query", description="根据用户问题查询表名及说明", args_schema=QueryModel)
+def mysql_list_tables_with_query(
+    query: Annotated[str, "改写后的用户问题"],
 ) -> str:
-    """通过实体列表获取数据库中的所有表名
-        请从给定文本中抽取所有【业务实体 / 领域概念】，并遵循以下规则：
+    """通过用户问题获取数据库中的所有表名
 
-        抽取规则：
-        1. 只抽取名词性、概念性的实体（如系统、单据、物料、业务对象）
-        2. 不要抽取：
-        - 动作或行为
-        - 具体值或实例
-        - 人员、时间、条件、修饰词
-        3. 对语义相同或从属的概念进行合理拆分
-        4. 不做推理，不补充文本中未出现的概念
-        5. 输出仅包含实体概念本身
     这个工具通过实体列表来列出当前数据库中所有的表名，帮助你了解数据库的结构。
     """
     result = []
-    logger.info(f">> 查询表名及说明 {entities}")
+    logger.info(f">> 查询表名及说明 {query}")
     try:
-        query_results = graph_base.query_node(" ".join(entities), threshold=0.65)
+        query_results = graph_base.query_node(query, threshold=0.65, hops=3, max_entities=20)
+
+        # 处理节点
         tb_names = [n['name'] for n in query_results['nodes']]
+        tb_names = []
+        map_id_name = {}
+        for n in query_results['nodes']:
+            tb_names.append(n['name'])
+            map_id_name[n['id']] = n['name']
+
         databases = sql_database.get_databases()
         for db_infos in databases.values():
             for db_info in db_infos:
@@ -89,11 +87,23 @@ def mysql_list_tables_with_entities(
                 for table_info in tables_info.values():
                     if f"{db_name}.{table_info['table_name']}" not in tb_names:
                         continue
-                    table_name = f"{db_name}.{table_info['table_name']}: {table_info['table_comment']}"
+                    table_name = f"`{db_name}`.`{table_info['table_name']}`: {table_info['table_comment']}"
                     table_names.append(table_name)
-                result.append(f"数据库说明\n{db_name}: {db_desc}\n数据库中的表:\n{'\n'.join(table_names)}")              
+                result.append(f"数据库说明\n`{db_name}`: {db_desc}\n数据库中的表:\n{'\n'.join(table_names)}")
+
+        db_entity_info = "\n---\n".join(result)
+
+        # 处理关系
+        database_edge_info = []
+        t2t_edges = [e for e in query_results['edges'] if e['type'] == 'Table2Table']
+        for edge in t2t_edges:
+            source_name = map_id_name[edge['source_id']]
+            target_name = map_id_name[edge['target_id']]
+            database_edge_info.append(f"`{source_name}` <--> `{target_name}`")
+        db_relation_info = f"数据库之间存在以下关系: \n{'\n'.join(database_edge_info)}"
+         
         
-        return "\n---\n".join(result)
+        return f"{db_entity_info}\n===\n{db_relation_info}"
     except Exception as e:
         error_msg = f"获取表名失败: {str(e)}"
         return error_msg
@@ -139,7 +149,7 @@ class TableDescribeModel(BaseModel):
     table_name: str = Field(description="要查询的表名", example="users")
 
 
-@tool(name_or_callable="描述表", args_schema=TableDescribeModel)
+@tool(name_or_callable="mysql_describe_table", description="获得描述表", args_schema=TableDescribeModel)
 def mysql_describe_table(
         database_name: Annotated[str, "要查询的数据库名"],
         table_name: Annotated[str, "要查询结构的表名"]
@@ -235,15 +245,15 @@ def mysql_describe_table(
 class QueryModel(BaseModel):
     """执行SQL查询的参数模型"""
 
-    database_name: str = Field(description="要查询的数据库名", example="users")
+    database_names: list[str] = Field(description="要查询的数据库名称列表", example='["system", "users"]')
     sql: str = Field(description="要执行的SQL查询语句（只能是SELECT语句）", example="SELECT * FROM users WHERE id = 1")
     timeout: int | None = Field(default=60, description="查询超时时间（秒），默认60秒，最大600秒", ge=1, le=600)
 
 
-@tool(name_or_callable="执行 SQL 查询", args_schema=QueryModel)
+@tool(name_or_callable="mysql_query", description="执行 SQL 查询", args_schema=QueryModel)
 def mysql_query(
-    database_name: Annotated[str, "要查询的数据库名"],
-    sql: Annotated[str, "要执行的SQL查询语句（只能是SELECT语句）"],
+    database_names: Annotated[list[str], "要查询的数据库名称列表"], #TODO 可能存在同一个连接跨数据库表查询的问题，需要判断是否为一个连接
+    sql: Annotated[str, "要执行的SQL查询语句（只能是SELECT语句, 且需要带上数据库名, 如：SELECT * FROM db1.table1）"],
     timeout: Annotated[int | None, "查询超时时间（秒），默认60秒，最大600秒"] = 60,
 ) -> str:
     """执行只读的SQL查询语句
@@ -265,6 +275,8 @@ def mysql_query(
 
         # conn_manager = get_connection_manager()
         # connection = conn_manager.get_connection()
+
+        database_name = database_names[0] # 获得同一个连接下的其中一个数据库名
         db_id = sql_database.db_name_to_id[database_name]
         connection = sql_database.get_connection(db_id)
 
@@ -352,4 +364,4 @@ def mysql_query(
 def get_mysql_tools() -> list[Any]:
     """获取MySQL工具列表"""
     # return [mysql_list_tables, mysql_list_tables_with_entities, mysql_describe_table, mysql_query]
-    return [mysql_list_tables_with_entities, mysql_describe_table, mysql_query]
+    return [mysql_list_tables_with_query, mysql_describe_table, mysql_query]

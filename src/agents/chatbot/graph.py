@@ -1,7 +1,6 @@
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelRetryMiddleware
 from langchain.agents.middleware import HumanInTheLoopMiddleware
-from loguru import logger
 from datetime import datetime
 
 from src.agents.common import BaseAgent, load_chat_model
@@ -24,7 +23,7 @@ class ChatbotAgent(BaseAgent):
         if self.graph:
             return self.graph
 
-        now_date = datetime.now().strftime('%Y-%m-%d %A')
+
         # 获取上下文配置
         context = self.context_schema.from_file(module_name=self.module_name)
 

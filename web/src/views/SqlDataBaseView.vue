@@ -733,7 +733,7 @@ const createDatabaseConnection = () => {
   }
   requestData.connection_info = {
     host: newDatabaseConnection.host.trim(),
-    port: parseInt(newDatabaseConnection.port.trim(), 10),
+    port: parseInt(newDatabaseConnection.port.toString().trim(), 10),
     user: newDatabaseConnection.user.trim(),
     password: newDatabaseConnection.password.trim(),
     database: newDatabaseConnection.database.trim()

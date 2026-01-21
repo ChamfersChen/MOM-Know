@@ -274,13 +274,7 @@ class SqlDataBaseManager:
             self._save_global_metadata()
 
         logger.info(f"Created {db_type} database: {database_name} ({db_id}) with {kwargs}")
-        # db_info = {
-        #         "name": database_name,
-        #         "description": description,
-        #         "db_type": db_type,
-        #         "created_at": utc_isoformat(),
-        #         # "connection_params": kwargs.copy(),
-        #     }
+        
         return db_info
 
     async def delete_database(self, db_id: str) -> dict:
@@ -305,7 +299,7 @@ class SqlDataBaseManager:
 
     def invalidate_connection(self, db_id: str):
         db_instance = self._get_db_for_database(db_id)
-        return db_instance.invalidate_connection()
+        return db_instance.invalidate_connection(db_id)
 
     def get_database_info(self, db_id: str) -> dict | None:
         """获取数据库详细信息"""

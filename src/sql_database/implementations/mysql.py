@@ -1,3 +1,4 @@
+import os
 import threading
 import time
 import asyncio
@@ -7,7 +8,7 @@ from src.sql_database.base import ConnectorBase
 import pymysql
 from pymysql import MySQLError
 from pymysql.cursors import DictCursor
-from src.utils import logger
+from src.utils import logger, hashstr
 from src.utils.datetime_utils import coerce_any_to_utc_datetime, utc_isoformat
 
 
@@ -16,41 +17,36 @@ class MySQLConnector(ConnectorBase):
 
     def __init__(self, work_dir:str, **kwargs):
         super().__init__(work_dir)
-        self.connection = None
+        self.mysql_host = kwargs.get("mysql_host", os.getenv("MYSQL_HOST") or "")
+        self.mysql_user = kwargs.get("mysql_user", os.getenv("MYSQL_USER") or "")
+        self.mysql_password = kwargs.get("mysql_password", os.getenv("MYSQL_PASSWORD") or "")
+        self.mysql_port = kwargs.get("mysql_port", os.getenv("MYSQL_PORT") or "")
+
+        # 存储集合映射
+        self.connections: dict[str, pymysql.Connection] = {}
+
+
         self._lock = threading.Lock()
         self.last_connection_time = 0
         self.max_connection_age = 3600  # 1小时后重新连接
         self._metadata_lock = asyncio.Lock()
 
+
+    def _flush_connection(self):
+        current_time = time.time()
+        db_ids = list(self.connections.keys())
+        with self._lock:
+            for db_id in db_ids:
+                if not self.connections[db_id].open or current_time - self.last_connection_time > self.max_connection_age:
+                    self.connections[db_id].close()
+                    del self.connections[db_id]
+
     def _get_connection(self, db_id) -> pymysql.Connection:
         """获取数据库连接"""
-        current_time = time.time()
-
-        # 检查连接是否过期或断开
-        if (
-            self.connection is None
-            or not self.connection.open
-            or current_time - self.last_connection_time > self.max_connection_age
-        ):
-            with self._lock:
-                # 双重检查
-                if (
-                    self.connection is None
-                    or not self.connection.open
-                    or current_time - self.last_connection_time > self.max_connection_age
-                ):
-                    # 关闭旧连接
-                    if self.connection and self.connection.open:
-                        try:
-                            self.connection.close()
-                        except Exception as _:
-                            pass
-
-                    # 创建新连接
-                    self.connection = self._create_connection(db_id)
-                    self.last_connection_time = current_time
-
-        return self.connection
+        if db_id not in self.connections:
+            return self._create_connection(db_id)
+        
+        return self.connections[db_id]
 
 
     async def initalize_table(self, db_id):
@@ -110,6 +106,7 @@ class MySQLConnector(ConnectorBase):
                     autocommit=True,  # 自动提交
                 )
                 logger.info(f"MySQL connection established successfully (attempt {attempt + 1})")
+                self.connections[db_id] = connection
                 return connection
 
             except MySQLError as e:
@@ -120,28 +117,28 @@ class MySQLConnector(ConnectorBase):
                     logger.error(f"Failed to connect to MySQL after {max_retries} attempts: {e}")
                     raise ConnectionError(f"MySQL connection failed: {e}")
 
-    def test_connection(self) -> bool:
-        """测试连接是否有效"""
-        try:
-            if self.connection and self.connection.open:
-                # 执行简单查询测试连接
-                with self.connection.cursor() as cursor:
-                    cursor.execute("SELECT 1")
-                    cursor.fetchone()
-                return True
-        except Exception as _:
-            pass
-        return False
+    # def test_connection(self) -> bool:
+    #     """测试连接是否有效"""
+    #     try:
+    #         if self.connection and self.connection.open:
+    #             # 执行简单查询测试连接
+    #             with self.connection.cursor() as cursor:
+    #                 cursor.execute("SELECT 1")
+    #                 cursor.fetchone()
+    #             return True
+    #     except Exception as _:
+    #         pass
+    #     return False
 
-    def _invalidate_connection(self, connection: pymysql.Connection | None = None):
+    def _invalidate_connection(self, db_id = None):
         """关闭并清理失效的连接"""
         try:
-            if connection:
-                connection.close()
+            if db_id:
+                self.connections[db_id].close()
         except Exception:
             pass
         finally:
-            self.connection = None
+            del self.connections[db_id]
 
     @contextmanager
     def get_cursor(self, db_id):
@@ -160,7 +157,7 @@ class MySQLConnector(ConnectorBase):
             except Exception as e:
                 last_error = e
                 logger.warning(f"Failed to acquire cursor (attempt {attempt + 1}): {e}")
-                self._invalidate_connection(connection)
+                self._invalidate_connection(db_id)
                 cursor = None
                 connection = None
                 if attempt == max_retries - 1:
@@ -182,7 +179,7 @@ class MySQLConnector(ConnectorBase):
             # 标记连接失效，等待下一次获取时重建
             if "MySQL" in str(e) or "connection" in str(e).lower():
                 logger.warning(f"MySQL connection error encountered, invalidating connection: {e}")
-                self._invalidate_connection(connection)
+                self._invalidate_connection(db_id)
 
             raise
         finally:
@@ -206,23 +203,24 @@ class MySQLConnector(ConnectorBase):
         
     def close(self):
         """关闭数据库连接"""
-        if self.connection:
-            self.connection.close()
-            self.connection = None
-            logger.info("MySQL connection closed")
+        for db_id, connection in self.connections.items():
+            if connection:
+                connection.close()
+                self.connections[db_id] = None
+                logger.info("MySQL connection closed")
 
     def get_connection(self, db_id) -> pymysql.Connection:
         """对外暴露的连接获取方法"""
         return self._get_connection(db_id)
 
-    def invalidate_connection(self):
+    def invalidate_connection(self, db_id):
         """手动标记连接失效"""
-        self._invalidate_connection(self.connection)
+        self._invalidate_connection(db_id)
 
-    @property
-    def database_name(self) -> str:
-        """返回当前配置的数据库名称"""
-        return self.config["database"]
+    # @property
+    # def database_name(self) -> str:
+    #     """返回当前配置的数据库名称"""
+    #     return self.config["database"]
     
 
     @property
