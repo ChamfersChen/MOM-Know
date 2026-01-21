@@ -368,6 +368,9 @@ const filteredTools = computed(() => {
 
 // 方法
 const shouldShowConfig = (key, value) => {
+  // 处理list为空不显示组件
+  if (value.default === null || (value.type === 'list' && value.options?.length === 0)) return false
+
   if (activeTab.value === 'basic') {
     // 基础：System Prompt, LLM Model
     return key === 'system_prompt' || value.template_metadata?.kind === 'llm'

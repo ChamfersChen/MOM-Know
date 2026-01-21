@@ -25,6 +25,16 @@ class ReporterContext(BaseContext):
             "description": "包含内置的工具，以及用于数据库报表生成的 MySQL 工具包。",
         },
     )
+    knowledges: list[str] = field(
+        default_factory=list,
+        metadata={
+            "name": "知识库",
+            "options": lambda: [],
+            "description": "知识库列表，可以在左侧知识库页面中创建知识库。",
+            "type": "list",  # Explicitly mark as list type for frontend if needed
+        },
+    )
+
 
     def __post_init__(self):
         self.mcps = ["mcp-server-chart"]  # 默认启用 Charts MCPs
