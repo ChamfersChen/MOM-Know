@@ -9,6 +9,7 @@ from src.agents.common.middlewares import (
 )
 from src.agents.common.tools import get_tools_from_context
 from src.storage.db.models import User, ROLE_LEVEL, Roles
+from src.agents.common.toolkits.mysql import get_mysql_tools
 
 class ChatbotAgent(BaseAgent):
     name = "智能体助手"
@@ -30,7 +31,7 @@ class ChatbotAgent(BaseAgent):
         # 使用 create_agent 创建智能体
         graph = create_agent(
             model=load_chat_model(context.model),  # 使用 context 中的模型配置
-            tools=await get_tools_from_context(context),
+            tools=await get_tools_from_context(context, extra_tools=get_mysql_tools()),
             system_prompt=context.system_prompt,
             middleware=[
                 inject_attachment_context,  # 附件上下文注入
