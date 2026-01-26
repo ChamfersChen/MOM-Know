@@ -26,16 +26,15 @@
             </div>
           </a-menu-item>
           <a-menu-divider />
-          <!-- <a-menu-item key="docs" @click="openDocs">
-            <BookOpen size="16"/>
-            <span class="menu-text">文档中心</span>
-          </a-menu-item> -->
+          <a-menu-item key="docs" @click="openDocs" :icon="BookOpenIcon">
+            <!-- <span class="menu-text">文档中心</span>
+          </a-menu-item>  -->
           <!-- <a-menu-item key="theme" @click="toggleTheme">
             <component :is="themeStore.isDark ? Sun : Moon" size="16"/> -->
           <a-menu-item
             key="theme"
             @click="toggleTheme"
-            :icon="h(themeStore.isDark ? Sun : Moon, { size: '16' })"
+            :icon="themeStore.isDark ? SunIcon : MoonIcon"
           >
             <span class="menu-text">{{
               themeStore.isDark ? '切换到浅色模式' : '切换到深色模式 (Beta)'
@@ -43,14 +42,22 @@
           </a-menu-item>
           <a-menu-divider v-if="userStore.isAdmin" />
           <a-menu-item
+            v-if="userStore.isSuperAdmin"
+            key="debug"
+            @click="showDebug = true"
+            :icon="TerminalIcon"
+          >
+            <span class="menu-text">调试面板（非生产环境）</span>
+          </a-menu-item>
+          <a-menu-item
             v-if="userStore.isAdmin"
             key="setting"
             @click="goToSetting"
-            :icon="h(Settings, { size: '16' })"
+            :icon="SettingsIcon"
           >
             <span class="menu-text">系统设置</span>
           </a-menu-item>
-          <a-menu-item key="logout" @click="logout" :icon="h(LogOut, { size: '16' })">
+          <a-menu-item key="logout" @click="logout" :icon="LogOutIcon">
             <span class="menu-text">退出登录</span>
           </a-menu-item>
         </a-menu>
@@ -168,6 +175,9 @@
         </div>
       </div>
     </a-modal>
+
+    <!-- 调试面板 Modal -->
+    <DebugComponent v-model:show="showDebug" />
   </div>
 </template>
 
@@ -175,10 +185,7 @@
 import { computed, ref, inject, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-//
-//
-//
-//
+import DebugComponent from '@/components/DebugComponent.vue'
 import { message } from 'ant-design-vue'
 import {
   CircleUser,
@@ -189,13 +196,25 @@ import {
   User,
   LogOut,
   Upload,
-  Settings
+  Settings,
+  Terminal
 } from 'lucide-vue-next'
 import { useThemeStore } from '@/stores/theme'
 
 const router = useRouter()
 const userStore = useUserStore()
 const themeStore = useThemeStore()
+
+// 预定义图标组件，避免 Vue 警告
+const BookOpenIcon = h(BookOpen, { size: '16' })
+const SunIcon = h(Sun, { size: '16' })
+const MoonIcon = h(Moon, { size: '16' })
+const TerminalIcon = h(Terminal, { size: '16' })
+const SettingsIcon = h(Settings, { size: '16' })
+const LogOutIcon = h(LogOut, { size: '16' })
+
+// 调试面板状态
+const showDebug = ref(false)
 
 // Inject settings modal methods
 const { openSettingsModal } = inject('settingsModal', {})

@@ -39,6 +39,17 @@
         </div>
       </a-modal>
 
+      <a-modal
+        v-model:open="createConfigModalOpen"
+        title="新建配置"
+        :width="320"
+        :confirmLoading="createConfigLoading"
+        @ok="handleCreateConfig"
+        @cancel="() => (createConfigModalOpen = false)"
+      >
+        <a-input v-model:value="createConfigName" placeholder="请输入配置名称" allow-clear />
+      </a-modal>
+
       <!-- 中间内容区域 -->
       <div class="content">
         <AgentChatComponent
@@ -48,11 +59,59 @@
           @open-agent-modal="openAgentModal"
           @close-config-sidebar="() => (chatUIStore.isConfigSidebarOpen = false)"
         >
-          <template #header-right="{ isMediumContainer }">
-            <div type="button" class="agent-nav-btn" @click="toggleConf">
-              <Settings2 size="18" class="nav-btn-icon" />
-              <span class="text" :class="{ 'hide-text': isMediumContainer }">配置</span>
-            </div>
+          <template #header-right>
+            <a-dropdown v-if="selectedAgentId" :trigger="['click']">
+              <div type="button" class="agent-nav-btn">
+                <Settings2 size="18" class="nav-btn-icon" />
+                <span class="text hide-text">
+                  {{ selectedConfigSummary?.name || '配置' }}
+                </span>
+                <ChevronDown size="16" class="nav-btn-icon" />
+              </div>
+              <template #overlay>
+                <a-menu
+                  :selectedKeys="selectedAgentConfigId ? [String(selectedAgentConfigId)] : []"
+                >
+                  <a-menu-item
+                    v-for="cfg in agentConfigs[selectedAgentId] || []"
+                    :key="String(cfg.id)"
+                    @click="selectAgentConfig(cfg.id)"
+                  >
+                    <div class="menu-item-full">
+                      <Star
+                        :size="14"
+                        :fill="cfg.is_default ? 'currentColor' : 'none'"
+                        :style="{
+                          color: cfg.is_default ? 'var(--color-warning-500)' : 'var(--gray-400)'
+                        }"
+                      />
+                      <span>{{ cfg.name }}</span>
+                    </div>
+                  </a-menu-item>
+                  <a-menu-divider v-if="userStore.isAdmin" />
+                  <a-menu-item
+                    v-if="userStore.isAdmin"
+                    key="create_config"
+                    @click="openCreateConfigModal"
+                  >
+                    <div class="menu-item-layout">
+                      <Plus :size="16" />
+                      <span>新建配置</span>
+                    </div>
+                  </a-menu-item>
+                  <a-menu-item
+                    v-if="userStore.isAdmin"
+                    key="open_config"
+                    @click="openConfigSidebar"
+                  >
+                    <div class="menu-item-layout">
+                      <SquarePen :size="16" />
+                      <span>编辑当前配置</span>
+                    </div>
+                  </a-menu-item>
+                </a-menu>
+              </template>
+            </a-dropdown>
             <div
               v-if="selectedAgentId"
               ref="moreButtonRef"
@@ -91,12 +150,10 @@
               <ShareAltOutlined class="menu-icon" />
               <span class="menu-text">分享对话</span>
             </div>
-            <div class="menu-divider"></div>
             <div class="menu-item" @click="handleFeedback">
               <MessageOutlined class="menu-icon" />
               <span class="menu-text">查看反馈</span>
             </div>
-            <div class="menu-divider"></div>
             <div class="menu-item" @click="handlePreview">
               <EyeOutlined class="menu-icon" />
               <span class="menu-text">预览页面</span>
@@ -118,7 +175,7 @@ import {
   EyeOutlined
 } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import { Settings2, Ellipsis } from 'lucide-vue-next'
+import { Settings2, Ellipsis, ChevronDown, Star, Plus, SquarePen } from 'lucide-vue-next'
 import AgentChatComponent from '@/components/AgentChatComponent.vue'
 import AgentConfigSidebar from '@/components/AgentConfigSidebar.vue'
 import FeedbackModalComponent from '@/components/dashboard/FeedbackModalComponent.vue'
@@ -141,7 +198,14 @@ const agentStore = useAgentStore()
 const chatUIStore = useChatUIStore()
 
 // 从 agentStore 中获取响应式状态
-const { agents, selectedAgentId, defaultAgentId } = storeToRefs(agentStore)
+const {
+  agents,
+  selectedAgentId,
+  defaultAgentId,
+  agentConfigs,
+  selectedAgentConfigId,
+  selectedConfigSummary
+} = storeToRefs(agentStore)
 
 // 设置为默认智能体
 const setAsDefaultAgent = async (agentId) => {
@@ -158,20 +222,9 @@ const setAsDefaultAgent = async (agentId) => {
 
 // 这些方法现在由agentStore处理，无需在组件中定义
 
-const loadAgentConfig = async () => {
-  try {
-    await agentStore.loadAgentConfig()
-  } catch (error) {
-    console.error('加载配置出错:', error)
-    message.error('加载配置失败')
-  }
-}
-
 // 选择智能体（使用store方法）
-const selectAgent = (agentId) => {
-  agentStore.selectAgent(agentId)
-  // 加载该智能体的配置
-  loadAgentConfig()
+const selectAgent = async (agentId) => {
+  await agentStore.selectAgent(agentId)
 }
 
 // 打开智能体选择弹窗
@@ -180,13 +233,60 @@ const openAgentModal = () => {
 }
 
 // 从弹窗中选择智能体
-const selectAgentFromModal = (agentId) => {
-  selectAgent(agentId)
+const selectAgentFromModal = async (agentId) => {
+  await selectAgent(agentId)
   chatUIStore.agentModalOpen = false
 }
 
 const toggleConf = () => {
   chatUIStore.isConfigSidebarOpen = !chatUIStore.isConfigSidebarOpen
+}
+
+const openConfigSidebar = () => {
+  chatUIStore.isConfigSidebarOpen = true
+}
+
+const createConfigModalOpen = ref(false)
+const createConfigLoading = ref(false)
+const createConfigName = ref('')
+
+const openCreateConfigModal = () => {
+  createConfigName.value = ''
+  createConfigModalOpen.value = true
+}
+
+const handleCreateConfig = async () => {
+  if (!selectedAgentId.value) return
+  if (!createConfigName.value) {
+    message.error('请输入配置名称')
+    return
+  }
+
+  createConfigLoading.value = true
+  try {
+    await agentStore.createAgentConfigProfile({
+      name: createConfigName.value,
+      setDefault: false,
+      fromCurrent: false
+    })
+    createConfigModalOpen.value = false
+    chatUIStore.isConfigSidebarOpen = true
+    message.success('配置已创建')
+  } catch (error) {
+    console.error('创建配置出错:', error)
+    message.error(error.message || '创建配置失败')
+  } finally {
+    createConfigLoading.value = false
+  }
+}
+
+const selectAgentConfig = async (configId) => {
+  try {
+    await agentStore.selectAgentConfig(configId)
+  } catch (error) {
+    console.error('切换配置出错:', error)
+    message.error('切换配置失败')
+  }
 }
 
 // 更多菜单相关
@@ -882,21 +982,21 @@ const handlePreview = () => {
 // 自定义更多菜单样式
 .more-popup-menu {
   position: fixed;
-  min-width: 130px;
+  min-width: 100px;
   background: var(--gray-0);
   border-radius: 10px;
   box-shadow:
     0 8px 24px rgba(0, 0, 0, 0.08),
     0 2px 8px rgba(0, 0, 0, 0.04);
   border: 1px solid var(--gray-100);
-  padding: 6px;
+  padding: 4px;
   z-index: 9999;
 
   .menu-item {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 6px 14px;
+    padding: 6px 8px;
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1021,7 +1121,23 @@ const handlePreview = () => {
   }
 }
 
-.hide-text {
-  display: none;
+// 菜单项布局样式
+.menu-item-layout {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.menu-item-full {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .hide-text {
+    display: none;
+  }
 }
 </style>

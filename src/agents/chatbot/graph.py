@@ -5,11 +5,11 @@ from datetime import datetime
 
 from src.agents.common import BaseAgent, load_chat_model
 from src.agents.common.middlewares import (
+    RuntimeConfigMiddleware,
     inject_attachment_context,
 )
-from src.agents.common.tools import get_tools_from_context
-from src.storage.db.models import User, ROLE_LEVEL, Roles
-from src.agents.common.toolkits.mysql import get_mysql_tools
+from src.services.mcp_service import get_tools_from_all_servers
+
 
 class ChatbotAgent(BaseAgent):
     name = "智能体助手"
@@ -21,20 +21,19 @@ class ChatbotAgent(BaseAgent):
 
     async def get_graph(self, **kwargs):
         """构建图"""
-        if self.graph:
-            return self.graph
-
-
-        # 获取上下文配置
-        context = self.context_schema.from_file(module_name=self.module_name)
+        context = self.context_schema()
+        all_mcp_tools = (
+            await get_tools_from_all_servers()
+        )  # 因为异步加载，无法放在 RuntimeConfigMiddleware 的 __init__ 中
 
         # 使用 create_agent 创建智能体
+        # 注意：tools 参数由 RuntimeConfigMiddleware 在 wrap_model_call 中动态设置
         graph = create_agent(
-            model=load_chat_model(context.model),  # 使用 context 中的模型配置
-            tools=await get_tools_from_context(context, extra_tools=get_mysql_tools()),
+            model=load_chat_model(context.model),
             system_prompt=context.system_prompt,
             middleware=[
                 inject_attachment_context,  # 附件上下文注入
+                RuntimeConfigMiddleware(extra_tools=all_mcp_tools),  # 运行时配置应用（模型/工具/知识库/MCP/提示词）
                 ModelRetryMiddleware(),  # 模型重试中间件
                 HumanInTheLoopMiddleware({ # 人工审批中间件
                     # "add_mom_system_news": True
@@ -45,7 +44,6 @@ class ChatbotAgent(BaseAgent):
             checkpointer=await self._get_checkpointer(),
         )
 
-        self.graph = graph
         return graph
 
 

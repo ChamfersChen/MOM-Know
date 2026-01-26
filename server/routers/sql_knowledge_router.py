@@ -11,7 +11,8 @@ from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Reques
 from fastapi.responses import FileResponse
 from starlette.responses import StreamingResponse
 
-from server.services.tasker import TaskContext, tasker
+# from server.services.task_service import TaskContext, tasker
+from src.services.task_service import TaskContext, tasker
 from server.utils.auth_middleware import get_admin_user
 from src.storage.db.models import User
 from src import config, sql_knowledge_base

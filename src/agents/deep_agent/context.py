@@ -99,10 +99,11 @@ class DeepContext(BaseContext):
     """
 
     # 深度分析专用的系统提示词
-    system_prompt: str = field(
+    system_prompt: Annotated[str, {"__template_metadata__": {"kind": "prompt"}}] = field(
         default=DEEP_PROMPT,
         metadata={"name": "系统提示词", "description": "Deep智能体的角色和行为指导"},
     )
+
     subagents_model: Annotated[str, {"__template_metadata__": {"kind": "llm"}}] = field(
         default="openai/../models/Qwen3-8B-GGUF/Qwen3-8B-Q8_0.gguf",
         metadata={

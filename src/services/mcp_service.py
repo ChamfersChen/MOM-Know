@@ -17,7 +17,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.storage.db.models import MCPServer
+from src.storage.postgres.models_business import MCPServer
 from src.utils import logger
 
 # =============================================================================
@@ -69,10 +69,10 @@ async def load_mcp_servers_from_db() -> None:
     global MCP_SERVERS
 
     # Delayed import to avoid circular references
-    from src.storage.db.manager import db_manager
+    from src.storage.postgres.manager import pg_manager
 
     try:
-        async with db_manager.get_async_session_context() as session:
+        async with pg_manager.get_async_session_context() as session:
             result = await session.execute(select(MCPServer).filter(MCPServer.enabled == 1))
             servers = result.scalars().all()
 
@@ -115,10 +115,10 @@ async def init_mcp_servers() -> None:
     Also ensures all built-in MCP servers are present in the database.
     """
     # Delayed import to avoid circular references
-    from src.storage.db.manager import db_manager
+    from src.storage.postgres.manager import pg_manager
 
     try:
-        async with db_manager.get_async_session_context() as session:
+        async with pg_manager.get_async_session_context() as session:
             # Check if database has MCP configurations
             result = await session.execute(select(func.count(MCPServer.name)))
             count = result.scalar()
