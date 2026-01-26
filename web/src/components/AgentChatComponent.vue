@@ -859,8 +859,8 @@ const handleSendOrStop = async (payload) => {
 }
 
 // ==================== 人工审批处理 ====================
-const handleApprovalWithStream = async (approved, toolName = null, toolArgs = null) => {
-  console.log('🔄 [STREAM] Starting resume stream processing');
+const handleApprovalWithStream = async (approved) => {
+  console.log('🔄 [STREAM] Starting resume stream processing')
 
   const threadId = approvalState.threadId
   if (!threadId) {
@@ -918,67 +918,9 @@ const handleApprovalWithStream = async (approved, toolName = null, toolArgs = nu
   }
 }
 
-const handleApprove = (parsedOperation) => {
-  console.log('handleParsedOperation', parsedOperation); 
-  const realMessages = threadMessages.value[currentChatId.value]
-  console.log('realMessages', realMessages)
-  
-  const parsedParm = parsedOperation['params']
-  console.log('parsedParm', parsedParm)
-  const toolName = parsedOperation['name']
-  // 更新当前对话中的消息工具参数
-  if (approvalState.threadId && parsedParm && Array.isArray(parsedParm)) {
-    const threadState = getThreadState(approvalState.threadId);
-    const mergedArgs = ref(null)
-    if (threadState && threadState.onGoingConv) {
-      // 将键值对数组转换为对象格式
-      const updatedParams = {};
-      parsedParm.forEach(item => {
-        updatedParams[item.key] = item.value;
-      });
-      console.log('updatedParams', updatedParams);
-      
-      // 更新正在进行中的对话的最后一条AI消息的工具调用参数
-      if (realMessages.length > 0) {
-        const lastMessage = realMessages[realMessages.length - 1];
-        if (lastMessage.type === 'ai' && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
-          // 更新最后一条工具调用的参数
-          lastMessage.tool_calls.forEach(toolCall => {
-            if (toolCall.args || toolCall.function?.arguments) {
-              try {
-                // 解析现有参数并合并更新
-                const existingArgs = typeof toolCall.args === 'string' 
-                  ? JSON.parse(toolCall.args) 
-                  : toolCall.args || {};
-                
-                // 合并更新的参数
-                mergedArgs.value = { ...existingArgs, ...updatedParams };
-                
-                // 更新工具调用参数
-                if (toolCall.args !== undefined) {
-                  toolCall.args = JSON.parse(JSON.stringify(mergedArgs.value));
-                }
-                if (toolCall.function?.arguments !== undefined) {
-                  toolCall.function.arguments = JSON.stringify(mergedArgs.value);
-                }
-                handleApprovalWithStream(true, toolName, mergedArgs)
-              } catch (error) {
-                console.error('更新工具参数失败:', error);
-              }
-            }
-          });
-          
-          console.log('已更新工具调用参数:', lastMessage.tool_calls);
-        }
-      }
-    }
-  }
-};
-
-
-// const handleApprove = () => {
-//   handleApprovalWithStream(true);
-// };
+const handleApprove = () => {
+  handleApprovalWithStream(true)
+}
 
 const handleReject = () => {
   handleApprovalWithStream(false)
@@ -1109,7 +1051,6 @@ onMounted(async () => {
   await initAll()
   scrollController.enableAutoScroll()
 })
-
 
 watch(
   currentAgentId,

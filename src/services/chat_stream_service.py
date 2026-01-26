@@ -204,7 +204,8 @@ async def check_and_handle_interrupts(
                 "operation": operation,
                 "thread_id": thread_id,
             }
-            yield make_chunk(status="interrupted", message=question, meta=meta)
+            yield make_chunk(status="human_approval_required", message=question, meta=meta)
+            # yield make_chunk(status="interrupted", message=question, meta=meta)
 
     except Exception as e:
         logger.error(f"Error checking interrupts: {e}")
@@ -403,6 +404,14 @@ async def stream_agent_chat(
 
         if agent_state:
             yield make_chunk(status="agent_state", agent_state=agent_state, meta=meta)
+        
+        #######################################
+        # Check for human approval interrupts #
+        #######################################
+        async for chunk in check_and_handle_interrupts(agent, langgraph_config, make_chunk, meta, thread_id):
+            yield chunk
+
+        meta["time_cost"] = asyncio.get_event_loop().time() - start_time
 
         yield make_chunk(status="finished", meta=meta)
 

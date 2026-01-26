@@ -316,7 +316,7 @@ async def save_messages_from_langgraph_state(
         logger.error(traceback.format_exc())
 
 
-async def check_and_handle_interrupts(agent, langgraph_config, make_chunk, meta, thread_id):
+async def _check_and_handle_interrupts(agent, langgraph_config, make_chunk, meta, thread_id):
     """检查并处理 LangGraph 中断状态，发送人工审批请求到前端"""
     try:
         # 获取 agent 的 graph 对象
