@@ -171,7 +171,7 @@ provide('settingsModal', {
         </div>
       </div>
       <div class="fill"></div>
-      <!-- <div class="github nav-item"> -->
+      <div class="github nav-item">
         <a-tooltip placement="right">
           <template #title>欢迎 Star</template>
           <a href="https://github.com/xerrors/Yuxi-Know" target="_blank" class="github-link">
@@ -181,18 +181,7 @@ provide('settingsModal', {
             </span>
           </a>
         </a-tooltip>
-      </div> -->
-
-
-        <!-- <div class="nav-item api-docs">
-        <a-tooltip placement="right">
-          <template #title>接口文档 {{ apiDocsUrl }}</template>
-          <a :href="apiDocsUrl" target="_blank" class="github-link">
-            <ApiOutlined class="icon" style="color: var(--gray-1000);"/>
-          </a>
-        </a-tooltip>
-      </div> -->
-
+      </div>
       <!-- 用户信息组件 -->
       <div class="nav-item user-info">
         <UserInfoComponent />

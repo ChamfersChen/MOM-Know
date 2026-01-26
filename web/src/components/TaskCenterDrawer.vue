@@ -75,7 +75,7 @@
               <a-button type="text" size="small" @click.stop="handleDetail(task.id)">
                 详情
               </a-button>
-              <a-button
+              <!-- <a-button
                 type="text"
                 size="small"
                 danger
@@ -83,7 +83,7 @@
                 @click="handleDelete(task.id)"
               >
                 删除
-              </a-button>
+              </a-button> -->
               <a-button
                 type="link"
                 size="small"

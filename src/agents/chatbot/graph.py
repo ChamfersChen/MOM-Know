@@ -38,7 +38,7 @@ class ChatbotAgent(BaseAgent):
                 HumanInTheLoopMiddleware({ # 人工审批中间件
                     # "add_mom_system_news": True
                     # "执行 SQL 查询": True, 
-                    # "计算器": True, 
+                    "计算器": True, 
                 })
             ],
             checkpointer=await self._get_checkpointer(),

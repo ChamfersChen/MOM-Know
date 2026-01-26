@@ -78,7 +78,7 @@ class DeepAgent(BaseAgent):
         self.graph = None
         self.checkpointer = None
 
-    async def get_tools(self, **kwargs):
+    async def get_tools(self):
         """返回 Deep Agent 的专用工具"""
         tools = []
         tavily_search = get_tavily_search()
@@ -124,12 +124,11 @@ class DeepAgent(BaseAgent):
                         TodoListMiddleware(),  # 子智能体也有 todo 列表
                         FilesystemMiddleware(),  # 当前的两个文件系统是隔离的
                         SummarizationMiddleware(
-                            model=model,
+                            model=sub_model,
                             trigger=("tokens", 110000),
                             keep=("messages", 10),
                             trim_tokens_to_summarize=None,
                         ),
-                        AnthropicPromptCachingMiddleware(unsupported_model_behavior="ignore"),
                         PatchToolCallsMiddleware(),
                     ],
                     general_purpose_agent=True,
@@ -140,7 +139,6 @@ class DeepAgent(BaseAgent):
                     keep=("messages", 10),
                     trim_tokens_to_summarize=None,
                 ),
-                AnthropicPromptCachingMiddleware(unsupported_model_behavior="ignore"),
                 PatchToolCallsMiddleware(),
             ],
             checkpointer=await self._get_checkpointer(),

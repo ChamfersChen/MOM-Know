@@ -68,3 +68,5 @@ docs/vibe
 .cursorrules
 
 /models
+
+/saves*
