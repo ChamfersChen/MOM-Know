@@ -3,34 +3,34 @@
 
 # 组织信息
 organization:
-  name: "江南语析"           # 完整组织名称
+  name: "LCMOM"           # 完整组织名称
   logo: "/favicon.svg"       # Logo文件路径（放在 web/public 目录下）
   avatar: "/avatar.jpg"      # 头像文件路径（放在 web/public 目录下）
   login_bg: "/login-bg.jpg"  # 登录背景图片路径（放在 web/public 目录下）
 
 # 项目信息
 branding:
-  name: "Yuxi-Know"
-  title: "Yuxi-Know: 更智能的知识库智能体平台"     # 系统标题
-  subtitle: "大模型驱动的知识库智能体平台"          # 副标题
+  name: "MOM-Know"
+  title: "MOM-Know:更智能的MOM智能体平台"     # 系统标题
+  subtitle: "大模型驱动的MOM智能体平台"          # 副标题
 
 features:
-  - label: "GitHub Stars"
-    value: "4100+"
-    description: "开发者社区的认可与支持"
-    icon: "stars"
-  - label: "已解决 Issues"
-    value: "300+"
-    description: "持续改进和问题解决能力"
-    icon: "issues"
-  - label: "累计 Commits"
-    value: "1300+"
-    description: "活跃的开发迭代和功能更新"
-    icon: "commits"
-  - label: "开源协议"
-    value: "MIT 协议"
-    description: "完全免费，支持商业使用"
-    icon: "license"
+  - label: ""
+    value: "灵活知识库"
+    description: ""
+    icon: ""
+  - label: ""
+    value: "内置工具"
+    description: ""
+    icon: ""
+  - label: ""
+    value: "数据库同步"
+    description: ""
+    icon: ""
+  - label: ""
+    value: "智能体集成"
+    description: ""
+    icon: ""
 
 actions:
   - name: "演示视频"
@@ -50,4 +50,4 @@ actions:
 
 # 页脚信息
 footer:
-  copyright: "© 江南语析 2026 v0.5.0"
+  copyright: "© LCMOM 2025 v0.4.0"

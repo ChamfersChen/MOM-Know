@@ -1,5 +1,7 @@
 import datetime as dt
 
+from enum import Enum
+
 from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -176,6 +178,16 @@ class ConversationStats(Base):
             "updated_at": format_utc_datetime(self.updated_at),
         }
 
+class Roles(str, Enum):
+    SUPERADMIN = "superadmin"
+    ADMIN = "admin"
+    USER = "user"
+
+ROLE_LEVEL = {
+    "user": 1,
+    "admin": 2,
+    "superadmin": 3,
+}
 
 class User(Base):
     """用户模型"""

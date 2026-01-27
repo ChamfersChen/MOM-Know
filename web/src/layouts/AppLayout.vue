@@ -1,8 +1,10 @@
 <script setup>
 import { ref, reactive, onMounted, computed, provide } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { GithubOutlined } from '@ant-design/icons-vue'
-import { Bot, Waypoints, LibraryBig, BarChart3, CircleCheck } from 'lucide-vue-next'
+import {
+  GithubOutlined,
+} from '@ant-design/icons-vue'
+import { Bot, Waypoints, LibraryBig, BarChart3, CircleCheck, Database } from 'lucide-vue-next'
 
 import { useConfigStore } from '@/stores/config'
 import { useDatabaseStore } from '@/stores/database'
@@ -103,9 +105,13 @@ const mainList = [
     name: '知识库',
     path: '/database',
     icon: LibraryBig,
-    activeIcon: LibraryBig
-  },
-  {
+    activeIcon: LibraryBig,
+  }, {
+    name: '数据库',
+    path: '/sqldatabase',
+    icon: Database,
+    activeIcon: Database,
+  }, {
     name: 'Dashboard',
     path: '/dashboard',
     icon: BarChart3,

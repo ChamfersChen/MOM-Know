@@ -9,17 +9,26 @@
       @save="handleSearchConfigSave"
     />
 
-    <FileUploadModal
-      v-model:visible="addFilesModalVisible"
-      :folder-tree="folderTree"
-      :current-folder-id="currentFolderId"
-      :is-folder-mode="isFolderUploadMode"
-      @success="onFileUploadSuccess"
-    />
+  <FileUploadModal
+        v-model:visible="addFilesModalVisible"
+        :folder-tree="folderTree"
+        :current-folder-id="currentFolderId"
+        :is-folder-mode="isFolderUploadMode"
+        @success="onFileUploadSuccess"
+  />
+  
+  <DatabaseUploadModal
+    v-model:visible="uploadDatabaseModalVisible"
+  />
 
-    <div class="unified-layout">
-      <div class="left-panel" :style="{ width: leftPanelWidth + '%' }">
-        <KnowledgeBaseCard />
+  
+  <DatabaseUploadModal
+    v-model:visible="uploadDatabaseModalVisible"
+  />
+
+  <div class="unified-layout">
+    <div class="left-panel" :style="{ width: leftPanelWidth + '%' }">
+      <KnowledgeBaseCard />
         <!-- 待处理文件提示条 -->
         <div class="info-panel" v-if="pendingParseCount > 0 || pendingIndexCount > 0">
           <div class="banner-item" v-if="pendingParseCount > 0" @click="confirmBatchParse">
@@ -31,12 +40,13 @@
             <span>{{ pendingIndexCount }} 个文件待入库，点击入库</span>
           </div>
         </div>
-        <FileTable
-          :right-panel-visible="state.rightPanelVisible"
-          @show-add-files-modal="showAddFilesModal"
-          @toggle-right-panel="toggleRightPanel"
-        />
-      </div>
+      <FileTable
+        :right-panel-visible="state.rightPanelVisible"
+        @show-add-files-modal="showAddFilesModal"
+        @toggle-right-panel="toggleRightPanel"
+        @show-upload-database-modal="showUploadDatabaseModal"
+      />
+    </div>
 
       <div class="resize-handle" ref="resizeHandle"></div>
 
@@ -141,6 +151,8 @@ import MindMapSection from '@/components/MindMapSection.vue'
 import RAGEvaluationTab from '@/components/RAGEvaluationTab.vue'
 import EvaluationBenchmarks from '@/components/EvaluationBenchmarks.vue'
 import SearchConfigModal from '@/components/SearchConfigModal.vue'
+import DatabaseUploadModal from '@/components/DatabaseUploadModal.vue';
+
 
 const route = useRoute()
 const store = useDatabaseStore()
@@ -367,8 +379,16 @@ const folderTree = computed(() => {
     }
   })
 
-  return roots
-})
+    return roots;
+});
+
+// 添加导入数据库数据弹窗
+const uploadDatabaseModalVisible = ref(false);
+
+// 显示添加文件弹窗
+const showUploadDatabaseModal = () => {
+  uploadDatabaseModalVisible.value = true;
+};
 
 // 文件上传成功回调
 const onFileUploadSuccess = () => {

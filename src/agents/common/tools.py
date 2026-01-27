@@ -10,6 +10,7 @@ from langchain_core.tools import StructuredTool
 from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
+from src.storage.db.models import Roles
 from src import config, graph_base, knowledge_base
 from src.services.mcp_service import get_enabled_mcp_tools
 from src.storage.minio import aupload_file_to_minio
@@ -25,12 +26,12 @@ def get_tavily_search():
     if _tavily_search_instance is None and config.enable_web_search:
         from langchain_tavily import TavilySearch
 
-        _tavily_search_instance = TavilySearch()
+        _tavily_search_instance = TavilySearch(max_results=10)
         _tavily_search_instance.metadata = {"name": "Tavily 网页搜索"}
     return _tavily_search_instance
 
 
-@tool(name_or_callable="计算器", description="可以对给定的2个数字选择进行 add, subtract, multiply, divide 运算")
+@tool(name_or_callable="计算器", description="可以对给定的2个数字选择进行 add, subtract, multiply, divide 运算", extras={"min_role": Roles.ADMIN})
 def calculator(a: float, b: float, operation: str) -> float:
     try:
         if operation == "add":
@@ -166,7 +167,8 @@ class KnowledgeRetrieverModel(BaseModel):
 class CommonKnowledgeRetriever(KnowledgeRetrieverModel):
     """Common knowledge retriever model."""
 
-    file_name: str = Field(description="限定文件名称，当操作类型为 'search' 时，可以指定文件名称，支持模糊匹配")
+    # file_name: str = Field(description="限定文件名称，当操作类型为 'search' 时，可以指定文件名称，支持模糊匹配")
+    file_name: str = Field(description="限定文件名称，当操作类型为 'search' 时，可以指定文件名关键词，支持模糊匹配")
 
 
 def get_kb_based_tools(db_names: list[str] | None = None) -> list:
@@ -267,8 +269,8 @@ def get_kb_based_tools(db_names: list[str] | None = None) -> list:
             safename = retrieve_info["name"].replace(" ", "_")[:20]
 
             args_schema = KnowledgeRetrieverModel
-            if retrieve_info["metadata"]["kb_type"] in ["milvus"]:
-                args_schema = CommonKnowledgeRetriever
+            # if retrieve_info["metadata"]["kb_type"] in ["milvus"]:
+            #     args_schema = CommonKnowledgeRetriever
 
             # 使用 StructuredTool.from_function 创建异步工具
             tool = StructuredTool.from_function(

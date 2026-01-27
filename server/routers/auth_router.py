@@ -1,5 +1,6 @@
 import re
 import uuid
+import requests
 from src.utils import logger
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File
@@ -114,6 +115,7 @@ async def get_default_department_id(db: AsyncSession) -> int | None:
 
 @auth.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
+    global access_token_old
     # 查找用户 - 支持user_id和phone_number登录
     login_identifier = form_data.username  # OAuth2表单中的username字段作为登录标识符
 
@@ -183,7 +185,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     # 生成访问令牌
     token_data = {"sub": str(user.id)}
     access_token = AuthUtils.create_access_token(token_data)
-
+    access_token_old = access_token
     # 记录登录操作
     await log_operation(db, user.id, "登录")
 

@@ -26,9 +26,11 @@
             </div>
           </a-menu-item>
           <a-menu-divider />
-          <a-menu-item key="docs" @click="openDocs" :icon="BookOpenIcon">
+          <!-- <a-menu-item key="docs" @click="openDocs" :icon="BookOpenIcon">
             <span class="menu-text">文档中心</span>
-          </a-menu-item>
+          </a-menu-item>  -->
+          <!-- <a-menu-item key="theme" @click="toggleTheme">
+            <component :is="themeStore.isDark ? Sun : Moon" size="16"/> -->
           <a-menu-item
             key="theme"
             @click="toggleTheme"
@@ -269,6 +271,7 @@ const userRoleClass = computed(() => {
 // 退出登录
 const logout = () => {
   userStore.logout()
+  localStorage.setItem('FORCE_LOGOUT', Date.now().toString())
   message.success('已退出登录')
   // 跳转到首页
   router.push('/login')

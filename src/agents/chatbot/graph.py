@@ -1,5 +1,7 @@
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelRetryMiddleware
+from langchain.agents.middleware import HumanInTheLoopMiddleware
+from datetime import datetime
 
 from src.agents.common import BaseAgent, load_chat_model
 from src.agents.common.middlewares import (
@@ -33,6 +35,11 @@ class ChatbotAgent(BaseAgent):
                 inject_attachment_context,  # 附件上下文注入
                 RuntimeConfigMiddleware(extra_tools=all_mcp_tools),  # 运行时配置应用（模型/工具/知识库/MCP/提示词）
                 ModelRetryMiddleware(),  # 模型重试中间件
+                HumanInTheLoopMiddleware({ # 人工审批中间件
+                    # "add_mom_system_news": True
+                    # "执行 SQL 查询": True, 
+                    "计算器": True, 
+                })
             ],
             checkpointer=await self._get_checkpointer(),
         )

@@ -2,6 +2,7 @@ from .attachment_middleware import inject_attachment_context
 from .context_middlewares import context_aware_prompt, context_based_model
 from .dynamic_tool_middleware import DynamicToolMiddleware
 from .runtime_config_middleware import RuntimeConfigMiddleware
+from .task_skill_middleware import TaskSkillMiddleware
 
 __all__ = [
     "DynamicToolMiddleware",
@@ -9,4 +10,5 @@ __all__ = [
     "context_aware_prompt",
     "context_based_model",
     "inject_attachment_context",
+    "TaskSkillMiddleware"
 ]

@@ -1,6 +1,7 @@
 import asyncio
 import traceback
 import uuid
+import json
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
@@ -114,6 +115,188 @@ async def set_default_agent(request_data: dict = Body(...), current_user=Depends
         logger.error(f"设置默认智能体出错: {e}")
         raise HTTPException(status_code=500, detail=f"设置默认智能体出错: {str(e)}")
 
+
+# =============================================================================
+# > === 对话分组 ===
+# =============================================================================
+
+
+async def _get_langgraph_messages(agent_instance, config_dict):
+    graph = await agent_instance.get_graph()
+    state = await graph.aget_state(config_dict)
+
+    if not state or not state.values:
+        logger.warning("No state found in LangGraph")
+        return None
+
+    return state.values.get("messages", [])
+
+
+def _extract_agent_state(values: dict) -> dict:
+    if not isinstance(values, dict):
+        return {}
+
+    def _norm_list(v):
+        if v is None:
+            return []
+        if isinstance(v, (list, tuple)):
+            return list(v)
+        return [v]
+
+    result = {}
+    result["todos"] = _norm_list(values.get("todos"))[:20]
+    result["files"] = _norm_list(values.get("files"))[:50]
+
+    return result
+
+
+async def _get_existing_message_ids(conv_mgr, thread_id):
+    """获取已保存的消息ID集合"""
+    existing_messages = await conv_mgr.get_messages_by_thread_id(thread_id)
+    return {msg.extra_metadata["id"] for msg in existing_messages if msg.extra_metadata and "id" in msg.extra_metadata}
+
+
+async def _save_ai_message(conv_mgr, thread_id, msg_dict):
+    """保存AI消息和相关的工具调用"""
+    content = msg_dict.get("content", "")
+    tool_calls_data = msg_dict.get("tool_calls", [])
+
+    # 保存AI消息
+    ai_msg = await conv_mgr.add_message_by_thread_id(
+        thread_id=thread_id,
+        role="assistant",
+        content=content,
+        message_type="text",
+        extra_metadata=msg_dict,
+    )
+
+    # 保存工具调用
+    if tool_calls_data:
+        logger.debug(f"Saving {len(tool_calls_data)} tool calls from AI message")
+        for tc in tool_calls_data:
+            await conv_mgr.add_tool_call(
+                message_id=ai_msg.id,
+                tool_name=tc.get("name", "unknown"),
+                tool_input=tc.get("args", {}),
+                status="pending",
+                langgraph_tool_call_id=tc.get("id"),
+            )
+
+    logger.debug(f"Saved AI message {ai_msg.id} with {len(tool_calls_data)} tool calls")
+
+
+async def _save_tool_message(conv_mgr, msg_dict):
+    """保存工具执行结果"""
+    tool_call_id = msg_dict.get("tool_call_id")
+    content = msg_dict.get("content", "")
+    name = msg_dict.get("name", "")
+
+    if not tool_call_id:
+        return
+
+    # 确保tool_output是字符串类型
+    if isinstance(content, list):
+        tool_output = json.dumps(content) if content else ""
+    else:
+        tool_output = str(content)
+
+    # 更新工具调用结果
+    updated_tc = await conv_mgr.update_tool_call_output(
+        langgraph_tool_call_id=tool_call_id,
+        tool_output=tool_output,
+        status="success",
+    )
+
+    if updated_tc:
+        logger.debug(f"Updated tool_call {tool_call_id} ({name}) with output")
+    else:
+        logger.warning(f"Tool call {tool_call_id} not found for update")
+
+
+async def save_partial_message(conv_mgr, thread_id, full_msg=None, error_message=None, error_type="interrupted"):
+    """
+    统一保存AI消息到数据库的函数
+
+    Args:
+        conv_mgr: 对话管理器
+        thread_id: 线程ID
+        full_msg: 完整的AI消息对象（可选）
+        error_message: 纯错误消息文本（当full_msg为空时使用）
+        error_type: 错误类型标识
+    """
+    try:
+        extra_metadata = {
+            "error_type": error_type,
+            "is_error": True,
+            "error_message": error_message or f"发生错误: {error_type}",
+        }
+        if full_msg:
+            # 保存部分生成的AI消息
+            msg_dict = full_msg.model_dump() if hasattr(full_msg, "model_dump") else {}
+            content = full_msg.content if hasattr(full_msg, "content") else str(full_msg)
+            extra_metadata = msg_dict | extra_metadata
+        else:
+            content = ""
+
+        saved_msg = await conv_mgr.add_message_by_thread_id(
+            thread_id=thread_id,
+            role="assistant",
+            content=content,
+            message_type="text",
+            extra_metadata=extra_metadata,
+        )
+
+        logger.info(f"Saved message due to {error_type}: {saved_msg.id}")
+        return saved_msg
+
+    except Exception as e:
+        logger.error(f"Error saving message: {e}")
+        logger.error(traceback.format_exc())
+        return None
+
+
+async def save_messages_from_langgraph_state(
+    agent_instance,
+    thread_id,
+    conv_mgr,
+    config_dict,
+):
+    """
+    从 LangGraph state 中读取完整消息并保存到数据库
+    这样可以获得完整的 tool_calls 参数
+    """
+    try:
+        messages = await _get_langgraph_messages(agent_instance, config_dict)
+        if messages is None:
+            return
+
+        logger.debug(f"Retrieved {len(messages)} messages from LangGraph state")
+        existing_ids = await _get_existing_message_ids(conv_mgr, thread_id)
+
+        for msg in messages:
+            msg_dict = msg.model_dump() if hasattr(msg, "model_dump") else {}
+            msg_type = msg_dict.get("type", "unknown")
+
+            if msg_type == "human" or msg.id in existing_ids:
+                continue
+
+            if msg_type == "ai":
+                await _save_ai_message(conv_mgr, thread_id, msg_dict)
+            elif msg_type == "tool":
+                await _save_tool_message(conv_mgr, msg_dict)
+            else:
+                logger.warning(f"Unknown message type: {msg_type}, skipping")
+                continue
+
+            logger.debug(f"Processed message type={msg_type}")
+
+        logger.info("Saved messages from LangGraph state")
+
+    except Exception as e:
+        logger.error(f"Error saving messages from LangGraph state: {e}")
+        logger.error(traceback.format_exc())
+
+# =============================================================================
 
 @chat.post("/call")
 async def call(query: str = Body(...), meta: dict = Body(None), current_user: User = Depends(get_required_user)):
@@ -425,6 +608,8 @@ async def resume_agent_chat(
     agent_id: str,
     thread_id: str = Body(...),
     approved: bool = Body(...),
+    tool_name: str | None = Body(None),  # New optional form data parameter
+    tool_args: dict | None = Body(None),  # New optional form data parameter
     config: dict = Body({}),
     current_user: User = Depends(get_required_user),
     db: AsyncSession = Depends(get_db),
@@ -445,6 +630,8 @@ async def resume_agent_chat(
             agent_id=agent_id,
             thread_id=thread_id,
             approved=approved,
+            tool_name=tool_name,
+            tool_args=tool_args,
             meta=meta,
             config=config,
             current_user=current_user,

@@ -10,25 +10,20 @@ export const useInfoStore = defineStore('info', () => {
   const debugMode = ref(false)
 
   // 计算属性 - 组织信息
-  const organization = computed(
-    () =>
-      infoConfig.value.organization || {
-        name: '江南语析',
-        logo: '/favicon.svg',
-        avatar: '/avatar.jpg'
-      }
-  )
+  const organization = computed(() => infoConfig.value.organization || {
+    name: "LCMOM",
+    logo: "/favicon.svg",
+    avatar: "/avatar.jpg"
+    // avatar: "/avatar.jpg"
+  })
 
   // 计算属性 - 品牌信息
-  const branding = computed(
-    () =>
-      infoConfig.value.branding || {
-        name: 'Yuxi-Know',
-        title: 'Yuxi-Know',
-        subtitle: '大模型驱动的知识库管理工具',
-        description: '结合知识库与知识图谱，提供更准确、更全面的回答'
-      }
-  )
+  const branding = computed(() => infoConfig.value.branding || {
+    name: "MOM-Know",
+    title: "MOM-Know",
+    subtitle: "MOM-Know: 更智能的MOM智能体平台",
+    description: "结合知识库与工具，提供更准确、更全面的回答"
+  })
 
   // 计算属性 - 功能特性
   const features = computed(

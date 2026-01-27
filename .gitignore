@@ -8,6 +8,8 @@ __pycache__/
 dist
 node_modules
 
+output
+
 ### common gitignore
 .DS_Store
 .env
@@ -66,3 +68,5 @@ docs/vibe
 .cursorrules
 
 /models
+
+/saves*

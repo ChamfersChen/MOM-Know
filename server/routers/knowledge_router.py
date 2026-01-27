@@ -1,6 +1,8 @@
 import asyncio
 import json
 import os
+import tempfile
+import traceback
 import textwrap
 import traceback
 from urllib.parse import quote, unquote
@@ -12,6 +14,7 @@ from starlette.responses import StreamingResponse
 
 from src.services.task_service import TaskContext, tasker
 from server.utils.auth_middleware import get_admin_user, get_required_user
+from src.storage.db.models import User
 from src import config, knowledge_base
 from src.knowledge.indexing import SUPPORTED_FILE_EXTENSIONS, is_supported_file_extension, process_file_to_markdown
 from src.knowledge.utils import calculate_content_hash
@@ -247,15 +250,8 @@ async def export_database(
         logger.error(f"导出数据库失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"导出数据库失败: {e}")
 
-
-# =============================================================================
-# === 知识库文档管理分组 ===
-# =============================================================================
-
-
-@knowledge.post("/databases/{db_id}/documents")
-async def add_documents(
-    db_id: str, items: list[str] = Body(...), params: dict = Body(...), current_user: User = Depends(get_admin_user)
+async def _upload_db_file(
+    db_id: str, items: list[str], params: dict, current_user: User
 ):
     """添加文档到知识库（上传 -> 解析 -> 可选入库）"""
     logger.debug(f"Add documents for db_id {db_id}: {items} {params=}")
@@ -436,6 +432,116 @@ async def add_documents(
         logger.error(f"Failed to enqueue {content_type}s: {e}, {traceback.format_exc()}")
         return {"message": f"Failed to enqueue task: {e}", "status": "failed"}
 
+# =============================================================================
+# === 数据库录入知识 ===
+# =============================================================================
+@knowledge.post("/databases/check")
+async def check_db_and_tables(
+    host: str | None = Body(...),
+    user: str  | None = Body(...),
+    password: str  | None = Body(...),
+    database: str  | None = Body(...),
+    port: int  | None = Body(...),
+    # current_user: User = Depends(get_admin_user)
+):
+    """检查数据库是否存在并返回表名"""
+    try:
+        res, field_res = knowledge_base.check_mysql_connection(host, user, password, database, port)
+        return {'status': 'success', 'result': res, 'field_result': field_res}
+    except Exception as e:
+        return {"status": "failed", "message": str(e)}
+
+@knowledge.post("/databases/{db_id}/upload/database")
+async def process_db_and_upload(
+    db_id: str,
+    host: str | None = Body(...),
+    user: str  | None = Body(...),
+    password: str  | None = Body(...),
+    database: str  | None = Body(...),
+    port: int  | None = Body(...),
+    table: str  | None = Body(...),
+    fields: list | None = Body(...),
+    filename: str | None = Body(...),
+    chunk_params: dict = Body(...),
+    current_user: User = Depends(get_admin_user)
+):
+    # 1. 从数据库获取文本数据
+    text_data = knowledge_base.get_data_from_db(host, user, password, database, port, table, fields)  # 你的数据库查询函数
+    # 2. 创建临时文件
+    with tempfile.NamedTemporaryFile(mode='w+', suffix='.txt', delete=False, encoding='utf-8') as tmp_file:
+        tmp_file.write(text_data)
+        tmp_file_path = tmp_file.name
+    try: 
+        # 3. 读取临时文件为 UploadFile
+        with open(tmp_file_path, 'r', encoding='utf-8') as file:
+            file_content = file.read()
+
+        with open(tmp_file_path, 'rb') as file:
+            file_bytes = file.read()
+        
+        # 根据db_id获取上传路径，如果db_id为None则使用默认路径
+        if db_id:
+            upload_dir = knowledge_base.get_db_upload_path(db_id)
+        else:
+            upload_dir = os.path.join(config.save_dir, "database", "uploads")
+
+        if not filename.endswith(".txt"):
+            filename = filename.strip() + ".txt"
+
+        basename, ext = os.path.splitext(filename)
+        filename = f"{basename}_{hashstr(basename, 4, with_salt=True)}{ext}".lower()
+        file_path = os.path.join(upload_dir, filename)
+
+        # 在线程池中执行同步文件系统操作，避免阻塞事件循环
+        await asyncio.to_thread(os.makedirs, upload_dir, exist_ok=True)
+
+        # # 在线程池中执行计算密集型操作，避免阻塞事件循环
+        # content_hash = await asyncio.to_thread(calculate_content_hash, file_bytes)
+
+        # # 在线程池中执行同步数据库查询，避免阻塞事件循环
+        # file_exists = await asyncio.to_thread(knowledge_base.file_existed_in_db, db_id, content_hash)
+
+        content_hash = await calculate_content_hash(file_bytes)
+
+        file_exists = await knowledge_base.file_existed_in_db(db_id, content_hash)
+        if file_exists:
+            raise HTTPException(
+                status_code=409,
+                detail="数据库中已经存在了相同内容的文件。File with the same content already exists in this database",
+            )
+
+        # 使用异步文件写入，避免阻塞事件循环
+        async with aiofiles.open(file_path, "w", encoding='utf-8') as buffer:
+            await buffer.write(file_content)
+            
+    finally:
+        # 5. 清理临时文件
+        if os.path.exists(tmp_file_path):
+            os.unlink(tmp_file_path)
+
+    return await _upload_db_file(db_id, [file_path], 
+                         params={ 
+                            "chunk_size": 1000,
+                            "chunk_overlap": 200,
+                            "enable_ocr": 'disable',
+                            "use_qa_split": False,
+                            "qa_separator": '\n\n\n',
+                            "content_type": "file"
+                        },
+                        current_user=current_user
+                    )
+
+# =============================================================================
+# === 知识库文档管理分组 ===
+# =============================================================================
+
+
+@knowledge.post("/databases/{db_id}/documents")
+async def add_documents(
+    db_id: str, items: list[str] = Body(...), params: dict = Body(...), current_user: User = Depends(get_admin_user)
+):
+    """添加文档到知识库"""
+    return await _upload_db_file(db_id, items, params, current_user)
 
 @knowledge.post("/databases/{db_id}/documents/parse")
 async def parse_documents(db_id: str, file_ids: list[str] = Body(...), current_user: User = Depends(get_admin_user)):
@@ -792,6 +898,19 @@ async def query_test(
     except Exception as e:
         logger.error(f"测试查询失败 {e}, {traceback.format_exc()}")
         return {"message": f"测试查询失败: {e}", "status": "failed"}
+
+@knowledge.post("/databases/{db_id}/query-for-bot")
+async def query_knowledge_for_bot(
+    db_id: str, query: str = Body(...), meta: dict = Body(...)
+):
+    """对于Bot查询知识库"""
+    logger.debug(f"Query knowledge base {db_id}: {query}")
+    try:
+        result = await knowledge_base.aquery(query, db_id=db_id, **meta)
+        return {"result": result, "status": "success"}
+    except Exception as e:
+        logger.error(f"知识库查询失败 {e}, {traceback.format_exc()}")
+        return {"message": f"知识库查询失败: {e}", "status": "failed"}
 
 
 @knowledge.put("/databases/{db_id}/query-params")

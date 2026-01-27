@@ -1,5 +1,5 @@
 import os
-import aiofiles
+from collections import deque
 from pathlib import Path
 
 import yaml
@@ -30,7 +30,7 @@ async def health_check():
 
 
 @system.get("/config")
-async def get_config(current_user: User = Depends(get_admin_user)):
+def get_config(current_user: User = Depends(get_admin_user)):
     """获取系统配置"""
     return config.dump_config()
 
@@ -86,7 +86,7 @@ async def get_system_logs(levels: str | None = None, current_user: User = Depend
                     if len(lines) > 1000:
                         lines.pop(0)
 
-        log = "".join(lines)
+        log = "".join(last_lines)
         return {"log": log, "message": "success", "log_file": LOG_FILE}
     except Exception as e:
         logger.error(f"获取系统日志失败: {e}")
@@ -98,7 +98,7 @@ async def get_system_logs(levels: str | None = None, current_user: User = Depend
 # =============================================================================
 
 
-async def load_info_config():
+def load_info_config():
     """加载信息配置文件"""
     try:
         # 配置文件路径
@@ -110,10 +110,9 @@ async def load_info_config():
             logger.debug(f"The config file {config_path} does not exist, using default config")
             config_path = Path("src/config/static/info.template.yaml")
 
-        # 异步读取配置文件
-        async with aiofiles.open(config_path, encoding="utf-8") as file:
-            content = await file.read()
-            config = yaml.safe_load(content)
+        # 读取配置文件
+        with open(config_path, encoding="utf-8") as file:
+            config = yaml.safe_load(file)
 
         return config
 
@@ -126,7 +125,7 @@ async def load_info_config():
 async def get_info_config():
     """获取系统信息配置（公开接口，无需认证）"""
     try:
-        config = await load_info_config()
+        config = load_info_config()
         return {"success": True, "data": config}
     except Exception as e:
         logger.error(f"获取信息配置失败: {e}")
@@ -137,7 +136,7 @@ async def get_info_config():
 async def reload_info_config(current_user: User = Depends(get_admin_user)):
     """重新加载信息配置"""
     try:
-        config = await load_info_config()
+        config = load_info_config()
         return {"success": True, "message": "配置重新加载成功", "data": config}
     except Exception as e:
         logger.error(f"重新加载信息配置失败: {e}")

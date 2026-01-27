@@ -24,7 +24,16 @@
               >
                 上传文件夹
               </a-menu-item>
+              <a-menu-item key="upload-folder" @click="showUploadDatabaseModal" :icon="h(HddOutlined, { size: 16 })">
+                从数据库导入
+              </a-menu-item>
             </a-menu>
+            <!-- <a-button
+            type="secondary"
+            @click="showUploadDatabaseModal"
+            :loading="refreshing"
+            :icon="h(HddOutlined)"
+          >从数据库导入</a-button> -->
           </template>
         </a-dropdown>
 
@@ -422,7 +431,8 @@ import {
   ClockCircleFilled,
   FolderFilled,
   FolderOpenFilled,
-  FileTextFilled
+  FileTextFilled,
+  HddOutlined,
 } from '@ant-design/icons-vue'
 import {
   Trash2,

@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from typing import Annotated
-
 from langchain.agents import create_agent
 
 from src.agents.common import BaseAgent, BaseContext, load_chat_model
@@ -11,6 +10,12 @@ from src.agents.common.toolkits.mysql import get_mysql_tools
 from src.agents.common.tools import gen_tool_info, get_buildin_tools
 from src.services.mcp_service import get_tools_from_all_servers
 from src.utils import logger
+# from .middlewares.sql_retrieval_middleware import SqlRetrievalMiddleware
+
+# from src.agents.common.middlewares import TaskSkillMiddleware
+
+# _mcp_servers = {"mcp-server-chart": {"command": "npx", "args": ["-y", "@antv/mcp-server-chart"], "transport": "stdio"}}
+SQL_PAIRS_KB_ID = "kb_8d6732060fbf23a102aab44a50ffe953"
 
 
 @dataclass(kw_only=True)
@@ -25,6 +30,16 @@ class ReporterContext(BaseContext):
             "description": "包含内置的工具，以及用于数据库报表生成的 MySQL 工具包。",
         },
     )
+    knowledges: list[str] = field(
+        default_factory=list,
+        metadata={
+            "name": "知识库",
+            "options": lambda: [],
+            "description": "知识库列表，可以在左侧知识库页面中创建知识库。",
+            "type": "list",  # Explicitly mark as list type for frontend if needed
+        },
+    )
+
 
     def __post_init__(self):
         self.mcps = ["mcp-server-chart"]  # 默认启用 Charts MCPs
@@ -41,7 +56,9 @@ class SqlReporterAgent(BaseAgent):
     async def get_graph(self, **kwargs):
         """构建图"""
         context = self.context_schema.from_file(module_name=self.module_name)
-        all_mcp_tools = await get_tools_from_all_servers()
+        all_mcp_tools = (
+            await get_tools_from_all_servers()
+        )  # 因为异步加载，无法放在 RuntimeConfigMiddleware 的 __init__ 中
         # 合并 MySQL 工具和 MCP 工具
         extra_tools = get_mysql_tools() + all_mcp_tools
 

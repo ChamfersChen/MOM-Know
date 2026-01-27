@@ -76,8 +76,11 @@ export function useAgentStreamHandler({
    * @returns {Boolean} - Returns true if processing should stop (e.g. error, finished, interrupted)
    */
   const handleStreamChunk = (chunk, threadId) => {
-    const { status, msg, request_id, message: chunkMessage } = chunk
+    const { status, metadata, msg, request_id, message: chunkMessage } = chunk
     const threadState = getThreadState(threadId)
+
+    const tags = metadata?.tags || [];
+    if (tags.includes('internal')) return false;
 
     if (!threadState) return false
 

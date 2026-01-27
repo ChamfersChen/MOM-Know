@@ -14,8 +14,8 @@ export function useApproval({ getThreadState, resetOnGoingConv, fetchThreadMessa
   })
 
   // 处理审批逻辑
-  const handleApproval = async (approved, currentAgentId, agentConfigId = null) => {
-    const threadId = approvalState.threadId
+  const handleApproval = async (approved, currentAgentId, agentConfigId = null, toolName=null, toolArgs=null) => {
+    const threadId = approvalState.threadId;
     if (!threadId) {
       message.error('无效的审批请求')
       approvalState.showModal = false
@@ -52,6 +52,8 @@ export function useApproval({ getThreadState, resetOnGoingConv, fetchThreadMessa
         {
           thread_id: threadId,
           approved: approved,
+          tool_name: toolName,
+          tool_args: toolArgs,
           config: agentConfigId ? { agent_config_id: agentConfigId } : {}
         },
         {
@@ -89,9 +91,11 @@ export function useApproval({ getThreadState, resetOnGoingConv, fetchThreadMessa
       return false
     }
 
-    const { interrupt_info } = chunk
+    // const { interrupt_info } = chunk
+    const { interrupt } = chunk.meta
     const threadState = getThreadState(threadId)
 
+    console.log('Skipping non-approval chunk:', interrupt)
     if (!threadState) return false
 
     // 停止显示"处理中"状态，让用户可以看到并操作审批弹窗
@@ -99,10 +103,10 @@ export function useApproval({ getThreadState, resetOnGoingConv, fetchThreadMessa
 
     // 显示审批弹窗
     approvalState.showModal = true
-    approvalState.question = interrupt_info?.question || '是否批准以下操作？'
-    approvalState.operation = interrupt_info?.operation || '未知操作'
+    approvalState.question = interrupt?.question || '是否批准以下操作？'
+    approvalState.operation = interrupt?.operation || '未知操作'
     approvalState.threadId = chunk.thread_id || threadId
-    approvalState.interruptInfo = interrupt_info
+    approvalState.interruptInfo = interrupt
 
     // 刷新消息历史显示已执行的部分
     fetchThreadMessages({ agentId: currentAgentId, threadId: threadId })

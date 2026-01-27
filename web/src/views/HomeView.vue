@@ -32,9 +32,12 @@
           >
             <span>知识库</span>
           </router-link>
-        </nav>
+          <router-link to="/sqldatabase" class="nav-link" v-if="userStore.isLoggedIn && userStore.isAdmin">
+            <span>数据库</span>
+          </router-link>
+          </nav>
         <div class="header-actions">
-          <div class="github-link">
+          <!-- <div class="github-link">
             <a href="https://github.com/xerrors/Yuxi-Know" target="_blank">
               <svg height="20" width="20" viewBox="0 0 16 16" version="1.1">
                 <path
@@ -43,7 +46,7 @@
                 ></path>
               </svg>
             </a>
-          </div>
+          </div> -->
           <UserInfoComponent :show-button="true" />
         </div>
       </div>
@@ -55,12 +58,7 @@
           <!-- <p class="description">{{ infoStore.branding.description }}</p> -->
           <div class="hero-actions">
             <button class="button-base primary" @click="goToChat">开始对话</button>
-            <a
-              class="button-base secondary"
-              href="https://xerrors.github.io/Yuxi-Know/"
-              target="_blank"
-              >查看文档</a
-            >
+            <a class="button-base secondary" href="https://xerrors.github.io/Yuxi-Know/" target="_blank">查看文档</a>
           </div>
         </div>
         <div class="insight-panel" v-if="featureCards.length">
@@ -78,7 +76,7 @@
       </div>
     </div>
 
-    <div class="section action-section" v-if="actionLinks.length">
+    <!-- <div class="section action-section" v-if="actionLinks.length">
       <div class="action-grid">
         <a
           v-for="action in actionLinks"
@@ -97,7 +95,7 @@
           </div>
         </a>
       </div>
-    </div>
+    </div> -->
 
     <ProjectOverview />
 

@@ -353,6 +353,50 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  // 轮询后端API，若token不一致则自动登出
+  let pollTimer = null
+  function startTokenPoll() {
+    if (pollTimer) return // 避免重复启动
+    pollTimer = setInterval(async () => {
+      try {
+        const res = await fetch('/api/auth/token-check', {
+          headers: { ...getAuthHeaders() }
+        })
+        if (!res.ok) throw new Error('token-check failed')
+        const { access_token: serverToken } = await res.json()
+        if (serverToken !== token.value) {
+          console.warn('Token 不一致，广播登出')
+
+          // 1. 清理本地状态
+          logout()
+
+          // 2. 通知其他页面
+          localStorage.setItem('FORCE_LOGOUT', Date.now().toString())
+          // 3. 当前页面跳转
+          window.location.replace('/login_agents_show')
+          stopTokenPoll()
+        }
+      } catch (e) {
+        console.error('Token 轮询异常:', e)
+        logout()
+        stopTokenPoll()
+      }
+    }, 1000)
+  }
+
+  function stopTokenPoll() {
+    if (pollTimer) {
+      clearInterval(pollTimer)
+      pollTimer = null
+    }
+  }
+
+  // 暴露给外部调用
+  function pollApi(action = 'start') {
+    if (action === 'start') startTokenPoll()
+    else if (action === 'stop') stopTokenPoll()
+  }
+
   return {
     // 状态
     token,
@@ -383,7 +427,8 @@ export const useUserStore = defineStore('user', () => {
     validateUsernameAndGenerateUserId,
     uploadAvatar,
     getCurrentUser,
-    updateProfile
+    updateProfile,
+    pollApi
   }
 })
 

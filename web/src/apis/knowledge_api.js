@@ -36,6 +36,14 @@ export const databaseApi = {
     return apiAdminGet(`/api/knowledge/databases/${dbId}`)
   },
 
+  getDatabaseConnectionTables: async (databaseConfig) => {
+    return apiAdminPost(`/api/knowledge/databases/check`, databaseConfig)
+  },
+
+  importKnowledgeBaseFromDB: async (dbId, databaseConfig) => { 
+    return apiAdminPost(`/api/knowledge/databases/${dbId}/upload/database`, databaseConfig)
+  },
+
   /**
    * 更新知识库信息
    * @param {string} dbId - 知识库ID
