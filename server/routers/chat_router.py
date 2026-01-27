@@ -213,25 +213,6 @@ async def _save_tool_message(conv_mgr, msg_dict):
         logger.warning(f"Tool call {tool_call_id} not found for update")
 
 
-# async def _require_user_conversation(conv_mgr: ConversationManager, thread_id: str, user_id: str) -> Conversation:
-#     conversation = await conv_mgr.get_conversation_by_thread_id(thread_id)
-#     if not conversation or conversation.user_id != str(user_id) or conversation.status == "deleted":
-#         raise HTTPException(status_code=404, detail="对话线程不存在")
-#     return conversation
-
-
-def _serialize_attachment(record: dict) -> dict:
-    return {
-        "file_id": record.get("file_id"),
-        "file_name": record.get("file_name"),
-        "file_type": record.get("file_type"),
-        "file_size": record.get("file_size", 0),
-        "status": record.get("status", "parsed"),
-        "uploaded_at": record.get("uploaded_at"),
-        "truncated": record.get("truncated", False),
-    }
-
-
 async def save_partial_message(conv_mgr, thread_id, full_msg=None, error_message=None, error_type="interrupted"):
     """
     统一保存AI消息到数据库的函数
@@ -315,94 +296,7 @@ async def save_messages_from_langgraph_state(
         logger.error(f"Error saving messages from LangGraph state: {e}")
         logger.error(traceback.format_exc())
 
-
-async def _check_and_handle_interrupts(agent, langgraph_config, make_chunk, meta, thread_id):
-    """检查并处理 LangGraph 中断状态，发送人工审批请求到前端"""
-    try:
-        # 获取 agent 的 graph 对象
-        graph = await agent.get_graph()
-
-        # 获取当前状态，检查是否有中断
-        state = await graph.aget_state(langgraph_config)
-
-        if not state or not state.values:
-            logger.debug("No state found when checking for interrupts")
-            return
-
-        # 检查是否有中断信息
-        # LangGraph 中断信息通常在 state.tasks 或 __interrupt__ 字段中
-        interrupt_info = None
-
-        # 方法1: 检查 state.tasks 中的中断
-        if hasattr(state, "tasks") and state.tasks:
-            for task in state.tasks:
-                if hasattr(task, "interrupts") and task.interrupts:
-                    interrupt_info = task.interrupts[0]  # 取第一个中断
-                    break
-
-        # 方法2: 检查 state.values 中的 __interrupt__ 字段
-        if not interrupt_info and state.values:
-            interrupt_data = state.values.get("__interrupt__")
-            if interrupt_data and isinstance(interrupt_data, list) and len(interrupt_data) > 0:
-                interrupt_info = interrupt_data[0]
-
-        # 方法3: 检查 state.next 字段，如果指向中断节点
-        if not interrupt_info and hasattr(state, "next") and state.next:
-            # 如果 next 指向某个需要审批的节点，可能需要额外处理
-            logger.debug(f"State next nodes: {state.next}")
-
-        if interrupt_info:
-            logger.info(f"Human approval interrupt detected: {interrupt_info}")
-
-            # 提取中断信息
-            question = "是否批准以下操作？"
-            operation = "需要人工审批的操作"
-            action_requests = interrupt_info.value['action_requests']
-            if action_requests:
-                operation = action_requests[0]
-            
-            # 发送人工审批请求到前端
-            logger.info(f"Sending human approval request - question: {question}, operation: {operation}")
-
-            yield make_chunk(
-                status="human_approval_required",
-                thread_id=thread_id,
-                interrupt_info={"question": question, "operation": operation},
-            )
-            # if isinstance(interrupt_info, dict):
-            #     question = interrupt_info.get("question", question)
-            #     operation = interrupt_info.get("operation", operation)
-            # elif isinstance(interrupt_info, (list, tuple)) and len(interrupt_info) > 0:
-            #     # 有些情况下中断信息可能是元组形式
-            #     first_interrupt = interrupt_info[0]
-            #     if isinstance(first_interrupt, dict):
-            #         question = first_interrupt.get("question", question)
-            #         operation = first_interrupt.get("operation", operation)
-            #     else:
-            #         operation = str(first_interrupt)
-            # else:
-            #     operation = str(interrupt_info)
-
-            # # 发送人工审批请求到前端
-            # logger.info(f"Sending human approval request - question: {question}, operation: {operation}")
-
-            # yield make_chunk(
-            #     status="human_approval_required",
-            #     thread_id=thread_id,
-            #     interrupt_info={"question": question, "operation": operation},
-            # )
-
-        else:
-            logger.debug("No human approval interrupt detected")
-
-    except Exception as e:
-        logger.error(f"Error checking for interrupts: {e}")
-        logger.error(traceback.format_exc())
-        # 不抛出异常，避免影响主流程
-
-
 # =============================================================================
-
 
 @chat.post("/call")
 async def call(query: str = Body(...), meta: dict = Body(None), current_user: User = Depends(get_required_user)):
@@ -736,6 +630,8 @@ async def resume_agent_chat(
             agent_id=agent_id,
             thread_id=thread_id,
             approved=approved,
+            tool_name=tool_name,
+            tool_args=tool_args,
             meta=meta,
             config=config,
             current_user=current_user,

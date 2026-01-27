@@ -31,86 +31,72 @@ class SqlDataBaseManager:
         self.db_instances: dict[str, MySQLConnector] = {}
 
         # 全局数据库元信息 {db_id: metadata_with_kb_type}
-        self.global_databases_meta: dict[str, dict] = {}
+        # self.global_databases_meta: dict[str, dict] = {}
 
-        self.db_name_to_id: dict[str, str] = {}
+        # self.db_name_to_id: dict[str, str] = {}
 
         # 元数据锁
         self._metadata_lock = asyncio.Lock()
 
         # 加载全局元数据
-        self._load_global_metadata()
-        self._normalize_global_metadata()
+        # self._load_global_metadata()
+        # self._normalize_global_metadata()
 
+        # # 初始化已存在的知识库实例
+        # self._initialize_existing_dbs()
+
+
+    async def initialize(self):
+        """异步初始化"""
         # 初始化已存在的知识库实例
         self._initialize_existing_dbs()
+        logger.info("SqlDatabaseManager initialized")
 
-        logger.info("KnowledgeBaseManager initialized")
+    # def _update_db_name2id(self):
+    #     for database_id, database_meta in self.global_databases_meta.items():
+    #         database_name = database_meta.get("name")
+    #         self.db_name_to_id[database_name] = database_id
 
-    def _update_db_name2id(self):
-        for database_id, database_meta in self.global_databases_meta.items():
-            database_name = database_meta.get("name")
-            self.db_name_to_id[database_name] = database_id
-
-    def _load_global_metadata(self):
-        """加载全局元数据"""
-        meta_file = os.path.join(self.work_dir, "global_metadata.json")
-
-        if os.path.exists(meta_file):
-            try:
-                with open(meta_file, encoding="utf-8") as f:
-                    data:dict = json.load(f)
-                    self.global_databases_meta = data.get("databases", {})
-                logger.info(f"Loaded global metadata for {len(self.global_databases_meta)} databases")
-            except Exception as e:
-                logger.error(f"Failed to load global metadata: {e}")
-                # 尝试从备份恢复
-                backup_file = f"{meta_file}.backup"
-                if os.path.exists(backup_file):
-                    try:
-                        with open(backup_file, encoding="utf-8") as f:
-                            data = json.load(f)
-                            self.global_databases_meta = data.get("databases", {})
-                        logger.info("Loaded global metadata from backup")
-                        # 恢复备份文件
-                        shutil.copy2(backup_file, meta_file)
-                        return
-                    except Exception as backup_e:
-                        logger.error(f"Failed to load backup: {backup_e}")
-
-                # 如果加载失败，初始化为空状态
-                logger.warning("Initializing empty global metadata")
-                self.global_databases_meta = {}
-
-
-    
-    def _normalize_global_metadata(self) -> None:
-        """Normalize stored timestamps within the global metadata cache."""
-        for meta in self.global_databases_meta.values():
-            if "created_at" in meta:
-                try:
-                    dt_value = coerce_any_to_utc_datetime(meta.get("created_at"))
-                    if dt_value:
-                        meta["created_at"] = utc_isoformat(dt_value)
-                        continue
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning(f"Failed to normalize database metadata timestamp {meta.get('created_at')!r}: {exc}")
-
+    async def _load_all_metadata(self):
+        """异步加载所有元数据 - 保留兼容性的空方法，现在由 KB 实例自行加载"""
+        pass
 
     def _initialize_existing_dbs(self):
-        """初始化已存在的数据库库实例"""
-        db_types_in_use = set()
-        for db_meta in self.global_databases_meta.values():
-            db_type = db_meta.get("db_type", "mysql")  # 默认为mysql
-            db_types_in_use.add(db_type)
+        """初始化已存在的知识库实例"""
+        from src.repositories.sql_database_repository import SqlDatabaseRepository
 
-        # 为每种使用中的知识库类型创建实例
-        for db_type in db_types_in_use:
-            try:
-                self._get_or_create_db_instance(db_type)
-            except Exception as e:
-                logger.error(f"Failed to initialize {db_type} knowledge base: {e}")
+        async def _async_init():
+            db_repo = SqlDatabaseRepository()
+            rows = await db_repo.get_all()
 
+            db_types_in_use = set()
+            for row in rows:
+                db_type = row.db_type or "mysql"
+                db_types_in_use.add(db_type)
+
+            logger.info(f"[InitializeKB] 发现 {len(db_types_in_use)} 种知识库类型: {db_types_in_use}")
+
+            # 为每种使用中的知识库类型创建实例并加载元数据
+            for db_type in db_types_in_use:
+                try:
+                    db_instance = self._get_or_create_db_instance(db_type)
+                    # 让 KB 实例自行加载元数据
+                    await db_instance._load_metadata()
+                    logger.info(f"[InitializeKB] {db_type} 实例已初始化")
+                except Exception as e:
+                    logger.error(f"Failed to initialize {db_type} knowledge base: {e}")
+                    import traceback
+
+                    logger.error(traceback.format_exc())
+
+        # 在事件循环中运行异步初始化
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_async_init())
+        except RuntimeError:
+            asyncio.run(_async_init())
+
+    
     def _get_or_create_db_instance(self, db_type: str) -> MySQLConnector:
         """
         获取或创建知识库实例
@@ -121,7 +107,7 @@ class SqlDataBaseManager:
         Returns:
             知识库实例
         """
-        self._update_db_name2id()
+        # self._update_db_name2id()
         if db_type in self.db_instances:
             return self.db_instances[db_type]
 
@@ -132,8 +118,8 @@ class SqlDataBaseManager:
         self.db_instances[db_type] = db_instance
         logger.info(f"Created {db_type} knowledge base instance")
         return db_instance
-    
-    def _get_db_for_database(self, db_id: str) -> MySQLConnector:
+
+    async def _get_db_for_database(self, db_id: str) -> MySQLConnector:
         """
         根据数据库ID获取对应的知识库实例
 
@@ -146,56 +132,54 @@ class SqlDataBaseManager:
         Raises:
             KBNotFoundError: 数据库不存在或知识库类型不支持
         """
-        if db_id not in self.global_databases_meta:
+        from src.repositories.sql_database_repository import SqlDatabaseRepository
+
+        db_repo = SqlDatabaseRepository()
+        db = await db_repo.get_by_id(db_id)
+
+        if db is None:
             raise DBNotFoundError(f"Database {db_id} not found")
 
-        db_type = self.global_databases_meta[db_id].get("db_type", "mysql")
+        db_type = db.db_type or "lightrag"
 
         if not DBConnectorBaseFactory.is_type_supported(db_type):
             raise DBNotFoundError(f"Unsupported knowledge base type: {db_type}")
 
         return self._get_or_create_db_instance(db_type)
 
-    def _save_global_metadata(self):
-        """保存全局元数据"""
-        self._normalize_global_metadata()
-        meta_file = os.path.join(self.work_dir, "global_metadata.json")
-        backup_file = f"{meta_file}.backup"
-
+    def _get_db_for_database_sync(self, db_id: str) -> MySQLConnector:
+        """同步版本的 _get_db_for_database，用于兼容同步调用"""
         try:
-            # 创建简单备份
-            if os.path.exists(meta_file):
-                shutil.copy2(meta_file, backup_file)
-            logger.debug(f"global datasets meta: {self.global_databases_meta}")
-            # 准备数据
-            data = {"databases": self.global_databases_meta, "updated_at": utc_isoformat(), "version": "2.0"}
-
-            # 原子性写入（使用临时文件）
-            with tempfile.NamedTemporaryFile(
-                mode="w", dir=os.path.dirname(meta_file), prefix=".tmp_", suffix=".json", delete=False, encoding="utf-8"
-            ) as tmp_file:
-                json.dump(data, tmp_file, ensure_ascii=False, indent=2)
-                temp_path = tmp_file.name
-
-            os.replace(temp_path, meta_file)
-            logger.debug("Saved global metadata")
-
-        except Exception as e:
-            logger.error(f"Failed to save global metadata: {e}")
-            # 尝试恢复备份
-            if os.path.exists(backup_file):
-                try:
-                    shutil.copy2(backup_file, meta_file)
-                    logger.info("Restored global metadata from backup")
-                except Exception as restore_e:
-                    logger.error(f"Failed to restore backup: {restore_e}")
-            raise e
-       
-        self._update_db_name2id()
+            loop = asyncio.get_running_loop()
+            return loop.run_until_complete(self._get_db_for_database(db_id))
+        except RuntimeError:
+            return asyncio.run(self._get_db_for_database(db_id))
 
     # =============================================================================
     # 统一的外部接口 - 与原始 LightRagBasedKB 兼容
     # =============================================================================
+
+    async def aget_kb(self, db_id: str) -> MySQLConnector:
+        """异步获取知识库实例
+
+        Args:
+            db_id: 数据库ID
+
+        Returns:
+            知识库实例
+        """
+        return await self._get_db_for_database(db_id)
+
+    def get_kb(self, db_id: str) -> MySQLConnector:
+        """同步获取知识库实例（兼容性方法，用于同步上下文）
+
+        Args:
+            db_id: 数据库ID
+
+        Returns:
+            知识库实例
+        """
+        return self._get_db_for_database_sync(db_id)
 
     def test_connection(self, config: dict) -> bool:
         try:
@@ -218,6 +202,24 @@ class SqlDataBaseManager:
             logger.error(f"Failed to connect to MySQL: {e}")
             raise ConnectionError(f"MySQL connection failed: {e}")
 
+    async def get_databases(self) -> dict:
+        """获取所有数据库信息"""
+        from src.repositories.sql_database_repository import SqlDatabaseRepository
+
+        db_repo = SqlDatabaseRepository()
+        rows = await db_repo.get_all()
+
+        all_databases = []
+        for row in rows:
+            db_instance = self._get_or_create_db_instance(row.db_type or "mysql")
+            db_info = db_instance.get_database_info(row.db_id)
+            if db_info:
+                # 补充 share_config 和 additional_params
+                db_info["share_config"] = row.share_config or {"is_shared": True, "accessible_departments": []}
+                # db_info["additional_params"] = row.additional_params or {}
+                all_databases.append(db_info)
+        return {"databases": all_databases}
+
     def get_database_instance(self, db_id: str) -> MySQLConnector:
         """Public accessor to fetch the underlying knowledge base instance by database id.
 
@@ -226,19 +228,124 @@ class SqlDataBaseManager:
         """
         return self._get_db_for_database(db_id)
 
-    def get_databases(self) -> dict:
-        """获取所有数据库信息"""
-        all_databases = []
+    def _get_or_create_kb_instance(self, kb_type: str) -> MySQLConnector:
+        """
+        获取或创建知识库实例
 
-        # 收集所有知识库的数据库信息
-        for kb_type, kb_instance in self.db_instances.items():
-            kb_databases = kb_instance.get_databases()["databases"]
-            all_databases.extend(kb_databases)
+        Args:
+            kb_type: 知识库类型
 
-        return {"databases": all_databases}
+        Returns:
+            知识库实例
+        """
+        if kb_type in self.db_instances:
+            return self.db_instances[kb_type]
+
+        # 创建新的知识库实例
+        kb_work_dir = os.path.join(self.work_dir, f"{kb_type}_data")
+        kb_instance = DBConnectorBaseFactory.create(kb_type, kb_work_dir)
+
+        self.db_instances[kb_type] = kb_instance
+        logger.info(f"Created {kb_type} knowledge base instance")
+        return kb_instance
+
+    async def check_accessible(self, user: dict, db_id: str) -> bool:
+        """检查用户是否有权限访问数据库
+
+        Args:
+            user: 用户信息字典
+            db_id: 数据库ID
+
+        Returns:
+            bool: 是否有权限
+        """
+        # 超级管理员有权访问所有
+        if user.get("role") == "superadmin":
+            return True
+
+        from src.repositories.sql_database_repository import SqlDatabaseRepository
+
+        sdb_repo = SqlDatabaseRepository()
+        sdb = await sdb_repo.get_by_id(db_id)
+        if sdb is None:
+            return False
+
+        share_config = sdb.share_config or {}
+        is_shared = share_config.get("is_shared", True)
+
+        # 如果是全员共享，则有权限
+        if is_shared:
+            return True
+
+        # 检查部门权限
+        user_department_id = user.get("department_id")
+        accessible_departments = share_config.get("accessible_departments", [])
+
+        if user_department_id is None:
+            return False
+
+        # 转换为整数进行比较（前端可能传递字符串，后端存储为整数）
+        try:
+            user_department_id = int(user_department_id)
+            accessible_departments = [int(d) for d in accessible_departments]
+        except (ValueError, TypeError):
+            return False
+
+        return user_department_id in accessible_departments
+
+
+    async def get_databases_by_user(self, user: dict) -> dict:
+        """根据用户权限获取知识库列表
+
+        Args:
+            user: 用户信息字典，包含 role 和 department_id
+
+        Returns:
+            过滤后的知识库列表
+        """
+        all_databases = (await self.get_databases()).get("databases", [])
+
+        # 超级管理员可以看到所有知识库
+        if user.get("role") == "superadmin":
+            return {"databases": all_databases}
+
+        filtered_databases = []
+
+        for db in all_databases:
+            db_id = db.get("db_id")
+            if not db_id:
+                continue
+
+            if await self.check_accessible(user, db_id):
+                filtered_databases.append(db)
+
+        return {"databases": filtered_databases}
+
+    async def database_name_exists(self, database_name: str) -> bool:
+        """检查知识库名称是否已存在"""
+        from src.repositories.sql_database_repository import SqlDatabaseRepository
+
+        from src.storage.postgres.manager import pg_manager
+
+        # 确保 pg_manager 已初始化
+        if not pg_manager._initialized:
+            pg_manager.initialize()
+
+        sdb_repo = SqlDatabaseRepository()
+        rows = await sdb_repo.get_all()
+        for row in rows:
+            if (row.name or "").lower() == database_name.lower():
+                return True
+        return False
 
     async def create_database(
-        self, database_name: str, description: str, db_type: str, **kwargs
+        self, 
+        database_name: str, 
+        description: str, 
+        db_type: str, 
+        connect_info:dict, 
+        share_config: dict | None = None,
+        **kwargs
     ) -> dict:
         """
         创建数据库
@@ -256,37 +363,48 @@ class SqlDataBaseManager:
         if not DBConnectorBaseFactory.is_type_supported(db_type):
             available_types = list(DBConnectorBaseFactory.get_available_types().keys())
             raise ValueError(f"Unsupported knowledge base type: {db_type}. Available types: {available_types}")
+        # 检查名称是否已存在
+        if await self.database_name_exists(database_name):
+            raise ValueError(f"数据库名称 '{database_name}' 已存在，请使用其他名称")
+
+        # 默认共享配置
+        if share_config is None:
+            share_config = {"is_shared": True, "accessible_departments": []}
 
         db_instance = self._get_or_create_db_instance(db_type)
-
-        db_info = db_instance.create_database(database_name, description, **kwargs)
-
+        db_info = await db_instance.create_database(database_name, description, connect_info=connect_info, **kwargs)
         db_id = db_info["db_id"]
 
-        async with self._metadata_lock:
-            self.global_databases_meta[db_id] = {
-                "name": database_name,
-                "description": description,
-                "db_type": db_type,
-                "created_at": utc_isoformat(),
-                # "connection_params": kwargs.copy(),
-            }
-            self._save_global_metadata()
+        from src.repositories.sql_database_repository import SqlDatabaseRepository
+
+        sdb_repo = SqlDatabaseRepository()
+        updated = await sdb_repo.update(db_id, {"share_config": share_config})
+        if updated is None:
+            await sdb_repo.create(
+                {
+                    "db_id": db_id,
+                    "name": database_name,
+                    "description": description,
+                    "db_type": db_type,
+                    "connect_info": connect_info,
+                    "share_config": share_config,
+                }
+            )
 
         logger.info(f"Created {db_type} database: {database_name} ({db_id}) with {kwargs}")
-        
+        db_info["share_config"] = share_config
         return db_info
 
     async def delete_database(self, db_id: str) -> dict:
         """删除数据库"""
+        from src.repositories.sql_database_repository import SqlDatabaseRepository
         try:
-            kb_instance = self._get_db_for_database(db_id)
-            result = kb_instance.delete_database(db_id)
+            db_instance = await self._get_db_for_database(db_id)
+            result = db_instance.delete_database(db_id)
 
-            async with self._metadata_lock:
-                if db_id in self.global_databases_meta:
-                    del self.global_databases_meta[db_id]
-                    self._save_global_metadata()
+            # 删除数据库记录
+            db_repo = SqlDatabaseRepository()
+            await db_repo.delete(db_id)
 
             return result
         except DBNotFoundError as e:
@@ -301,33 +419,69 @@ class SqlDataBaseManager:
         db_instance = self._get_db_for_database(db_id)
         return db_instance.invalidate_connection(db_id)
 
-    def get_database_info(self, db_id: str) -> dict | None:
+    async def get_database_info(self, db_id: str) -> dict | None:
         """获取数据库详细信息"""
-        try:
-            kb_instance = self._get_db_for_database(db_id)
-            db_info = kb_instance.get_database_info(db_id)
+        from src.repositories.sql_database_repository import SqlDatabaseRepository
 
-            # 添加全局元数据中的additional_params信息
-            if db_info and db_id in self.global_databases_meta:
-                global_meta = self.global_databases_meta[db_id]
-                additional_params = global_meta.get("additional_params", {})
-                if additional_params:
-                    db_info["additional_params"] = additional_params
-
-            return db_info
-        except DBNotFoundError:
+        db_repo = SqlDatabaseRepository()
+        db = await db_repo.get_by_id(db_id)
+        if db is None:
             return None
+
+        try:
+            db_instance = await self._get_db_for_database(db_id)
+            if not len(db_instance.tables_meta):
+                await self.initialize_tables(db_id)
+                logger.debug(f"Initialize tables for {db_id}")
+            db_info = db_instance.get_database_info(db_id)
+        except DBNotFoundError:
+            db_info = {
+                "db_id": db_id,
+                "name": db.name,
+                "description": db.description,
+                "connect_info": db.connect_info,
+                "db_type": db.db_type,
+                "tables": {},
+                "selected_tables": {},
+                "row_count": 0,
+                "status": "已连接",
+            }
+
+        # 添加数据库中的附加字段
+        db_info["share_config"] = db.share_config or {"is_shared": True, "accessible_departments": []}
+        return db_info
 
 
     async def initialize_tables(self, db_id: str) -> dict | None:
-        db_instance = self._get_db_for_database(db_id)
+        db_instance = await self._get_db_for_database(db_id)
         return await db_instance.initalize_table(db_id)
 
 
     async def select_tables(self, db_id: str, table_ids: list[dict]) -> list[dict]:
         """设置表信息"""
-        db_instance = self._get_db_for_database(db_id)
+        db_instance = await self._get_db_for_database(db_id)
         return await db_instance.select_tables(db_id, table_ids)
+
+    async def update_database(self, db_id:str, name:str, description:str, share_config:dict):
+        from src.repositories.sql_database_repository import SqlDatabaseRepository
+
+        db_instance = await self._get_db_for_database(db_id)
+        db_instance.update_database(db_id, name, description, share_config)
+
+        # 准备更新数据
+        update_data: dict = {
+            "name": name,
+            "description": description,
+        }
+        if share_config is not None:
+            update_data["share_config"] = share_config
+
+        # 保存到数据库
+        db_repo = SqlDatabaseRepository()
+        await db_repo.update(db_id, update_data)
+
+        return await self.get_database_info(db_id)
+
     
     async def unselect_table(self, db_id: str, table_id: str) -> dict:
         """取消设置表"""
@@ -341,7 +495,7 @@ class SqlDataBaseManager:
 
     async def get_tables(self, db_id: str) -> dict:
         """获取数据库表信息"""
-        db_instance = self._get_db_for_database(db_id)
+        db_instance = await self._get_db_for_database(db_id)
         return await db_instance.get_tables()
 
     async def get_selected_tables(self, db_id: str) -> dict:

@@ -6,6 +6,7 @@ from src.services.task_service import tasker
 from src.services.mcp_service import init_mcp_servers
 from src.storage.postgres.manager import pg_manager
 from src.knowledge import knowledge_base
+from src.sql_database import sql_database
 from src.utils import logger
 
 
@@ -31,6 +32,11 @@ async def lifespan(app: FastAPI):
         await knowledge_base.initialize()
     except Exception as e:
         logger.error(f"Failed to initialize knowledge base manager: {e}")
+    # 初始化Sql数据库管理器
+    try:
+        await sql_database.initialize()
+    except Exception as e:
+        logger.error(f"Failed to initialize sql database manager: {e}")
 
     await tasker.start()
     yield

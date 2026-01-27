@@ -71,6 +71,7 @@ onMounted(() => {
   initConfig()
 })
 
+
 // 监听本地 config 变化，同步到父组件
 watch(
   config,
@@ -83,6 +84,7 @@ watch(
   },
   { deep: true }
 )
+
 
 // 监听共享模式变化
 watch(

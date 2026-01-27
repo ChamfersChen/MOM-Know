@@ -17,10 +17,11 @@ class MySQLConnector(ConnectorBase):
 
     def __init__(self, work_dir:str, **kwargs):
         super().__init__(work_dir)
-        self.mysql_host = kwargs.get("mysql_host", os.getenv("MYSQL_HOST") or "")
-        self.mysql_user = kwargs.get("mysql_user", os.getenv("MYSQL_USER") or "")
-        self.mysql_password = kwargs.get("mysql_password", os.getenv("MYSQL_PASSWORD") or "")
-        self.mysql_port = kwargs.get("mysql_port", os.getenv("MYSQL_PORT") or "")
+        self.host = kwargs.get("host", os.getenv("MYSQL_HOST") or "")
+        self.user = kwargs.get("user", os.getenv("MYSQL_USER") or "")
+        self.password = kwargs.get("password", os.getenv("MYSQL_PASSWORD") or "")
+        self.port = kwargs.get("port", os.getenv("MYSQL_PORT") or "")
+        self.database = kwargs.get("database", os.getenv("MYSQL_DATABASE") or "")
 
         # 存储集合映射
         self.connections: dict[str, pymysql.Connection] = {}
@@ -48,16 +49,22 @@ class MySQLConnector(ConnectorBase):
         
         return self.connections[db_id]
 
+    def prepare_table_name_metadata(self, db_id: str, table_name) -> dict:
+        """
+        准备文件或URL的元数据
+        """
+        table_id = f"table_{hashstr(str(table_name) + str(time.time()), 6)}"
+
+        return {
+            "database_id": db_id,
+            "table_id": table_id,
+            'is_choose': False
+        }
 
     async def initalize_table(self, db_id):
-        processed_tables_info = {}
-        cursors = self.get_cursors()
-        data = cursors.get(db_id)
-        assert data, "No cursor found"
-        # for db_id, data in cursors.items():
-        _cursor = data['cursor']
-        db_name = data['db_name']
-        with _cursor as cursor:
+
+        db_name = self.databases_meta[db_id]['connect_info']['database']
+        with self.get_cursor(db_id) as cursor:
             # 获取表名
             sql = f"SELECT TABLE_NAME AS table_name, TABLE_COMMENT AS table_comment FROM  information_schema.tables WHERE table_schema = '{db_name}';"
             cursor.execute(sql)
@@ -70,31 +77,50 @@ class MySQLConnector(ConnectorBase):
                 table_name = table['table_name']
                 table_comment = table['table_comment']
                 metadata = self.prepare_table_name_metadata(db_id, table_name)
-                table_id = metadata["table_id"]
-                metadata['table_name'] = table_name
-                metadata['table_comment'] = table_comment
+                metadata['tablename'] = table_name
+                metadata['description'] = table_comment
 
                 table_record = metadata.copy()
-                # del table_record["table_id"]
-                async with self._metadata_lock:
-                    self.tables_meta[table_id] = table_record
-                    self._save_metadata()
+                self.tables_meta[table_name] = table_record
 
-                # table_record["table_id"] = table_id
-                processed_tables_info[table_id] = table_record
+            await self._save_metadata()
 
-        return processed_tables_info
+    def update_database(self, db_id: str, name: str, description: str, share_config:dict=None) -> dict:
+        """
+        更新数据库
+
+        Args:
+            db_id: 数据库ID
+            name: 新名称
+            description: 新描述
+
+        Returns:
+            更新后的数据库信息
+        """
+        if db_id not in self.databases_meta:
+            raise ValueError(f"数据库 {db_id} 不存在")
+
+        self.databases_meta[db_id]["name"] = name
+        self.databases_meta[db_id]["description"] = description
+
+        # 如果提供了 llm_info，则更新（仅针对 LightRAG 类型）
+        if share_config is not None:
+            self.databases_meta[db_id]["share_config"] = share_config
+
+        asyncio.create_task(self._save_metadata())
+
+        return self.get_database_info(db_id)
 
 
     def _create_connection(self, db_id) -> pymysql.Connection:
         """创建新的数据库连接"""
         max_retries = 3
-        config = self.databases_meta[db_id]['connection_info']
+        config = self.databases_meta[db_id]['connect_info']
         for attempt in range(max_retries):
             try:
                 connection = pymysql.connect(
                     host=config["host"],
-                    user=config["user"],
+                    user=config["username"],
                     password=config["password"],
                     database=config["database"],
                     port=config["port"],
@@ -106,7 +132,7 @@ class MySQLConnector(ConnectorBase):
                     autocommit=True,  # 自动提交
                 )
                 logger.info(f"MySQL connection established successfully (attempt {attempt + 1})")
-                self.connections[db_id] = connection
+                # self.connections[db_id] = connection
                 return connection
 
             except MySQLError as e:
@@ -301,3 +327,40 @@ class MySQLConnector(ConnectorBase):
             raise Exception(f"File not found: {table_id}")
 
         return {"meta": self.tables_meta[table_id]}
+    
+    async def delete_database(self, db_id: str) -> dict:
+        """
+        删除数据库
+
+        Args:
+            db_id: 数据库ID
+
+        Returns:
+            操作结果
+        """
+        if db_id in self.databases_meta:
+            self.get_connection(db_id).close()
+
+            from src.repositories.sql_database_repository import SqlDatabaseRepository
+
+            # 删除相关文件记录
+            tables_to_delete = [fid for fid, finfo in self.tables_meta.items() if finfo.get("database_id") == db_id]
+            for table_id in tables_to_delete:
+                del self.tables_meta[table_id]
+
+            # 删除数据库记录
+            del self.databases_meta[db_id]
+            await SqlDatabaseRepository().delete(db_id)
+            await self._save_metadata()
+
+        # 删除工作目录
+        working_dir = os.path.join(self.work_dir, db_id)
+        if os.path.exists(working_dir):
+            import shutil
+
+            try:
+                shutil.rmtree(working_dir)
+            except Exception as e:
+                logger.error(f"Error deleting working directory {working_dir}: {e}")
+
+        return {"message": "删除成功"}

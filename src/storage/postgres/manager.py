@@ -11,6 +11,7 @@ from sqlalchemy.orm import declarative_base
 from server.utils.singleton import SingletonMeta
 from src.storage.postgres.models_business import Base as BusinessBase
 from src.storage.postgres.models_knowledge import Base as KnowledgeBase
+from src.storage.postgres.models_sql_database import Base as SQLDatabaseBase
 from src.utils import logger
 
 # 合并两个 Base
@@ -82,6 +83,7 @@ class PostgresManager(metaclass=SingletonMeta):
         async with self.async_engine.begin() as conn:
             await conn.run_sync(KnowledgeBase.metadata.create_all)
             await conn.run_sync(BusinessBase.metadata.create_all)
+            await conn.run_sync(SQLDatabaseBase.metadata.create_all)
         logger.info("PostgreSQL tables created/checked (knowledge + business)")
 
     async def create_business_tables(self):
@@ -97,6 +99,7 @@ class PostgresManager(metaclass=SingletonMeta):
         async with self.async_engine.begin() as conn:
             await conn.run_sync(BusinessBase.metadata.drop_all)
             await conn.run_sync(KnowledgeBase.metadata.drop_all)
+            await conn.run_sync(SQLDatabaseBase.metadata.create_all)
         logger.info("PostgreSQL tables dropped")
 
     async def ensure_knowledge_schema(self):

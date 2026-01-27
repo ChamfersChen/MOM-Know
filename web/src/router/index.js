@@ -103,7 +103,7 @@ const router = createRouter({
         {
           path: ':database_id',
           name: 'SqlDatabaseInfoComp',
-          component: () => import('../views/SqlKnowledgeInfoView.vue'),
+          component: () => import('../views/SqlDataBaseInfoView.vue'),
           meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
         }
       ]

@@ -55,44 +55,45 @@ class ConnectorBase(ABC):
         os.makedirs(work_dir, exist_ok=True)
 
         # 自动加载元数据
-        self._load_metadata()
-        self._normalize_metadata_state()
+        # self._load_metadata()
+        # self._normalize_metadata_state()
 
-    def _load_metadata(self):
-        """加载元数据"""
-        meta_file = os.path.join(self.work_dir, f"metadata_{self.db_type}.json")
+    async def _load_metadata(self):
+        from src.repositories.sql_database_repository import SqlDatabaseRepository
+        from src.repositories.sql_database_tables_repository import SqlDatabaseTableRepository
 
-        if os.path.exists(meta_file):
-            try:
-                with open(meta_file, encoding="utf-8") as f:
-                    data = json.load(f)
-                    self.databases_meta = data.get("databases", {})
-                    self.tables_meta = data.get("tables", {})
-                    self.selected_tables_meta = data.get("selected_tables", {})
-                logger.info(f"Loaded {self.db_type} metadata for {len(self.databases_meta)} databases")
-            except Exception as e:
-                logger.error(f"Failed to load {self.db_type} metadata: {e}")
-                # 尝试从备份恢复
-                backup_file = f"{meta_file}.backup"
-                if os.path.exists(backup_file):
-                    try:
-                        with open(backup_file, encoding="utf-8") as f:
-                            data = json.load(f)
-                            self.databases_meta = data.get("databases", {})
-                            self.tables_meta = data.get("tables", {})
-                            self.selected_tables_meta = data.get("selected_tables", {})
-                        logger.info(f"Loaded {self.db_type} metadata from backup")
-                        # 恢复备份文件
-                        shutil.copy2(backup_file, meta_file)
-                        return
-                    except Exception as backup_e:
-                        logger.error(f"Failed to load backup: {backup_e}")
+        db_repo = SqlDatabaseRepository()
+        table_repo = SqlDatabaseTableRepository()
+        # eval_repo = EvaluationRepository()
 
-                # 如果加载失败，初始化为空状态
-                logger.warning(f"Initializing empty {self.db_type} metadata")
-                self.databases_meta = {}
-                self.tables_meta = {}
-                self.selected_tables_meta = {}
+        databases = [db for db in await db_repo.get_all() if db.db_type == self.db_type]
+        self.databases_meta = {
+            db.db_id: {
+                "name": db.name,
+                "description": db.description,
+                "db_type": db.db_type,
+                "connect_info": db.connect_info,
+                "share_config": db.share_config,
+                "created_at": utc_isoformat(db.created_at) if db.created_at else utc_isoformat(),
+            }
+            for db in databases
+        }
+
+        self.tables_meta = {}
+        for db in databases:
+            for record in await table_repo.list_by_db_id(db.db_id):
+                self.tables_meta[record.tablename] = {
+                    "table_id": record.table_id,
+                    "database_id": record.database_id,
+                    "tablename": record.tablename,
+                    "description": record.description,
+                    "is_choose": record.is_choose,
+                    "created_at": utc_isoformat(record.created_at) if record.created_at else None,
+                    "updated_at": utc_isoformat(record.updated_at) if record.updated_at else None,
+                }
+
+        logger.info(f"Loaded {self.db_type} metadata from database for {len(self.databases_meta)} databases")
+
     @staticmethod
     def _normalize_timestamp(value: Any) -> str | None:
         """Convert persisted timestamps to a normalized UTC ISO string."""
@@ -132,19 +133,6 @@ class ConnectorBase(ABC):
         """知识库类型标识"""
         pass
 
-    # @abstractmethod
-    # async def _create_db_instance(self, db_id: str, config: dict) -> Any:
-    #     """
-    #     创建底层知识库实例
-
-    #     Args:
-    #         db_id: 数据库ID
-    #         config: 配置信息
-
-    #     Returns:
-    #         底层知识库实例
-    #     """
-    #     pass
 
     @abstractmethod
     async def _create_connection(self) -> Any:
@@ -161,14 +149,51 @@ class ConnectorBase(ABC):
         pass
 
 
+    async def move_table(self, db_id: str, table_id: str, new_parent_id: str | None) -> dict:
+        """
+        Move a file or folder to a new parent folder.
+
+        Args:
+            db_id: Database ID
+            file_id: File/Folder ID to move
+            new_parent_id: New parent folder ID (None for root)
+
+        Returns:
+            dict: Updated metadata
+        """
+        if table_id not in self.tables_meta:
+            raise ValueError(f"Tables {table_id} not found")
+
+        meta = self.tables_meta[table_id]
+        if meta.get("database_id") != db_id:
+            raise ValueError(f"File {table_id} does not belong to database {db_id}")
+
+        # Basic cycle detection for folders
+        if meta.get("is_folder") and new_parent_id:
+            # Check if new_parent_id is a child of file_id (or is file_id itself)
+            if new_parent_id == table_id:
+                raise ValueError("Cannot move a folder into itself")
+
+            # Walk up the tree from new_parent_id
+            current = new_parent_id
+            while current:
+                parent_meta = self.files_meta.get(current)
+                if not parent_meta:
+                    break  # Should not happen if integrity is maintained
+                if current == table_id:
+                    raise ValueError("Cannot move a folder into its own subfolder")
+                current = parent_meta.get("parent_id")
+
+        meta["parent_id"] = new_parent_id
+        await self._save_metadata()
+        return meta
 
 
-
-    def create_database(
+    async def create_database(
         self,
         database_name: str,
         description: str,
-        connection_info: dict | None = None,
+        connect_info: dict | None = None,
         **kwargs,
     ) -> dict:
         """
@@ -187,20 +212,20 @@ class ConnectorBase(ABC):
         # 从 kwargs 中获取 is_private 配置
         is_private = kwargs.get("is_private", False)
         prefix = "db_private_" if is_private else "db_"
-        db_id = f"{prefix}{hashstr(database_name, with_salt=True)}"
+        db_id = f"{prefix}{hashstr(database_name, with_salt=True)}"[:64]
 
         # 创建数据库记录
         # 确保 Pydantic 模型被转换为字典，以便 JSON 序列化
-        connection_info['port'] = int(connection_info['port'])
+        connect_info['port'] = int(connect_info['port'])
         self.databases_meta[db_id] = {
             "name": database_name,
             "description": description,
             "db_type": self.db_type,
-            "connection_info": connection_info.model_dump() if hasattr(connection_info, "model_dump") else connection_info,
+            "connect_info": connect_info.model_dump() if hasattr(connect_info, "model_dump") else connect_info,
             "metadata": kwargs,
             "created_at": utc_isoformat(),
         }
-        self._save_metadata()
+        await self._save_metadata()
 
         # 创建工作目录
         working_dir = os.path.join(self.work_dir, db_id)
@@ -269,26 +294,30 @@ class ConnectorBase(ABC):
 
         # 获取文件信息
         db_tables = {}
-        for table_id, table_info in self.tables_meta.items():
+        for table_name, table_info in self.tables_meta.items():
             if table_info.get("database_id") == db_id:
                 created_at = self._normalize_timestamp(table_info.get("created_at"))
-                db_tables[table_id] = {
+                db_tables[table_name] = {
                     "database_id": db_id,
-                    "table_id": table_id,
-                    "table_name": table_info.get("table_name", ""),
+                    "table_id": table_info.get("table_id", ""),
+                    "tablename": table_info.get("tablename", ""),
+                    "description": table_info.get("description", ""),
+                    "is_choose": table_info.get("is_choose", False),
                     "created_at": created_at,
                 }
         # 获取已选择的表信息
-        selected_db_tables = {}
-        for table_id, table_info in self.selected_tables_meta.items():
-            if table_info.get("database_id") == db_id:
-                created_at = self._normalize_timestamp(table_info.get("created_at"))
-                selected_db_tables[table_id] = {
-                    "database_id": db_id,
-                    "table_id": table_id,
-                    "table_name": table_info.get("table_name", ""),
-                    "created_at": created_at,
-                }
+        # selected_db_tables = {}
+        # for table_name, table_info in self.selected_tables_meta.items():
+        #     if table_info.get("database_id") == db_id:
+        #         created_at = self._normalize_timestamp(table_info.get("created_at"))
+        #         selected_db_tables[table_name] = {
+        #             "database_id": db_id,
+        #             "table_id": table_info.get("table_id", ""),
+        #             "tablename": table_info.get("tablename", ""),
+        #             "description": table_info.get("description", ""),
+        #             "is_choose": table_info.get("is_choose", False),
+        #             "created_at": created_at,
+        #         }
 
         # 按创建时间倒序排序文件列表
         sorted_tables = dict(
@@ -299,18 +328,18 @@ class ConnectorBase(ABC):
             )
         )
 
-        # 按创建时间倒序排序文件列表
-        sorted_selected_tables = dict(
-            sorted(
-                selected_db_tables.items(),
-                key=lambda item: item[1].get("created_at") or "",
-                reverse=True,
-            )
-        )
+        # # 按创建时间倒序排序文件列表
+        # sorted_selected_tables = dict(
+        #     sorted(
+        #         selected_db_tables.items(),
+        #         key=lambda item: item[1].get("created_at") or "",
+        #         reverse=True,
+        #     )
+        # )
 
-        meta["selected_tables"] = sorted_selected_tables
+        # meta["selected_tables"] = sorted_selected_tables
         meta["tables"] = sorted_tables
-        meta["row_count"] = len(sorted_selected_tables)
+        meta["row_count"] = len(sorted_tables)
         meta["status"] = "已连接"
         return meta
 
@@ -391,46 +420,65 @@ class ConnectorBase(ABC):
         else:
             return obj
 
-    def _save_metadata(self):
+    async def _save_metadata(self):
         """保存元数据"""
+        from src.repositories.sql_database_repository import SqlDatabaseRepository
+        from src.repositories.sql_database_tables_repository import SqlDatabaseTableRepository
+
+        db_repo = SqlDatabaseRepository()
+        table_repo = SqlDatabaseTableRepository()
+
         self._normalize_metadata_state()
-        meta_file = os.path.join(self.work_dir, f"metadata_{self.db_type}.json")
-        backup_file = f"{meta_file}.backup"
 
-        try:
-            # 创建简单备份
-            if os.path.exists(meta_file):
-                shutil.copy2(meta_file, backup_file)
-
-            # 准备数据并序列化 Pydantic 模型
-            data = {
-                "databases": self._serialize_metadata(self.databases_meta),
-                "tables": self._serialize_metadata(self.tables_meta),
-                "selected_tables": self._serialize_metadata(self.selected_tables_meta),
-                "db_type": self.db_type,
-                "updated_at": utc_isoformat(),
+        for db_id, meta in self.databases_meta.items():
+            existing = await db_repo.get_by_id(db_id)
+            payload = {
+                "db_id": db_id,
+                "name": meta.get("name") or db_id,
+                "description": meta.get("description"),
+                "db_type": meta.get("db_type") or self.db_type,
+                "connect_info": meta.get("connect_info"),
+                "share_config": meta.get("share_config")
             }
+            if existing is None:
+                await db_repo.create(payload)
+            else:
+                await db_repo.update(
+                    db_id,
+                    {
+                        "name": payload["name"],
+                        "description": payload["description"],
+                        "db_type": payload["db_type"],
+                        "connect_info": payload["connect_info"],
+                        "share_config": payload["share_config"],
+                    },
+                )
+        
+        for table_name, table_info in self.tables_meta.items():
+            table_id = table_info["table_id"]
+            database_id = table_info["database_id"]
+            existing_table = await table_repo.get_by_table_name(table_name)
+            payload = {
+                "table_id": table_id,
+                "database_id": database_id,
+                "tablename": table_info.get("tablename", ""),
+                "description": table_info.get("description", ""),
+                "is_choose": table_info.get("is_choose", False),
+            }
+            if existing_table is None:
+                await table_repo.create(payload)
+            else:
+                await table_repo.update(
+                    table_name,
+                    {
+                        "tablename": payload["tablename"],
+                        "description": payload["description"],
+                        "description": payload["description"],
+                        "is_choose": payload["is_choose"],
+                    },
+                )
 
-            # 原子性写入（使用临时文件）
-            with tempfile.NamedTemporaryFile(
-                mode="w", dir=os.path.dirname(meta_file), prefix=".tmp_", suffix=".json", delete=False, encoding="utf-8"
-            ) as tmp_file:
-                json.dump(data, tmp_file, ensure_ascii=False, indent=2)
-                temp_path = tmp_file.name
 
-            os.replace(temp_path, meta_file)
-            logger.debug(f"Saved {self.db_type} metadata")
-
-        except Exception as e:
-            logger.error(f"Failed to save {self.db_type} metadata: {e}")
-            # 尝试恢复备份
-            if os.path.exists(backup_file):
-                try:
-                    shutil.copy2(backup_file, meta_file)
-                    logger.info("Restored metadata from backup")
-                except Exception as restore_e:
-                    logger.error(f"Failed to restore backup: {restore_e}")
-            raise e
     def prepare_table_metadata(self, db_id: str) -> dict:
         """
         准备文件或URL的元数据
@@ -452,6 +500,6 @@ class ConnectorBase(ABC):
 
         return {
             "database_id": db_id,
-            "created_at": utc_isoformat(),
             "table_id": table_id,
+            'is_choose': False
         }

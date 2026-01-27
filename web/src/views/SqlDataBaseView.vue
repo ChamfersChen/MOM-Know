@@ -1,354 +1,134 @@
 <template>
   <div class="database-container layout-container">
-    <div class="layout-wrapper">
-      <!-- 左侧内容 -->
-      <div class="left-content">
-        <HeaderComponent title="连接数据库" :loading="state.loading">
-          <template #actions>
-            <a-button type="primary" @click="state.openNewSqlDatabaseModel=true">
-              连接数据库
-            </a-button>
-          </template>
-        </HeaderComponent>
+    <HeaderComponent title="文档知识库" :loading="dbState.listLoading">
+      <template #actions>
+        <a-button type="primary" @click="state.openNewDatabaseModel = true"> 连接数据库 </a-button>
+      </template>
+    </HeaderComponent>
 
-        <a-modal 
-          :open="state.openNewSqlDatabaseModel" 
-          title="连接数据库" 
-          @ok="createDatabaseConnection" 
-          @cancel="cancelConnectDatabase" 
-          class="new-database-modal" 
-          width="800px"
-        >
-          <!-- 知识库类型选择 -->
-          <!-- <h3>数据库类型<span style="color: var(--error-color)">*</span></h3> -->
-          <div class="kb-type-cards">
-            <div
-              v-for="(typeInfo, typeKey) in supportedDbTypes"
-              :key="typeKey"
-              class="kb-type-card"
-              :class="{ active: newDatabaseConnection.db_type === typeKey }"
-              @click="handleDbTypeChange(typeKey)"
-            >
-              <div class="card-header">
-                <component :is="getDbTypeIcon(typeKey)" class="type-icon" />
-                <span class="type-title">{{ getDbTypeLabel(typeKey) }}</span>
-              </div>
-              <div class="card-description">{{ typeInfo.description }}</div>
-              <div class="card-features">
-                <span class="feature-tag">{{ getDbTypeFeature(typeKey) }}</span>
-              </div>
-            </div>
-          </div>
+    <a-modal
+      :open="state.openNewDatabaseModel"
+      title="连接数据库"
+      :confirm-loading="dbState.creating"
+      @ok="handleCreateDatabase"
+      @cancel="cancelCreateDatabase"
+      class="new-database-modal"
+      width="800px"
+    >
 
-          <h3>数据库配置<span style="color: var(--error-color)">*</span></h3>
-          <!-- 数据库配置表单 -->
-          <a-form :model="newDatabaseConnection" layout="vertical">
-            <a-form-item label="主机地址" required>
-              <a-input v-model:value="newDatabaseConnection.host" placeholder="例如：127.0.0.1" size="large" />
-            </a-form-item>
+      <!-- <h3>数据库名称<span style="color: var(--color-error-500)">*</span></h3>
+      <a-input v-model:value="newDatabase.name" placeholder="新建知识库名称" size="large" /> -->
 
-            <a-form-item label="端口" required>
-              <a-input-number v-model:value="newDatabaseConnection.port" :min="1" :max="65535" size="large" style="width: 100%;" />
-            </a-form-item>
+      <h3>数据库配置<span style="color: var(--error-color)">*</span></h3>
+      <!-- 数据库配置表单 -->
+      <a-form :model="newDatabase" layout="vertical">
+        <a-form-item label="主机地址" required>
+          <a-input v-model:value="connectInfo.host" placeholder="例如：127.0.0.1" size="large" />
+        </a-form-item>
 
-            <a-form-item label="用户名" required>
-              <a-input v-model:value="newDatabaseConnection.user" placeholder="请输入数据库用户名" size="large" />
-            </a-form-item>
+        <a-form-item label="端口" required>
+          <a-input-number v-model:value="connectInfo.port" :min="1" :max="65535" size="large" style="width: 100%;" />
+        </a-form-item>
 
-            <a-form-item label="密码" required>
-              <a-input-password v-model:value="newDatabaseConnection.password" placeholder="请输入数据库密码" size="large" />
-            </a-form-item>
+        <a-form-item label="用户名" required>
+          <a-input v-model:value="connectInfo.user" placeholder="请输入数据库用户名" size="large" />
+        </a-form-item>
 
-            <a-form-item label="数据库名称" required>
-              <a-input v-model:value="newDatabaseConnection.database" placeholder="请输入要连接的数据库名称" size="large" />
-            </a-form-item>
+        <a-form-item label="密码" required>
+          <a-input-password v-model:value="connectInfo.password" placeholder="请输入数据库密码" size="large" />
+        </a-form-item>
 
-            <a-form-item label="描述" required>
-              <a-textarea
-                v-model:value="newDatabaseConnection.description"
-                placeholder="请输入数据库连接描述（可选）"
-                :auto-size="{ minRows: 3, maxRows: 5 }"
-              />
-            </a-form-item>
-          </a-form>
-          <template #footer>
-            <a-button key="back" @click="cancelConnectDatabase">取消</a-button>
-            <a-button key="submit" type="primary" :loading="state.creating" @click="createDatabaseConnection">连接</a-button>
-          </template>
-        </a-modal>
+        <a-form-item label="数据库名称" required>
+          <a-input v-model:value="connectInfo.database" placeholder="请输入要连接的数据库名称" size="large" />
+        </a-form-item>
 
-        <!-- 选择数据库表 -->
-        <a-modal 
-          :open="state.openDatabaseTableModel" 
-          title="选择数据库表" 
-          @ok="createDatabase" 
-          @cancel="cancelDatabaseTableSelect" 
-          class="new-database-modal" 
-          width="800px"
-        >
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <h3>选择数据库表<span style="color: var(--error-color)">*</span></h3>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <a-checkbox v-model:checked="selectAll" @change="handleSelectAllChange" />
-              <span>全选</span>
-            </div>
-          </div>
-          <!-- 数据库表多选列表 -->
-          <div class="table-cards">
-            <a-empty v-if="!state.database.tables || state.database.tables.length === 0" description="暂无数据库表" />
-            <a-row :gutter="[16, 16]">
-              <a-col
-                v-for="table in tableList"
-                :key="table.table_name"
-                :xs="24"
-                :sm="12"
-                :md="8"
-                :lg="6"
-              >
-                <a-card
-                  size="small"
-                  hoverable
-                  :class="{ 'table-card-selected': selectedTableIds.includes(table.table_id) }"
-                  @click="toggleTable(table)"
-                >
-                  <div class="table-card-content">
-                    <div class="checkbox-container">
-                      <a-checkbox
-                        :checked="selectedTableIds.includes(table.table_id)"
-                        @click.stop
-                        @change="(e) => toggleTable(table)"
-                      />
-                    </div>
-                    <div class="table-info">
-                      <div class="table-description">{{ table.table_comment || '暂无描述' }}</div>
-                      <div class="table-name">{{ table.table_name }}</div>
-                    </div>
-                  </div>
-                </a-card>
-              </a-col>
-            </a-row>
-          </div>
-
-          <template #footer>
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <a-button danger @click="deleteDatabaseConnection(state.database.db_id)">删除</a-button>
-              <div>
-                <a-button key="back" @click="cancelDatabaseTableSelect" style="margin-right: 8px;">取消</a-button>
-                <a-button key="submit" type="primary" :loading="state.creating" @click="createChooseDatabaseTables">连接</a-button>
-              </div>
-            </div>
-          </template>
-        </a-modal>
-
-        <!-- 加载状态 -->
-        <div v-if="state.loading" class="loading-container">
-          <a-spin size="large" />
-          <p>正在加载知识库...</p>
-        </div>
-
-        <!-- 空状态显示 -->
-        <div v-else-if="!sql_databases || sql_databases.length === 0" class="empty-state">
-          <h3 class="empty-title">暂无连接的数据库</h3>
-          <p class="empty-description">连接您的第一个数据库，开始使用数据库查询功能</p>
-          <a-button type="primary" size="large" @click="state.openNewSqlDatabaseModel = true">
-            <template #icon>
-              <PlusOutlined />
-            </template>
-            连接数据库
-          </a-button>
-        </div>
-        
-        <!-- 数据库连接列表 -->
-        <div v-else class="databases">
-          <div
-            v-for="sql_database in sql_databases"
-            :key="sql_database.db_id"
-            class="database dbcard"
-            @click="navigateToDatabase(sql_database)">
-            <div class="top">
-              <div class="icon">
-                <component :is="getDbTypeIcon(sql_database.db_type || 'lightrag')" />
-              </div>
-              <div class="info">
-                <h3>{{ sql_database.name }}</h3>
-                <p>
-                  <span>已选择 {{ sql_database.selected_tables ? Object.keys(sql_database.selected_tables).length : 0 }} / {{ sql_database.tables ? Object.keys(sql_database.tables).length : 0 }} 数据库表</span>
-                  <span class="created-time-inline" v-if="sql_database.created_at">
-                    • {{ formatCreatedTime(sql_database.created_at) }}
-                  </span>
-                </p>
-              </div>
-            </div>
-            <p class="description">{{ sql_database.description || '暂无描述' }}</p>
-            <div class="tags">
-              <a-tag color="blue" v-if="sql_database.embed_info?.name">{{ sql_database.embed_info.name }}</a-tag>
-              <a-tag
-                :color="getKbTypeColor(sql_database.db_type || 'lightrag')"
-                class="kb-type-tag"
-                size="small"
-              >
-                {{ getDbTypeLabel(sql_database.db_type || 'lightrag') }}
-              </a-tag>        
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 右侧内容 - 复制左侧内容 -->
-      <div class="right-content">
-        <HeaderComponent title="创建SQL知识库" :loading="state.loading">
-          <template #actions>
-            <a-button type="primary" @click="state.openNewSqlKnowledgeModel=true">
-              创建SQL知识库
-            </a-button>
-          </template>
-        </HeaderComponent>
-
-        <a-modal :open="state.openNewSqlKnowledgeModel" title="新建知识库" @ok="handleCreateSqlKnowledge" @cancel="cancelCreateSqlKnowledge" class="new-database-modal" width="800px">
-
-          <!-- 知识库类型选择 -->
-          <h3>知识库类型<span style="color: var(--color-error-500)">*</span></h3>
-          <div class="kb-type-cards">
-            <div
-              v-for="(typeInfo, typeKey) in orderedKbTypes"
-              :key="typeKey"
-              class="kb-type-card"
-              :class="{ active: newDatabase.kb_type === typeKey }"
-              :data-type="typeKey"
-              @click="handleKbTypeChange(typeKey)"
-            >
-              <div class="card-header">
-                <component :is="getKbTypeIcon(typeKey)" class="type-icon" />
-                <span class="type-title">{{ getKbTypeLabel(typeKey) }}</span>
-              </div>
-              <div class="card-description">{{ typeInfo.description }}</div>
-            </div>
-          </div>
-
-          <h3>知识库名称<span style="color: var(--color-error-500)">*</span></h3>
-          <a-input v-model:value="newDatabase.name" placeholder="新建知识库名称" size="large" />
-
-          <h3>嵌入模型</h3>
-          <EmbeddingModelSelector
-            v-model:value="newDatabase.embed_model_name"
-            style="width: 100%;"
-            size="large"
-            placeholder="请选择嵌入模型"
+        <a-form-item label="描述" required>
+          <a-textarea
+            v-model:value="newDatabase.description"
+            placeholder="请输入数据库连接描述（可选）"
+            :auto-size="{ minRows: 3, maxRows: 5 }"
           />
+        </a-form-item>
+      </a-form>
+      <!-- 共享配置 -->
+      <h3>共享设置</h3>
+      <ShareConfigForm v-model="shareConfig" :auto-select-user-dept="true" />
+      <template #footer>
+        <a-button key="back" @click="cancelCreateDatabase">取消</a-button>
+        <a-button
+          key="submit"
+          type="primary"
+          :loading="dbState.creating"
+          @click="handleCreateDatabase"
+          >创建</a-button
+        >
+      </template>
+    </a-modal>
 
-          <!-- 仅对 LightRAG 提供语言选择和LLM选择 -->
-          <div v-if="newDatabase.kb_type === 'lightrag'">
-            <h3 style="margin-top: 20px;">语言</h3>
-            <a-select
-              v-model:value="newDatabase.language"
-              :options="languageOptions"
-              style="width: 100%;"
-              size="large"
-              :dropdown-match-select-width="false"
-            />
+    <!-- 加载状态 -->
+    <div v-if="dbState.listLoading" class="loading-container">
+      <a-spin size="large" />
+      <p>正在加载知识库...</p>
+    </div>
 
-            <h3 style="margin-top: 20px;">语言模型 (LLM)</h3>
-            <p style="color: var(--gray-700); font-size: 14px;">可以在设置中配置语言模型</p>
-            <ModelSelectorComponent
-              :model_spec="llmModelSpec"
-              placeholder="请选择模型"
-              @select-model="handleLLMSelect"
-              size="large"
-              style="width: 100%; height: 60px;"
-            />
+    <!-- 空状态显示 -->
+    <div v-else-if="!databases || databases.length === 0" class="empty-state">
+      <h3 class="empty-title">暂无知识库</h3>
+      <p class="empty-description">创建您的第一个知识库，开始管理文档和知识</p>
+      <a-button type="primary" size="large" @click="state.openNewDatabaseModel = true">
+        <template #icon>
+          <PlusOutlined />
+        </template>
+        创建知识库
+      </a-button>
+    </div>
+
+    <!-- 数据库列表 -->
+    <div v-else class="databases">
+      <div
+        v-for="database in databases"
+        :key="database.db_id"
+        class="database dbcard"
+        @click="navigateToDatabase(database.db_id)"
+      >
+        <!-- 私有知识库锁定图标 -->
+        <LockOutlined
+          v-if="database.metadata?.is_private"
+          class="private-lock-icon"
+          title="私有知识库"
+        />
+        <div class="top">
+          <div class="icon">
+            <component :is="getKbTypeIcon(database.kb_type || 'lightrag')" />
           </div>
-
-          <h3 style="margin-top: 20px;">知识库描述</h3>
-          <p style="color: var(--gray-700); font-size: 14px;">在智能体流程中，这里的描述会作为工具的描述。智能体会根据知识库的标题和描述来选择合适的工具。所以这里描述的越详细，智能体越容易选择到合适的工具。</p>
-          <AiTextarea
-            v-model="newDatabase.description"
-            :name="newDatabase.name"
-            placeholder="新建知识库描述"
-            :auto-size="{ minRows: 3, maxRows: 10 }"
-          />
-
-          <h3 style="margin-top: 20px;">隐私设置</h3>
-          <div class="privacy-config">
-            <a-switch
-              v-model:checked="newDatabase.is_private"
-              checked-children="私有"
-              un-checked-children="公开"
-              size="default"
-            />
-            <span style="margin-left: 12px;">设置为私有知识库</span>
-            <a-tooltip title="在部分智能体的设计中，可以根据隐私标志来决定启用什么模型和策略。例如，对于私有知识库，可以选择更严格的数据处理和访问控制策略，以保护敏感信息的安全性和隐私性。">
-              <InfoCircleOutlined style="margin-left: 8px; color: var(--gray-500); cursor: help;" />
-            </a-tooltip>
-          </div>
-          <template #footer>
-            <a-button key="back" @click="cancelCreateSqlKnowledge">取消</a-button>
-            <a-button key="submit" type="primary" :loading="dbState.creating" @click="handleCreateSqlKnowledge">创建</a-button>
-          </template>
-        </a-modal>
-
-        <!-- 加载状态 -->
-        <div v-if="state.loading" class="loading-container">
-          <a-spin size="large" />
-          <p>正在加载知识库...</p>
-        </div>
-
-        <!-- 空状态显示 -->
-        <div v-else-if="!databases || databases.length === 0" class="empty-state">
-          <h3 class="empty-title">暂无SQL知识库</h3>
-          <p class="empty-description">创建您的第一个SQL知识库，开始配置与管理您的SQL知识</p>
-          <a-button type="primary" size="large" @click="state.openNewSqlKnowledgeModel = true">
-            <template #icon>
-              <PlusOutlined />
-            </template>
-            创建知识库
-          </a-button>
-        </div>
-        
-        <!-- 数据库列表 -->
-        <div v-else class="databases">
-          <div
-            v-for="database in databases"
-            :key="database.db_id"
-            class="database dbcard"
-            @click="navigateToSqlKnowledge(database.db_id)">
-            <!-- 私有知识库锁定图标 -->
-            <LockOutlined
-              v-if="database.metadata?.is_private"
-              class="private-lock-icon"
-              title="私有知识库"
-            />
-            <div class="top">
-              <div class="icon">
-                <component :is="getKbTypeIcon(database.kb_type || 'lightrag')" />
-              </div>
-              <div class="info">
-                <h3>{{ database.name }}</h3>
-                <p>
-                  <span>{{ database.files ? Object.keys(database.files).length : 0 }} 文件</span>
-                  <span class="created-time-inline" v-if="database.created_at">
-                    {{ formatCreatedTime(database.created_at) }}
-                  </span>
-                </p>
-              </div>
-            </div>
-            <!-- <a-tooltip :title="database.description || '暂无描述'">
-              <p class="description">{{ database.description || '暂无描述' }}</p>
-            </a-tooltip> -->
-            <p class="description">{{ database.description || '暂无描述' }}</p>
-            <div class="tags">
-              <a-tag color="blue" v-if="database.embed_info?.name">{{ database.embed_info.name }}</a-tag>
-              <!-- <a-tag color="green" v-if="database.embed_info?.dimension">{{ database.embed_info.dimension }}</a-tag> -->
-              <a-tag
-                :color="getKbTypeColor(database.kb_type || 'lightrag')"
-                class="kb-type-tag"
-                size="small"
-              >
-                {{ getKbTypeLabel(database.kb_type || 'lightrag') }}
-              </a-tag>
-            </div>
-            <!-- <button @click="deleteDatabase(database.collection_name)">删除</button> -->
+          <div class="info">
+            <h3>{{ database.name }}</h3>
+            <p>
+              <span>{{ database.files ? Object.keys(database.files).length : 0 }} 文件</span>
+              <span class="created-time-inline" v-if="database.created_at">
+                {{ formatCreatedTime(database.created_at) }}
+              </span>
+            </p>
           </div>
         </div>
+        <!-- <a-tooltip :title="database.description || '暂无描述'">
+          <p class="description">{{ database.description || '暂无描述' }}</p>
+        </a-tooltip> -->
+        <p class="description">{{ database.description || '暂无描述' }}</p>
+        <div class="tags">
+          <a-tag color="blue" v-if="database.embed_info?.name">{{
+            database.embed_info.name
+          }}</a-tag>
+          <!-- <a-tag color="green" v-if="database.embed_info?.dimension">{{ database.embed_info.dimension }}</a-tag> -->
+          <a-tag
+            :color="getKbTypeColor(database.kb_type || 'lightrag')"
+            class="kb-type-tag"
+            size="small"
+          >
+            {{ getKbTypeLabel(database.kb_type || 'lightrag') }}
+          </a-tag>
+        </div>
+        <!-- <button @click="deleteDatabase(database.collection_name)">删除</button> -->
       </div>
     </div>
   </div>
@@ -356,323 +136,65 @@
 
 <script setup>
 import { ref, onMounted, reactive, watch, computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router';
-import { useConfigStore } from '@/stores/config';
-import { message } from 'ant-design-vue'
-import { BookPlus, Database, Zap, FileDigit,  Waypoints, Building2, TableOfContents, DatabaseZap } from 'lucide-vue-next';
-import { LockOutlined, InfoCircleOutlined, PlusOutlined } from '@ant-design/icons-vue';
-import { useSqlKnowledgeStore } from '@/stores/sql_knowledge';
-import { databaseApi } from '@/apis/sql_database_api';
-import { storeToRefs } from 'pinia';
-import { typeApi } from '@/apis/sql_knowledge_api';
-// import { knowledgeApi } from '@/apis/sql_knowledge_api';
-import HeaderComponent from '@/components/HeaderComponent.vue';
-import ModelSelectorComponent from '@/components/ModelSelectorComponent.vue';
-import dayjs, { parseToShanghai } from '@/utils/time';
-import {
-  LeftOutlined,
-  EditOutlined,
-  DeleteOutlined,
-} from '@ant-design/icons-vue';
+import { useRouter, useRoute } from 'vue-router'
+import { storeToRefs } from 'pinia'
+import { useConfigStore } from '@/stores/config'
+import { useDatabaseStore } from '@/stores/sql_database'
+import { LockOutlined, InfoCircleOutlined, PlusOutlined } from '@ant-design/icons-vue'
+import { typeApi } from '@/apis/knowledge_api'
+import HeaderComponent from '@/components/HeaderComponent.vue'
+import ModelSelectorComponent from '@/components/ModelSelectorComponent.vue'
+import EmbeddingModelSelector from '@/components/EmbeddingModelSelector.vue'
+import ShareConfigForm from '@/components/ShareConfigForm.vue'
+import dayjs, { parseToShanghai } from '@/utils/time'
+import AiTextarea from '@/components/AiTextarea.vue'
+import { getKbTypeLabel, getKbTypeIcon, getKbTypeColor } from '@/utils/kb_utils'
 
 const route = useRoute()
 const router = useRouter()
-const sql_databases = ref([])
 const configStore = useConfigStore()
-const sqlKnowledgeStore = useSqlKnowledgeStore()
-
-const createEmptyDatabaseForm = () => ({
-  name: '',
-  description: '',
-  embed_model_name: configStore.config?.embed_model,
-  kb_type: 'milvus',
-  is_private: false,
-  storage: '',
-  language: 'Chinese',
-  llm_info: {
-    provider: '',
-    model_name: ''
-  }
-})
-// 支持的知识库类型
-const supportedKbTypes = ref({})
-// 有序的知识库类型
-const orderedKbTypes = computed(() => supportedKbTypes.value)
-
-const newDatabase = reactive(createEmptyDatabaseForm())
+const databaseStore = useDatabaseStore()
 
 // 使用 store 的状态
-const { databases, state: dbState } = storeToRefs(sqlKnowledgeStore)
+const { databases, state: dbState } = storeToRefs(databaseStore)
 
 const state = reactive({
-  loading: false,
-  creating: false,
-  openNewSqlDatabaseModel: false,
-  openNewSqlKnowledgeModel: false,
-  openDatabaseTableModel: false,
-  database: sql_databases.value[0],
+  openNewDatabaseModel: false
 })
 
-// const selectedTableIds = computed(() => {
-//   return Object.values(databases.selected_tables || {}).map(table => table.table_id)
-// })
-
-// const selectedTableIds = computed({
-//   get: () => state.database.selected_tables ? Object.values(state.database.selected_tables).map(table => table.table_id) : [],
-//   set: (value) => state.database.selected_tables = value,
-// })
-
-const selectedTableIds = ref([]);
-const selectedTableIdsBack = ref([]);
-const selectAll = ref(false);
-
-
-const navigateToDatabase = (database) => {
-  state.openDatabaseTableModel=true;
-  state.database=database;
-  selectedTableIds.value = database.selected_tables ? Object.values(database.selected_tables).map(table => table.table_id) : [];
-  selectedTableIdsBack.value = database.selected_tables ? Object.values(database.selected_tables).map(table => table.table_id) : [];
-}
-
-
-
-const tableList = computed(() => {
-  return Object.values(state.database.tables || {}).slice().reverse()
+// 共享配置状态（用于提交数据）
+const shareConfig = reactive({
+  is_shared: true,
+  accessible_department_ids: []
 })
 
-// 知识库类型相关工具方法
-const getKbTypeLabel = (type) => {
-  const labels = {
-    lightrag: 'LightRAG',
-    milvus: 'CommonRAG'
-  }
-  return labels[type] || type
-}
-
-const getKbTypeIcon = (type) => {
-  const icons = {
-    lightrag: Waypoints,
-    milvus: DatabaseZap
-  }
-  return icons[type] || Database
-}
-
-const getKbTypeColor = (type) => {
-  const colors = {
-    lightrag: 'purple',
-    milvus: 'red'
-  }
-  return colors[type] || 'blue'
-}
-
-const emptyDbInfo = {
-  name: '',
-  description: '',
-  db_type: 'mysql', // 默认为 Milvus
+const connectInfo = reactive({
   host: '127.0.0.1',
   port: '3306',
   user: 'root',
   password: '',
-  database: 'lcmom',
-  description: '',
-}
-
-const newDatabaseConnection = reactive({
-  ...emptyDbInfo,
+  database: 'mom',
 })
 
+const createEmptyDatabaseForm = () => ({
+  name: '',
+  description: '',
+  db_type: 'mysql',
+})
 
-// 支持的知识库类型
-const supportedDbTypes = ref({})
+const newDatabase = reactive(createEmptyDatabaseForm())
 
-// 加载支持的知识库类型
-const loadSupportedDbTypes = async () => {
-  try {
-    const data = await typeApi.getKnowledgeBaseTypes()
-    supportedDbTypes.value = data.db_types
-    console.log('支持的知识库类型:', supportedDbTypes.value)
-  } catch (error) {
-    console.error('加载知识库类型失败:', error)
-    // 如果加载失败，设置默认类型
-  supportedDbTypes.value = {
-    mysql: {
-      description: "Mysql数据库知识库",
-      class_name: "mysql"
-    }
-  }
-  }
-}
-
-// 加载支持的知识库类型
-const loadSupportedKbTypes = async () => {
-  try {
-    const data = await typeApi.getKnowledgeBaseTypes()
-    supportedKbTypes.value = data.kb_types
-    console.log('支持的知识库类型:', supportedKbTypes.value)
-  } catch (error) {
-    console.error('加载知识库类型失败:', error)
-    // 如果加载失败，设置默认类型
-    supportedKbTypes.value = {
-      lightrag: {
-        description: "基于图检索的知识库，支持实体关系构建和复杂查询",
-        class_name: "LightRagKB"
-      }
-    }
-  }
-}
-
-
-const toggleTable = (table) => {
-  const table_id = table.table_id;
-  selectedTableIds.value = selectedTableIds.value.includes(table_id)
-    ? selectedTableIds.value.filter(t => t !== table_id)
-    : [...selectedTableIds.value, table_id]
-  
-  // Update selectAll state based on current selection of tables with comments
-  const tablesWithComments = tableList.value.filter(table => table.table_comment && table.table_comment.trim() !== '');
-  selectAll.value = selectedTableIds.value.length === tablesWithComments.length;
-}
-
-const handleSelectAllChange = () => {
-  if (selectAll.value) {
-    // Select all tables except those with empty table_comment
-    selectedTableIds.value = tableList.value
-      .filter(table => table.table_comment && table.table_comment.trim() !== '')
-      .map(table => table.table_id);
-  } else {
-    // Deselect all tables
-    selectedTableIds.value = [];
-  }
-}
-
-const loadDatabases = () => {
-  state.loading = true
-  // loadGraph()
-  databaseApi.getDatabases()
-    .then(data => {
-      console.log(data)
-      // 按照创建时间排序，最新的在前面
-      sql_databases.value = data.databases.sort((a, b) => {
-        const timeA = parseToShanghai(a.created_at)
-        const timeB = parseToShanghai(b.created_at)
-        if (!timeA && !timeB) return 0
-        if (!timeA) return 1
-        if (!timeB) return -1
-        return timeB.valueOf() - timeA.valueOf() // 降序排列，最新的在前面
-      })
-      state.loading = false
-    })
-    .catch(error => {
-      console.error('加载数据库列表失败:', error);
-      if (error.message.includes('权限')) {
-        message.error('需要管理员权限访问知识库')
-      }
-      state.loading = false
-    })
-}
 
 const resetNewDatabase = () => {
-  Object.assign(newDatabaseConnection, { ...emptyDbInfo })
-}
-const resetNewSqlKnowledgeBase = () => {
   Object.assign(newDatabase, createEmptyDatabaseForm())
+  // 重置共享配置
+  shareConfig.is_shared = true
+  shareConfig.accessible_department_ids = []
 }
 
-const cancelConnectDatabase = () => {
-  state.openNewSqlDatabaseModel = false
-}
-
-const cancelDatabaseTableSelect = () => {
-  selectedTableIds.value = selectedTableIdsBack.value
-  state.openDatabaseTableModel = false
-}
-
-const cancelCreateSqlKnowledge = () => {
-  state.openNewSqlKnowledgeModel = false
-  console.log('>> 当前知识库: ', databases.value)
-}
-
-// 构建请求数据（只负责表单数据转换）
-const buildRequestData = () => {
-  const requestData = {
-    database_name: newDatabase.name.trim(),
-    description: newDatabase.description?.trim() || '',
-    embed_model_name: newDatabase.embed_model_name || configStore.config.embed_model,
-    kb_type: newDatabase.kb_type,
-    additional_params: {
-      is_private: newDatabase.is_private || false
-    }
-  }
-
-  // 根据类型添加特定配置
-  if (['milvus'].includes(newDatabase.kb_type)) {
-    if (newDatabase.storage) {
-      requestData.additional_params.storage = newDatabase.storage
-    }
-  }
-
-  if (newDatabase.kb_type === 'lightrag') {
-    requestData.additional_params.language = newDatabase.language || 'English'
-    if (newDatabase.llm_info.provider && newDatabase.llm_info.model_name) {
-      requestData.llm_info = {
-        provider: newDatabase.llm_info.provider,
-        model_name: newDatabase.llm_info.model_name
-      }
-    }
-  }
-
-  return requestData
-}
-
-// 创建按钮处理
-const handleCreateSqlKnowledge = async () => {
-  const requestData = buildRequestData()
-  try {
-    await sqlKnowledgeStore.createDatabase(requestData)
-    resetNewSqlKnowledgeBase()
-    state.openNewSqlKnowledgeModel = false
-  } catch (error) {
-    // 错误已在 store 中处理
-  }
-}
-
-// 处理知识库类型改变
-const handleKbTypeChange = (type) => {
-  console.log('知识库类型改变:', type)
-  // resetNewDatabase()
-  resetNewSqlKnowledgeBase()
-  newDatabase.kb_type = type
-}
-
-// 知识库类型相关工具方法
-const getDbTypeLabel = (type) => {
-  const labels = {
-    lightrag: 'LightRAG',
-    chroma: 'Chroma',
-    milvus: 'Milvus',
-    mysql: 'MySQL'
-  }
-  return labels[type] || type
-}
-
-const getDbTypeIcon = (type) => {
-  const icons = {
-    lightrag: Waypoints,
-    chroma: FileDigit,
-    milvus: Building2,
-    mysql: TableOfContents
-  }
-  return icons[type] || Database
-}
-
-const getDbTypeFeature = (type) => {
-  const features = {
-    lightrag: '图结构索引',
-    chroma: '轻量向量',
-    milvus: '生产级部署',
-    mysql: '关系型数据库'
-  }
-  return features[type] || ''
+const cancelCreateDatabase = () => {
+  state.openNewDatabaseModel = false
+  resetNewDatabase()
 }
 
 // 格式化创建时间
@@ -686,223 +208,83 @@ const formatCreatedTime = (createdAt) => {
   const diffInDays = today.diff(createdDay, 'day')
 
   if (diffInDays === 0) {
-    return '今天连接'
+    return '今天创建'
   }
   if (diffInDays === 1) {
-    return '昨天连接'
+    return '昨天创建'
   }
   if (diffInDays < 7) {
-    return `${diffInDays} 天前连接`
+    return `${diffInDays} 天前创建`
   }
   if (diffInDays < 30) {
     const weeks = Math.floor(diffInDays / 7)
-    return `${weeks} 周前连接`
+    return `${weeks} 周前创建`
   }
   if (diffInDays < 365) {
     const months = Math.floor(diffInDays / 30)
-    return `${months} 个月前连接`
+    return `${months} 个月前创建`
   }
   const years = Math.floor(diffInDays / 365)
-  return `${years} 年前连接`
+  return `${years} 年前创建`
 }
 
-// 处理数据库类型改变
-const handleDbTypeChange = (type) => {
-  console.log('数据库类型改变:', type)
-  resetNewDatabase()
-  newDatabaseConnection.db_type = type
-}
-
-
-const createDatabaseConnection = () => {
-  if (!newDatabaseConnection.database?.trim()) {
-    message.error('数据库名称不能为空')
-    return
-  }
-  if (!newDatabaseConnection.db_type) {
-    message.error('请选择知识库类型')
-    return
-  }
-
-  state.creating = true
-  
+// 构建请求数据（只负责表单数据转换）
+const buildRequestData = () => {
   const requestData = {
-    database_name: newDatabaseConnection.database.trim(),
-    description: newDatabaseConnection.description?.trim() || '',
-    db_type: newDatabaseConnection.db_type.trim(),
-  }
-  requestData.connection_info = {
-    host: newDatabaseConnection.host.trim(),
-    port: parseInt(newDatabaseConnection.port.toString().trim(), 10),
-    user: newDatabaseConnection.user.trim(),
-    password: newDatabaseConnection.password.trim(),
-    database: newDatabaseConnection.database.trim()
+    database_name: connectInfo.database,
+    description: newDatabase.description?.trim() || '',
+    db_type: newDatabase.db_type,
   }
 
-  databaseApi.createDatabase(requestData)
-    .then(data => {
-      console.log('连接成功:', data)
-      if (data.status === 'failed') {
-        message.error(data.message || '连接失败')
-        return
-      }
-      loadDatabases()
-      resetNewDatabase()
-      message.success('连接成功')
-    })
-    .catch(error => {
-      console.error('连接数据库失败:', error)
-      message.error(error.message || '连接失败')
-    })
-    .finally(() => {
-      state.creating = false
-      state.openNewSqlDatabaseModel = false
-    })
+  // 添加共享配置
+  requestData.share_config = {
+    is_shared: shareConfig.is_shared,
+    accessible_departments: shareConfig.is_shared ? [] : shareConfig.accessible_department_ids || []
+  }
+  requestData.connect_info = {
+    host: connectInfo.host,
+    port: connectInfo.port,
+    username: connectInfo.user,
+    password: connectInfo.password,
+    database: connectInfo.database,
+  }
+  console.log('requestData:', requestData)
+
+  return requestData
 }
 
-const deleteDatabaseConnection = (db_id) => {
-  // 弹出确认框
-  const confirmed = window.confirm('确定要删除该数据库连接吗？此操作不可恢复。')
-  if (!confirmed) return
-
-  console.log('删除数据库连接:', db_id)
-
-  databaseApi.deleteConnection(db_id)
-    .then(data => {
-      console.log('删除成功:', data)
-      if (data.status === 'failed') {
-        message.error(data.message || '删除失败')
-        return
-      }
-      loadDatabases()
-      resetNewDatabase()
-      message.success('删除成功')
-    })
-    .catch(error => {
-      console.error('删除数据库失败:', error)
-      message.error('删除数据库失败')
-    })
-    .finally(() => {
-      state.creating = false
-      state.openDatabaseTableModel= false
-    })
+// 创建按钮处理
+const handleCreateDatabase = async () => {
+  const requestData = buildRequestData()
+  try {
+    await databaseStore.createDatabase(requestData)
+    resetNewDatabase()
+    state.openNewDatabaseModel = false
+  } catch (error) {
+    // 错误已在 store 中处理
+  }
 }
 
-const createChooseDatabaseTables = () => {
-
-  state.creating = true
-
-  const requestData = selectedTableIds.value
-
-  const db_id = state.database.db_id
-  databaseApi.createChooseDatabaseTables(db_id, requestData)
-    .then(data => {
-      console.log('数据库表连接成功:', data)
-      loadDatabases()
-      resetNewDatabase()
-      message.success('数据库表连接成功')
-    })
-    .catch(error => {
-      console.error('数据库表连接失败:', error)
-      message.error(error.message || '连接失败')
-    })
-    .finally(() => {
-      state.creating = false
-      state.openNewSqlDatabaseModel = false
-      state.openDatabaseTableModel = false
-    })
+const navigateToDatabase = (databaseId) => {
+  router.push({ path: `/sqldatabase/${databaseId}` })
 }
 
-const createDatabase = () => {
-  if (!newDatabaseConnection.name?.trim()) {
-    message.error('数据库名称不能为空')
-    return
-  }
-
-  if (!newDatabaseConnection.db_type) {
-    message.error('请选择知识库类型')
-    return
-  }
-
-  state.creating = true
-
-  const requestData = {
-    database_name: newDatabaseConnection.name.trim(),
-    description: newDatabaseConnection.description?.trim() || '',
-    embed_model_name: newDatabaseConnection.embed_model_name || configStore.config.embed_model,
-    db_type: newDatabaseConnection.db_type
-  }
-
-  // 添加类型特有的配置
-  if (newDatabaseConnection.db_type === 'chroma' || newDatabaseConnection.db_type === 'milvus') {
-    requestData.additional_params.storage = newDatabaseConnection.storage || 'DemoA'
-  }
-
-  if (newDatabaseConnection.db_type === 'lightrag') {
-    requestData.additional_params.language = newDatabaseConnection.language || 'English'
-    // 添加LLM信息到请求数据
-    if (newDatabaseConnection.llm_info.provider && newDatabaseConnection.llm_info.model_name) {
-      requestData.llm_info = {
-        provider: newDatabaseConnection.llm_info.provider,
-        model_name: newDatabaseConnection.llm_info.model_name
-      }
+watch(
+  () => route.path,
+  (newPath) => {
+    if (newPath === '/sqldatabase') {
+      databaseStore.loadDatabases()
     }
   }
-
-  databaseApi.createDatabase(requestData)
-    .then(data => {
-      console.log('连接成功:', data)
-      loadDatabases()
-      resetNewDatabase()
-      message.success('连接成功')
-    })
-    .catch(error => {
-      console.error('连接数据库失败:', error)
-      message.error(error.message || '连接失败')
-    })
-    .finally(() => {
-      state.creating = false
-      state.openNewSqlDatabaseModel = false
-    })
-}
-
-const navigateToSqlKnowledge = (databaseId) => {
-  router.push({ path: `/sqldatabase/${databaseId}` });
-};
-
-watch(() => route.path, (newPath, oldPath) => {
-  if (newPath === '/sqldatabase') {
-    sqlKnowledgeStore.loadDatabases()
-    loadDatabases();
-  }
-});
+)
 
 onMounted(() => {
-  loadSupportedKbTypes()
-  sqlKnowledgeStore.loadDatabases()
-  loadSupportedDbTypes()
-  loadDatabases()
+  // loadSupportedKbTypes()
+  databaseStore.loadDatabases()
 })
-
 </script>
 
 <style lang="less" scoped>
-.layout-wrapper {
-  display: flex;
-  height: 100%;
-  
-  .left-content,
-  .right-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 20px;
-    
-    &:not(:last-child) {
-      border-right: 1px solid var(--gray-200);
-    }
-  }
-}
-
 .new-database-modal {
   .kb-type-guide {
     margin: 12px 0;
@@ -912,73 +294,6 @@ onMounted(() => {
     display: flex;
     align-items: center;
     margin-bottom: 12px;
-  }
-
-  .reranker-config {
-    border: 1px solid var(--gray-200);
-    border-radius: 12px;
-    padding: 16px;
-    margin-top: 16px;
-    background: var(--gray-25);
-
-    .reranker-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 16px;
-
-      &:last-child {
-        margin-bottom: 0;
-      }
-
-      .reranker-title {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-weight: 500;
-        color: var(--gray-800);
-      }
-
-      .hint-icon {
-        color: var(--gray-500);
-        cursor: help;
-      }
-    }
-
-    .reranker-form {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-
-      .form-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 16px;
-
-        @media (max-width: 768px) {
-          grid-template-columns: 1fr;
-        }
-      }
-
-      .form-field {
-        label {
-          display: block;
-          font-size: 14px;
-          margin-bottom: 8px;
-          color: var(--gray-700);
-        }
-
-        .field-hint {
-          margin-top: 6px;
-          font-size: 12px;
-          color: var(--gray-500);
-
-          &:last-child {
-            margin-top: 0;
-          }
-        }
-      }
-    }
   }
 
   .kb-type-cards {
@@ -1009,7 +324,9 @@ onMounted(() => {
       &.active {
         border-color: var(--main-color);
         background: var(--main-10);
-        .type-icon { color: var(--main-color); }
+        .type-icon {
+          color: var(--main-color);
+        }
       }
 
       .card-header {
@@ -1058,7 +375,6 @@ onMounted(() => {
           color: var(--color-error-700);
         }
       }
-
     }
   }
 
@@ -1107,21 +423,15 @@ onMounted(() => {
       .top {
         .info {
           h3 {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
-
-            .kb-type-tag {
-              margin-left: auto;
-            }
+            display: block;
           }
         }
       }
     }
   }
 }
-.database-actions, .document-actions {
+.database-actions,
+.document-actions {
   margin-bottom: 20px;
 }
 .databases {
@@ -1129,24 +439,10 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 16px;
-
-  .new-database {
-    background-color: #F0F3F4;
-  }
 }
 
-// .database, .graphbase {
-//   background-color: white;
-//   box-shadow: 0px 1px 2px 0px rgba(16,24,40,.06),0px 1px 3px 0px rgba(16,24,40,.1);
-//   border: 2px solid white;
-//   transition: box-shadow 0.2s ease-in-out;
-
-//   &:hover {
-//     box-shadow: 0px 4px 6px -2px rgba(16,24,40,.03),0px 12px 16px -4px rgba(16,24,40,.08);
-//   }
-// }
-
-.database, .graphbase {
+.database,
+.graphbase {
   background: linear-gradient(145deg, var(--gray-0) 0%, var(--gray-10) 100%);
   box-shadow: 0px 1px 2px 0px var(--shadow-2);
   border: 1px solid var(--gray-100);
@@ -1154,7 +450,8 @@ onMounted(() => {
   position: relative;
 }
 
-.dbcard, .database {
+.dbcard,
+.database {
   width: 100%;
   padding: 16px;
   border-radius: 16px;
@@ -1179,7 +476,6 @@ onMounted(() => {
     border: 1px solid var(--gray-100);
   }
 
-
   .top {
     display: flex;
     align-items: center;
@@ -1202,7 +498,11 @@ onMounted(() => {
     }
 
     .info {
-      h3, p {
+      flex: 1;
+      min-width: 0;
+
+      h3,
+      p {
         margin: 0;
         color: var(--gray-10000);
       }
@@ -1212,6 +512,9 @@ onMounted(() => {
         font-weight: 600;
         letter-spacing: -0.02em;
         line-height: 1.4;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       p {
@@ -1225,7 +528,7 @@ onMounted(() => {
         font-weight: 400;
 
         .created-time-inline {
-          color: var(--gray-500);
+          color: var(--gray-700);
           font-size: 11px;
           font-weight: 400;
           background: var(--gray-50);
@@ -1260,89 +563,6 @@ onMounted(() => {
   color: var(--gray-900);
 }
 
-.database-container {
-  padding: 0;
-}
-
-.loading-container {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  height: 300px;
-  gap: 16px;
-}
-
-.new-database-modal {
-  h3 {
-    margin-top: 10px;
-  }
-}
-
-.table-cards {
-  .table-card-content {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    height: 100%;
-    min-height: 60px;
-
-    .checkbox-container {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-
-    .table-info {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      min-height: 40px;
-      white-space: normal;
-      overflow-wrap: break-word;
-      word-break: break-word;
-
-      .table-name {
-        font-size: 12px;
-        color: var(--gray-600);
-        line-height: 1.4;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-        text-overflow: ellipsis;
-
-        // font-weight: 500;
-        // color: var(--gray-800);
-        // font-size: 14px;
-        // line-height: 1.3;
-        // margin-bottom: 4px;
-      }
-
-      .table-description {
-        font-weight: 500;
-        color: var(--gray-800);
-        font-size: 14px;
-        line-height: 1.3;
-        margin-bottom: 4px;
-        // font-size: 12px;
-        // color: var(--gray-600);
-        // line-height: 1.4;
-        // display: -webkit-box;
-        // -webkit-line-clamp: 2;
-        // -webkit-box-orient: vertical;
-        // overflow: hidden;
-        // text-overflow: ellipsis;
-      }
-    }
-  }
-
-  .ant-card-body {
-    padding: 12px !important;
-  }
-}
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -1372,6 +592,25 @@ onMounted(() => {
     padding: 0 24px;
     font-size: 15px;
     font-weight: 500;
+  }
+}
+
+.database-container {
+  padding: 0;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 300px;
+  gap: 16px;
+}
+
+.new-database-modal {
+  h3 {
+    margin-top: 10px;
   }
 }
 </style>

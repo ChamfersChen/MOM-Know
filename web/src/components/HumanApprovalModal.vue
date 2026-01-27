@@ -53,7 +53,7 @@ const props = defineProps({
     default: '是否批准此操作？'
   },
   operation: {
-    type: String,
+    type: [String, Object],
     default: ''
   }
 })

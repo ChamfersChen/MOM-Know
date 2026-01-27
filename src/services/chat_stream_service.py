@@ -4,6 +4,7 @@ import traceback
 import uuid
 from collections.abc import AsyncIterator
 
+from langgraph.types import Interrupt
 from langchain.messages import AIMessage, AIMessageChunk, HumanMessage
 from langgraph.types import Command
 
@@ -198,6 +199,10 @@ async def check_and_handle_interrupts(
             elif hasattr(interrupt_info, "question"):
                 question = getattr(interrupt_info, "question", question)
                 operation = getattr(interrupt_info, "operation", operation)
+            elif isinstance(interrupt_info, Interrupt):
+                action_requests = interrupt_info.value['action_requests']
+                if action_requests:
+                    operation = action_requests[0]
 
             meta["interrupt"] = {
                 "question": question,
@@ -477,6 +482,8 @@ async def stream_agent_resume(
     agent_id: str,
     thread_id: str,
     approved: bool,
+    tool_name: str,  # New optional form data parameter
+    tool_args: dict,  # New optional form data parameter
     meta: dict,
     config: dict,
     current_user,
@@ -505,7 +512,16 @@ async def stream_agent_resume(
     init_msg = {"type": "system", "content": f"Resume with approved: {approved}"}
     yield make_resume_chunk(status="init", meta=meta, msg=init_msg)
 
-    resume_command = Command(resume=approved)
+    decision = {"type": "reject"} if not approved else {"type": "edit", "edited_action": {"name": tool_name, "args": tool_args}}
+
+    resume_command = Command(
+        resume={
+            "decisions": [
+                decision
+            ]
+        }
+    )
+    # resume_command = Command(resume=approved)
     graph = await agent.get_graph()
 
     user_id = str(current_user.id)

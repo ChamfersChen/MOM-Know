@@ -10,8 +10,9 @@ from src.agents.common.toolkits.mysql import get_mysql_tools
 from src.agents.common.tools import gen_tool_info, get_buildin_tools
 from src.services.mcp_service import get_tools_from_all_servers
 from src.utils import logger
-from .middlewares.sql_retrieval_middleware import SqlRetrievalMiddleware
-from src.agents.common.middlewares import TaskSkillMiddleware
+# from .middlewares.sql_retrieval_middleware import SqlRetrievalMiddleware
+
+# from src.agents.common.middlewares import TaskSkillMiddleware
 
 # _mcp_servers = {"mcp-server-chart": {"command": "npx", "args": ["-y", "@antv/mcp-server-chart"], "transport": "stdio"}}
 SQL_PAIRS_KB_ID = "kb_8d6732060fbf23a102aab44a50ffe953"
@@ -55,7 +56,9 @@ class SqlReporterAgent(BaseAgent):
     async def get_graph(self, **kwargs):
         """构建图"""
         context = self.context_schema.from_file(module_name=self.module_name)
-        all_mcp_tools = await get_tools_from_all_servers()
+        all_mcp_tools = (
+            await get_tools_from_all_servers()
+        )  # 因为异步加载，无法放在 RuntimeConfigMiddleware 的 __init__ 中
         # 合并 MySQL 工具和 MCP 工具
         extra_tools = get_mysql_tools() + all_mcp_tools
 

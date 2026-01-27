@@ -28,7 +28,6 @@ class DBConnectorBaseFactory:
 
         cls._db_types[db_type] = db_class
         cls._default_configs[db_type] = default_config or {}
-        # logger.info(f"Registered knowledge base type: {kb_type}")
 
     @classmethod
     def create(cls, db_type: str, work_dir: str, **kwargs) -> ConnectorBase:

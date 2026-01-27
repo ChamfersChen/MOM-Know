@@ -14,7 +14,7 @@ from .connection import (
 )
 from .exceptions import MySQLConnectionError
 from .security import MySQLSecurityChecker
-from src import sql_database
+from src.sql_database import sql_database
 
 # 全局连接管理器实例
 _connection_manager: MySQLConnectionManager | None = None
@@ -392,6 +392,7 @@ def _inject_db_description(tools: list[Any]) -> None:
 
 def get_mysql_tools() -> list[Any]:
     """获取MySQL工具列表"""
-    tools = [mysql_list_tables, mysql_describe_table, mysql_query]
+    tools = [mysql_list_tables_with_query, mysql_describe_table, mysql_query]
+    # tools = [mysql_list_tables, mysql_describe_table, mysql_query]
     _inject_db_description(tools)
     return tools
