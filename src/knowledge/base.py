@@ -262,14 +262,27 @@ class KnowledgeBase(ABC):
         self._add_to_processing_queue(file_id)
 
         try:
-            from src.knowledge.indexing import process_file_to_markdown
+            # Determine processing function based on content type
+            content_type = file_meta.get("processing_params", {}).get("content_type", "file")
 
-            # Prepare params
-            params = file_meta.get("processing_params", {}) or {}
-            params["db_id"] = db_id
+            if content_type == "url":
+                from src.knowledge.indexing import process_url_to_markdown
 
-            # Process to Markdown
-            markdown_content = await process_file_to_markdown(file_path, params=params)
+                # Prepare params
+                params = file_meta.get("processing_params", {}) or {}
+                params["db_id"] = db_id
+
+                # Process URL to Markdown
+                markdown_content = await process_url_to_markdown(file_path, params=params)
+            else:
+                from src.knowledge.indexing import process_file_to_markdown
+
+                # Prepare params
+                params = file_meta.get("processing_params", {}) or {}
+                params["db_id"] = db_id
+
+                # Process file to Markdown
+                markdown_content = await process_file_to_markdown(file_path, params=params)
 
             # Save Markdown to MinIO
             markdown_file_path = await self._save_markdown_to_minio(db_id, file_id, markdown_content)
@@ -404,7 +417,7 @@ class KnowledgeBase(ABC):
         # 从 kwargs 中获取 is_private 配置
         is_private = kwargs.get("is_private", False)
         prefix = "kb_private_" if is_private else "kb_"
-        db_id = f"{prefix}{hashstr(database_name, with_salt=True)}"[:64]
+        db_id = f"{prefix}{hashstr(database_name, with_salt=True, length=32)}"
 
         # 创建数据库记录
         # 确保 Pydantic 模型被转换为字典，以便 JSON 序列化

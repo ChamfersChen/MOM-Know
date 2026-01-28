@@ -9,26 +9,18 @@
       @save="handleSearchConfigSave"
     />
 
-  <FileUploadModal
-        v-model:visible="addFilesModalVisible"
-        :folder-tree="folderTree"
-        :current-folder-id="currentFolderId"
-        :is-folder-mode="isFolderUploadMode"
-        @success="onFileUploadSuccess"
-  />
-  
-  <DatabaseUploadModal
-    v-model:visible="uploadDatabaseModalVisible"
-  />
+    <FileUploadModal
+      v-model:visible="addFilesModalVisible"
+      :folder-tree="folderTree"
+      :current-folder-id="currentFolderId"
+      :is-folder-mode="isFolderUploadMode"
+      :mode="addFilesMode"
+      @success="onFileUploadSuccess"
+    />
 
-  
-  <DatabaseUploadModal
-    v-model:visible="uploadDatabaseModalVisible"
-  />
-
-  <div class="unified-layout">
-    <div class="left-panel" :style="{ width: leftPanelWidth + '%' }">
-      <KnowledgeBaseCard />
+    <div class="unified-layout">
+      <div class="left-panel" :style="{ width: leftPanelWidth + '%' }">
+        <KnowledgeBaseCard />
         <!-- 待处理文件提示条 -->
         <div class="info-panel" v-if="pendingParseCount > 0 || pendingIndexCount > 0">
           <div class="banner-item" v-if="pendingParseCount > 0" @click="confirmBatchParse">
@@ -326,14 +318,16 @@ const openSearchConfigModal = () => {
 const addFilesModalVisible = ref(false)
 const currentFolderId = ref(null)
 const isFolderUploadMode = ref(false)
+const addFilesMode = ref('file')
 
 // 标记是否是初次加载
 const isInitialLoad = ref(true)
 
 // 显示添加文件弹窗
 const showAddFilesModal = (options = {}) => {
-  const { isFolder = false } = options
+  const { isFolder = false, mode = 'file' } = options
   isFolderUploadMode.value = isFolder
+  addFilesMode.value = mode
   addFilesModalVisible.value = true
   currentFolderId.value = null // 重置
 }
@@ -698,7 +692,8 @@ const handleMouseUp = () => {
   }
 
   .config-text {
-    font-size: 13px;
+    font-size: 14px;
+    margin-left: 4px;
   }
 }
 
