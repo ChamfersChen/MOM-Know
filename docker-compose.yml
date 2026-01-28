@@ -3,9 +3,6 @@ services:
     build:
       context: .
       dockerfile: docker/api.Dockerfile
-      args:
-        HTTP_PROXY: ${HTTP_PROXY:-}
-        HTTPS_PROXY: ${HTTPS_PROXY:-}
     image: yuxi-api:0.5.dev
     container_name: api-dev
     working_dir: /app
@@ -36,7 +33,7 @@ services:
       - MILVUS_DB_NAME=${MILVUS_DB_NAME:-default}
       - MILVUS_TOKEN=${MILVUS_TOKEN:-}
       - MINERU_VL_SERVER=${MINERU_VL_SERVER:-http://mineru-vllm-server:30000}
-      - MINERU_API_URI=${MINERU_API_URI:-http://mineru-api:30000}
+      - MINERU_API_URI=${MINERU_API_URI:-http://mineru-api:30001}
       - PADDLEX_URI=${PADDLEX_URI:-http://paddlex:8080}
       - MINIO_URI=${MINIO_URI:-http://milvus-minio:9000}
       - MODEL_DIR_IN_DOCKER=/models

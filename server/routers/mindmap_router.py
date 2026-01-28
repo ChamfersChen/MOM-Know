@@ -216,7 +216,7 @@ async def generate_mindmap(
         # 选择模型并调用
         model = select_model()
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}]
-        response = model.call(messages, stream=False)
+        response = await model.call(messages, stream=False)
 
         # 解析AI返回的JSON
         try:

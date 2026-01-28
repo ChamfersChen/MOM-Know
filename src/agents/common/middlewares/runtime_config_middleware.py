@@ -55,6 +55,8 @@ class RuntimeConfigMiddleware(AgentMiddleware):
         model = load_chat_model(getattr(runtime_context, "model", None))
         enabled_tools = await self.get_tools_from_context(runtime_context)
         system_prompt = getattr(runtime_context, "system_prompt", None)
+        logger.debug(f"RuntimeConfigMiddleware: model={model}, "
+                     f"tools={[t.name for t in enabled_tools]}. ")
 
         existing_systems: list[Any] = []
         remaining: list[Any] = []
@@ -94,6 +96,8 @@ class RuntimeConfigMiddleware(AgentMiddleware):
             for tool_name in context.tools:
                 if tool_name in tools_map:
                     selected_tools.append(tools_map[tool_name])
+                else:
+                    logger.warning(f"Tool '{tool_name}' not found in available tools. {tools_map.keys()=}")
 
         # 2. 知识库工具
         if context.knowledges:
