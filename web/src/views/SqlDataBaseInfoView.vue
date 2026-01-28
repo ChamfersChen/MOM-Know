@@ -2,13 +2,6 @@
   <div class="database-info-container">
     <FileDetailModal />
 
-    <!-- 检索配置弹窗 -->
-    <!-- <SearchConfigModal
-      v-model="searchConfigModalVisible"
-      :database-id="databaseId"
-      @save="handleSearchConfigSave"
-    /> -->
-
   <FileUploadModal
         v-model:visible="addFilesModalVisible"
         :folder-tree="folderTree"
@@ -20,17 +13,6 @@
   <div class="unified-layout">
     <div class="left-panel" :style="{ width: leftPanelWidth + '%' }">
       <SqlDatabaseCard />
-        <!-- 待处理文件提示条 -->
-        <div class="info-panel" v-if="pendingParseCount > 0 || pendingIndexCount > 0">
-          <div class="banner-item" v-if="pendingParseCount > 0" @click="confirmBatchParse">
-            <FileText :size="14" />
-            <span>{{ pendingParseCount }} 个文件待解析，点击解析</span>
-          </div>
-          <div class="banner-item" v-if="pendingIndexCount > 0" @click="confirmBatchIndex">
-            <Database :size="14" />
-            <span>{{ pendingIndexCount }} 个文件待入库，点击入库</span>
-          </div>
-        </div>
       <SqlTable
         :right-panel-visible="state.rightPanelVisible"
         @show-add-files-modal="showAddFilesModal"
@@ -53,71 +35,19 @@
           class="knowledge-tabs"
           :tabBarStyle="{ margin: 0, padding: '0 16px' }"
         >
-          <!-- <template #rightExtra>
-            <a-tooltip title="检索配置" placement="bottom">
-              <a-button type="text" class="config-btn" @click="openSearchConfigModal">
-                <SettingOutlined />
-                <span class="config-text">检索配置</span>
-              </a-button>
-            </a-tooltip>
-          </template>
-          <a-tab-pane key="graph" tab="知识图谱" v-if="isGraphSupported">
-            <KnowledgeGraphSection
-              :visible="true"
-              :active="activeTab === 'graph'"
-              @toggle-visible="() => {}"
-            />
-          </a-tab-pane>
-          <a-tab-pane key="query" tab="检索测试">
-            <QuerySection ref="querySectionRef" :visible="true" @toggle-visible="() => {}" />
-          </a-tab-pane>
-          <a-tab-pane key="mindmap" tab="知识导图">
-            <MindMapSection v-if="databaseId" :database-id="databaseId" ref="mindmapSectionRef" />
-          </a-tab-pane>
-          <a-tab-pane key="evaluation" tab="RAG评估" :disabled="!isEvaluationSupported">
-            <template #tab>
-              <span :style="{ color: !isEvaluationSupported ? 'var(--gray-400)' : '' }">
-                RAG评估
-                <a-tooltip v-if="!isEvaluationSupported" title="仅支持 Milvus 类型的知识库">
-                  <Info :size="14" style="margin-left: 4px; vertical-align: middle" />
-                </a-tooltip>
-              </span>
-            </template>
-            <RAGEvaluationTab
-              v-if="databaseId && isEvaluationSupported"
-              :database-id="databaseId"
-              @switch-to-benchmarks="activeTab = 'benchmarks'"
-            />
-          </a-tab-pane> -->
-          <a-tab-pane key="benchmarks" tab="评估基准" :disabled="!isEvaluationSupported">
-            <template #tab>
-              <span :style="{ color: !isEvaluationSupported ? 'var(--gray-400)' : '' }">
-                评估基准
-                <a-tooltip v-if="!isEvaluationSupported" title="仅支持 Milvus 类型的知识库">
-                  <Info :size="14" style="margin-left: 4px; vertical-align: middle" />
-                </a-tooltip>
-              </span>
-            </template>
-            <div class="benchmark-management-container">
-              <div class="benchmark-content">
-                <EvaluationBenchmarks
-                  v-if="databaseId && isEvaluationSupported"
-                  :database-id="databaseId"
-                  @benchmark-selected="
-                    (benchmark) => {
-                      // 处理基准选择逻辑
-                      activeTab = 'evaluation'
-                    }
-                  "
-                  @refresh="
-                    () => {
-                      // 刷新逻辑
-                    }
-                  "
-                />
-              </div>
+          <a-tab-pane key="query" tab="关联数据库">
+            <div class="query-tab-content">
+              <DatabaseRelationManager
+                v-if="databaseId"
+                :database-id="databaseId"
+                class="relation-manager"
+              />
+              <!-- <QuerySection ref="querySectionRef" :visible="true" @toggle-visible="() => {}" /> -->
             </div>
           </a-tab-pane>
+          <!-- <a-tab-pane key="mindmap" tab="知识导图">
+            <MindMapSection v-if="databaseId" :database-id="databaseId" ref="mindmapSectionRef" />
+          </a-tab-pane> -->
         </a-tabs>
       </div>
     </div>
@@ -138,6 +68,7 @@ import FileDetailModal from '@/components/FileDetailModal.vue'
 import FileUploadModal from '@/components/FileUploadModal.vue'
 import QuerySection from '@/components/QuerySection.vue'
 import MindMapSection from '@/components/MindMapSection.vue'
+import DatabaseRelationManager from '@/components/DatabaseRelationManager.vue'
 import RAGEvaluationTab from '@/components/RAGEvaluationTab.vue'
 import EvaluationBenchmarks from '@/components/EvaluationBenchmarks.vue'
 import SearchConfigModal from '@/components/SearchConfigModal.vue'
@@ -155,12 +86,6 @@ const state = computed(() => store.state)
 const isGraphSupported = computed(() => {
   const kbType = database.value.kb_type?.toLowerCase()
   return kbType === 'lightrag'
-})
-
-// 计算属性：是否支持评估功能
-const isEvaluationSupported = computed(() => {
-  const kbType = database.value.kb_type?.toLowerCase()
-  return kbType === 'milvus'
 })
 
 // 计算待解析文件数量（status: 'uploaded'）
@@ -253,7 +178,7 @@ const resetGraphStats = () => {
 
 // LightRAG 默认展示知识图谱
 watch(
-  () => [databaseId.value, isGraphSupported.value, isEvaluationSupported.value],
+  () => [databaseId.value, isGraphSupported.value],
   ([newDbId, supported, evaluationSupported], oldValue = []) => {
     const [oldDbId, previouslySupported, previouslyEvaluationSupported] = oldValue
 
@@ -279,13 +204,6 @@ watch(
       activeTab.value = 'query'
     }
 
-    // 如果知识库类型不支持评估功能且当前在评估相关 tab，切换到查询 tab
-    if (
-      !isEvaluationSupported.value &&
-      (activeTab.value === 'evaluation' || activeTab.value === 'benchmarks')
-    ) {
-      activeTab.value = 'query'
-    }
   },
   { immediate: true }
 )
@@ -783,6 +701,22 @@ const handleMouseUp = () => {
   .content {
     padding: 8px;
     flex: 1;
+    overflow: hidden;
+  }
+}
+
+.query-tab-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+
+  .relation-manager {
+    flex-shrink: 0;
+    max-height: 300px;
+    margin-bottom: 8px;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
     overflow: hidden;
   }
 }

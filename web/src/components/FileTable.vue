@@ -1019,6 +1019,7 @@ const onSelectChange = (keys, selectedRows) => {
   // 只保留非文件夹的文件ID
   const fileKeys = selectedRows.filter((row) => !row.is_folder).map((row) => row.file_id)
 
+  console.log('onSelectChange >> ', fileKeys)
   selectedRowKeys.value = fileKeys
 }
 

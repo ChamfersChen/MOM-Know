@@ -36,10 +36,9 @@
 
       <!-- Tags -->
       <div class="tags-section">
-        <a-tag :color="getKbTypeColor(database.kb_type || 'lightrag')" size="small">
-          {{ getKbTypeLabel(database.kb_type || 'lightrag') }}
+        <a-tag :color="getKbTypeColor(database.db_type || 'lightrag')" size="small">
+          {{ getKbTypeLabel(database.db_type || 'lightrag') }}
         </a-tag>
-        <a-tag color="blue" size="small">{{ database.embed_info?.name || 'N/A' }}</a-tag>
       </div>
     </div>
   </div>
@@ -82,7 +81,7 @@
       </a-form-item>
 
       <!-- 仅对 LightRAG 类型显示 LLM 配置 -->
-      <a-form-item v-if="database.kb_type === 'lightrag'" label="语言模型 (LLM)" name="llm_info">
+      <a-form-item v-if="database.db_type === 'lightrag'" label="语言模型 (LLM)" name="llm_info">
         <ModelSelectorComponent
           :model_spec="llmModelSpec"
           placeholder="请选择模型"
@@ -240,7 +239,7 @@ const showEditModal = () => {
     database.value.additional_params?.auto_generate_questions || false
 
   // 如果是 LightRAG 类型，加载当前的 LLM 配置
-  if (database.value.kb_type === 'lightrag') {
+  if (database.value.db_type === 'lightrag') {
     const llmInfo = database.value.llm_info || {}
     editForm.llm_info.provider = llmInfo.provider || ''
     editForm.llm_info.model_name = llmInfo.model_name || ''

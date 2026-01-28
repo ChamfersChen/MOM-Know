@@ -8,19 +8,10 @@
           <!-- <ChevronDown size="14" style="margin-left: 4px" /> -->
         </a-button>
 
-        <!-- <a-button
-          class="panel-action-btn"
-          type="text"
-          size="small"
-          @click="showCreateFolderModal"
-          title="新建文件夹"
-        >
-          <template #icon><FolderPlus size="16" /></template>
-        </a-button> -->
       </div>
       <div class="panel-actions">
         <a-input
-          v-model:value="filenameFilter"
+          v-model:value="tablenameFilter"
           placeholder="搜索"
           size="small"
           class="action-searcher"
@@ -31,43 +22,6 @@
             <Search size="14" style="color: var(--gray-400)" />
           </template>
         </a-input>
-
-        <a-dropdown trigger="click">
-          <a-button
-            type="text"
-            class="panel-action-btn"
-            :class="{ active: sortField !== 'filename' }"
-            title="排序"
-          >
-            <template #icon><ArrowUpDown size="16" /></template>
-          </a-button>
-          <template #overlay>
-            <a-menu :selectedKeys="[sortField]" @click="handleSortMenuClick">
-              <a-menu-item v-for="opt in sortOptions" :key="opt.value">
-                {{ opt.label }}
-              </a-menu-item>
-            </a-menu>
-          </template>
-        </a-dropdown>
-
-        <!-- <a-dropdown trigger="click">
-          <a-button
-            type="text"
-            class="panel-action-btn"
-            :class="{ active: statusFilter !== 'all' }"
-            title="筛选状态"
-          >
-            <template #icon><Filter size="16" /></template>
-          </a-button>
-          <template #overlay>
-            <a-menu :selectedKeys="[statusFilter]" @click="handleStatusMenuClick">
-              <a-menu-item key="all">全部状态</a-menu-item>
-              <a-menu-item v-for="opt in statusOptions" :key="opt.value">
-                {{ opt.label }}
-              </a-menu-item>
-            </a-menu>
-          </template>
-        </a-dropdown> -->
 
         <a-button
           type="text"
@@ -110,33 +64,22 @@
         <span>{{ selectedRowKeys.length }} 项</span>
       </div>
       <div style="display: flex; gap: 2px">
-        <!-- <a-button
+        <a-button
           type="link"
-          @click="handleBatchParse"
-          :loading="batchParsing"
-          :disabled="!canBatchParse"
-          :icon="h(FileText, { size: 16 })"
+          @click="handleBatchChoose"
+          :loading="batchDeleting"
+          :icon="h(CheckSquare, { size: 16 })"
         >
-          批量解析
+          确认选择
         </a-button>
         <a-button
           type="link"
-          @click="handleBatchIndex"
-          :loading="batchIndexing"
-          :disabled="!canBatchIndex"
-          :icon="h(Database, { size: 16 })"
-        >
-          批量入库
-        </a-button> -->
-        <a-button
-          type="link"
           danger
-          @click="handleBatchDelete"
+          @click="handleBatchUnchoose"
           :loading="batchDeleting"
-          :disabled="!canBatchDelete"
-          :icon="h(Trash2, { size: 16 })"
+          :icon="h(X, { size: 16 })"
         >
-          批量删除
+          取消选择
         </a-button>
       </div>
     </div>
@@ -168,34 +111,6 @@
         </a-button>
       </template>
     </a-modal>
-    <!-- <a-modal
-      v-model:open="updateTableDescriptionModalVisible"
-      :title="updateTableDescriptionModalTitle"
-      width="600px"
-    >
-      <template #footer>
-        <a-button key="back" @click="handleUpdateTableDescriptionCancel">取消</a-button>
-        <a-button key="submit" type="primary" @click="handleUpdateTableDescriptionConfirm">确定</a-button>
-      </template>
-      <div class="index-params">
-        <ChunkParamsConfig :temp-chunk-params="indexParams" :show-qa-split="true" />
-      </div>
-    </a-modal> -->
-
-    <!-- 新建文件夹模态框 -->
-    <!-- <a-modal
-      v-model:open="createFolderModalVisible"
-      title="新建文件夹"
-      :confirm-loading="createFolderLoading"
-      @ok="handleCreateFolder"
-    >
-      <a-input
-        v-model:value="newFolderName"
-        placeholder="请输入文件夹名称"
-        @pressEnter="handleCreateFolder"
-      />
-    </a-modal> -->
-
     <a-table
       :columns="columnsCompact"
       :data-source="paginatedTables"
@@ -211,8 +126,7 @@
         isSelectionMode
           ? {
               selectedRowKeys: selectedRowKeys,
-              onChange: onSelectChange,
-              getCheckboxProps: getCheckboxProps
+              onChange: onSelectChange
             }
           : null
       "
@@ -222,17 +136,6 @@
     >
       <template #bodyCell="{ column, text, record }">
         <div v-if="column.key === 'tablename'">
-          <!-- <template v-if="record.is_folder">
-            <span class="folder-row" @click="toggleExpand(record)">
-              <component
-                :is="
-                  expandedRowKeys.includes(record.file_id) ? h(FolderOpenFilled) : h(FolderFilled)
-                "
-                style="margin-right: 8px; color: #ffb800; font-size: 16px"
-              />
-              {{ record.filename }}
-            </span>
-          </template> -->
           <a-popover
             placement="right"
             overlayClassName="file-info-popover"
@@ -243,21 +146,13 @@
                 <div class="info-row">
                   <span class="label">ID:</span> <span class="value">{{ record.table_id }}</span>
                 </div>
-                <!-- <div class="info-row">
-                  <span class="label">状态:</span>
-                  <span class="value">{{ getStatusText(record.status) }}</span>
-                </div> -->
                 <div class="info-row">
                   <span class="label">时间:</span>
                   <span class="value">{{ formatRelativeTime(record.created_at) }}</span>
                 </div>
-                <!-- <div v-if="record.error_message" class="info-row error">
-                  <span class="label">错误:</span>
-                  <span class="value">{{ record.error_message }}</span>
-                </div> -->
               </div>
             </template>
-            <a-button class="main-btn" type="link" @click="openFileDetail(record)">
+            <a-button class="main-btn" type="link" @click="handleReindexFile(record)">
               <component
                 :is="getFileIcon(record.displayName || text)"
                 :style="{
@@ -280,7 +175,24 @@
             </a-tooltip>
           </template>
         </div>
-
+        <div
+          v-else-if="column.key === 'is_choose'"
+          style="display: flex; align-items: center; justify-content: flex-end"
+        >
+          <template v-if="!record.is_folder">
+            <a-tooltip :title="getStatusText(text)">
+              <span
+                v-if="text === false"
+                style="color: var(--color-error-500)"
+                ><CloseCircleFilled
+              /></span>
+              <span v-else
+                style="color: var(--color-success-500)"
+                ><CheckCircleFilled
+              /></span>
+            </a-tooltip>
+          </template>
+        </div>
         <div v-else-if="column.key === 'action'" class="table-row-actions">
           <a-popover
             placement="bottomRight"
@@ -293,8 +205,7 @@
                   <a-button
                     type="text"
                     block
-                    @click="handleReindexFile(record)"
-                    :disabled="lock"
+                    @click="handleReindexFile(record); closePopover(record.table_id)"
                   >
                     <template #icon><component :is="h(RotateCw)" size="14" /></template>
                     修改描述
@@ -328,12 +239,14 @@ import {
 } from '@ant-design/icons-vue'
 import {
   Trash2,
+
   Download,
   RotateCw,
   ChevronLast,
   Ellipsis,
   FolderPlus,
   CheckSquare,
+  X,
   FileText,
   FileCheck,
   Plus,
@@ -357,6 +270,7 @@ const sortOptions = [
 ]
 
 const descriptionForm = ref('')
+const singleChooseTable = ref(null)
 
 const handleSortMenuClick = (e) => {
   sortField.value = e.key
@@ -367,6 +281,8 @@ const handleSortMenuClick = (e) => {
 // Status text mapping
 const getStatusText = (status) => {
   const map = {
+    false: '未选择',
+    true: '已选择',
     uploaded: '已上传',
     parsing: '解析中',
     parsed: '已解析',
@@ -393,7 +309,6 @@ const emit = defineEmits(['showAddFilesModal', 'toggleRightPanel'])
 
 const files = computed(() => Object.values(store.database.files || {}))
 const tables = computed(() => Object.values(store.database.tables || {}))
-const isLightRAG = computed(() => store.database?.kb_type?.toLowerCase() === 'lightrag')
 const refreshing = computed(() => store.state.refrashing)
 const lock = computed(() => store.state.lock)
 const batchDeleting = computed(() => store.state.batchDeleting)
@@ -416,49 +331,26 @@ const allSelectableTables = computed(() => {
         !nameFilter || (table.tablename && table.tablename.toLowerCase().includes(nameFilter))
       return nameMatch
     }
-  })
-})
-
-const allSelectableFiles = computed(() => {
-  const nameFilter = filenameFilter.value.trim().toLowerCase()
-  const status = statusFilter.value
-
-  return files.value.filter((file) => {
-    if (file.is_folder) return false
-    // Follow getCheckboxProps logic
-    if (lock.value || file.status === 'processing' || file.status === 'waiting') return false
-
-    if (nameFilter || status !== 'all') {
-      const nameMatch =
-        !nameFilter || (file.filename && file.filename.toLowerCase().includes(nameFilter))
-      const statusMatch =
-        status === 'all' ||
-        file.status === status ||
-        (status === 'indexed' && file.status === 'done') ||
-        (status === 'error_indexing' && file.status === 'failed')
-      return nameMatch && statusMatch
-    }
     return true
   })
 })
 
+
 const isAllSelected = computed(() => {
   const selectableIds = allSelectableTables.value.map((t) => t.table_id)
-  // const selectableIds = allSelectableFiles.value.map((f) => f.file_id)
   if (selectableIds.length === 0) return false
   return selectableIds.every((id) => selectedRowKeys.value.includes(id))
 })
 
 const isPartiallySelected = computed(() => {
   const selectableIds = allSelectableTables.value.map((t) => t.table_id)
-  // const selectableIds = allSelectableFiles.value.map((f) => f.file_id)
   const selectedCount = selectableIds.filter((id) => selectedRowKeys.value.includes(id)).length
   return selectedCount > 0 && selectedCount < selectableIds.length
 })
 
 const onSelectAllChange = (e) => {
   if (e.target.checked) {
-    selectedRowKeys.value = allSelectableFiles.value.map((f) => f.file_id)
+    selectedRowKeys.value = allSelectableTables.value.map((t) => t.table_id)
   } else {
     selectedRowKeys.value = []
   }
@@ -473,35 +365,6 @@ const closePopover = (fileId) => {
   }
 }
 
-// 新建文件夹相关
-// const createFolderModalVisible = ref(false)
-// const newFolderName = ref('')
-// const createFolderLoading = ref(false)
-// const currentParentId = ref(null)
-
-// const showCreateFolderModal = (parentId = null) => {
-//   if (typeof parentId === 'string') {
-//     closePopover(parentId)
-//   }
-//   newFolderName.value = ''
-//   // 如果是事件对象（来自顶部按钮点击），则设为null
-//   if (parentId && typeof parentId === 'object') {
-//     parentId = null
-//   }
-//   currentParentId.value = parentId
-//   createFolderModalVisible.value = true
-// }
-
-// const toggleExpand = (record) => {
-//   if (!record.is_folder) return
-
-//   const index = expandedRowKeys.value.indexOf(record.file_id)
-//   if (index > -1) {
-//     expandedRowKeys.value.splice(index, 1)
-//   } else {
-//     expandedRowKeys.value.push(record.file_id)
-//   }
-// }
 
 const toggleSelectionMode = () => {
   isSelectionMode.value = !isSelectionMode.value
@@ -510,25 +373,6 @@ const toggleSelectionMode = () => {
   }
 }
 
-// const handleCreateFolder = async () => {
-//   if (!newFolderName.value.trim()) {
-//     message.warning('请输入文件夹名称')
-//     return
-//   }
-
-//   createFolderLoading.value = true
-//   try {
-//     await documentApi.createFolder(store.databaseId, newFolderName.value, currentParentId.value)
-//     message.success('创建成功')
-//     createFolderModalVisible.value = false
-//     handleRefresh()
-//   } catch (error) {
-//     console.error(error)
-//     message.error('创建失败: ' + (error.message || '未知错误'))
-//   } finally {
-//     createFolderLoading.value = false
-//   }
-// }
 
 // 拖拽相关逻辑
 const customRow = (record) => {
@@ -555,18 +399,6 @@ const customRow = (record) => {
       event.dataTransfer.effectAllowed = 'move'
       // 可以设置一个更好看的拖拽图像
     },
-    // onDragover: (event) => {
-    //   // 仅允许放置到真实文件夹中
-    //   if (record.is_folder) {
-    //     const files = store.database?.files || {}
-    //     // 确保是真实的文件夹（有 ID 且在 store 中）
-    //     if (files[record.file_id]) {
-    //       event.preventDefault()
-    //       event.dataTransfer.dropEffect = 'move'
-    //       event.currentTarget.classList.add('drop-over-folder')
-    //     }
-    //   }
-    // },
     onDragleave: (event) => {
       event.currentTarget.classList.remove('drop-over-folder')
     },
@@ -700,7 +532,33 @@ const columnsCompact = [
     },
     sortDirections: ['ascend', 'descend']
   },
-  { title: '', key: 'action', dataIndex: 'file_id', width: 40, align: 'center' }
+  {
+    title: '状态',
+    dataIndex: 'is_choose',
+    key: 'is_choose',
+    width: 60,
+    align: 'right',
+    sorter: (a, b) => {
+      const aStatus = a.is_choose ? 'done' : 'waiting'
+      const bStatus = b.is_choose ? 'done' : 'waiting'
+      const statusOrder = {
+        done: 1,
+        indexed: 1,
+        processing: 2,
+        indexing: 2,
+        parsing: 2,
+        waiting: 3,
+        uploaded: 3,
+        parsed: 3,
+        failed: 4,
+        error_indexing: 4,
+        error_parsing: 4
+      }
+      return (statusOrder[aStatus] || 5) - (statusOrder[bStatus] || 5)
+    },
+    sortDirections: ['ascend', 'descend']
+  },
+  { title: '', key: 'action', dataIndex: 'tablename', width: 40, align: 'center' }
 ]
 
 const buildTableTree = (tableList) => {
@@ -936,40 +794,6 @@ const emptyText = computed(() => {
   return filenameFilter.value ? `没有找到包含"${filenameFilter.value}"的文件` : '暂无文件'
 })
 
-// 计算是否可以批量删除
-const canBatchDelete = computed(() => {
-  return selectedRowKeys.value.some((key) => {
-    const file = files.value.find((f) => f.file_id === key)
-    return file && !(lock.value || file.status === 'processing' || file.status === 'waiting')
-  })
-})
-
-// 计算是否可以批量解析
-const canBatchParse = computed(() => {
-  return selectedRowKeys.value.some((key) => {
-    const file = filteredFiles.value.find((f) => f.file_id === key)
-    return file && !lock.value && (file.status === 'uploaded' || file.status === 'error_parsing')
-  })
-})
-
-// 计算是否可以批量入库
-const canBatchIndex = computed(() => {
-  return selectedRowKeys.value.some((key) => {
-    const file = filteredFiles.value.find((f) => f.file_id === key)
-    return (
-      file &&
-      !lock.value &&
-      (file.status === 'parsed' ||
-        file.status === 'error_indexing' ||
-        (!isLightRAG.value && (file.status === 'done' || file.status === 'indexed')))
-    )
-  })
-})
-
-const showAddFilesModal = (options = {}) => {
-  emit('showAddFilesModal', options)
-}
-
 const handleRefresh = () => {
   // 刷新时重置分页
   paginationConfig.value.current = 1
@@ -986,16 +810,8 @@ const toggleRightPanel = () => {
 }
 
 const onSelectChange = (keys, selectedRows) => {
-  // 只保留非文件夹的文件ID
-  const fileKeys = selectedRows.filter((row) => !row.is_folder).map((row) => row.file_id)
-
-  selectedRowKeys.value = fileKeys
+  selectedRowKeys.value = keys
 }
-
-const getCheckboxProps = (record) => ({
-  disabled:
-    lock.value || record.status === 'processing' || record.status === 'waiting' || record.is_folder
-})
 
 const onFilterChange = (e) => {
   filenameFilter.value = e.target.value
@@ -1003,14 +819,13 @@ const onFilterChange = (e) => {
   paginationConfig.value.current = 1
 }
 
-const handleDeleteFile = (fileId) => {
-  store.handleDeleteFile(fileId)
-  closePopover(fileId)
+const handleBatchChoose= () => {
+  store.handleBatchChoose(true)
+  isSelectionMode.value = false
 }
-
-
-const handleBatchDelete = () => {
-  store.handleBatchDelete()
+const handleBatchUnchoose= () => {
+  store.handleBatchChoose(false)
+  isSelectionMode.value = false
 }
 
 const openFileDetail = (record) => {
@@ -1019,9 +834,10 @@ const openFileDetail = (record) => {
 }
 
 const handleReindexFile = async (record) => {
-  closePopover(record.table_id)
+  closePopover(record.tablename)
   updateTableDescriptionModalTitle.value = '修改数据库表描述'
   descriptionForm.value = record.description || ''
+  singleChooseTable.value = record
   // 显示参数配置模态框
   updateTableDescriptionModalVisible.value = true
 }
@@ -1030,11 +846,26 @@ const handleUpdateTableDescriptionCancel = () => {
   updateTableDescriptionModalVisible.value = false
   // 重置参数为默认值
   descriptionForm.value = ''
+  singleChooseTable.value = null
 }
-const handleUpdateTableDescriptionConfirm =  async (record) => {
-  closePopover(record.table_id)
+const handleUpdateTableDescriptionConfirm =  async () => {
+  closePopover(singleChooseTable.value.tablename)
   const dbId = store.databaseId
-  console.log('updateTableDescriptionConfirm >> ', dbId, descriptionForm.value)
+  console.log('updateTableDescriptionConfirm >> ', dbId, descriptionForm.value, singleChooseTable.value)
+  try {
+    const newTableInfo = {
+          ...singleChooseTable.value,
+          description: descriptionForm.value
+        }
+    const newTable = {
+      [singleChooseTable.value.tablename]: newTableInfo
+    }
+    console.log('updateTableDescriptionConfirm >> ', newTable)
+    store.updateTables(newTable)
+  } catch (error) {
+    console.error(error)
+    message.error(error.message || '更新失败')
+  }
   updateTableDescriptionModalVisible.value = false
 }
 

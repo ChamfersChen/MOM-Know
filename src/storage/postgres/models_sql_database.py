@@ -34,6 +34,7 @@ class SqlDatabase(Base):
     connect_info = Column(JSON_VALUE)
     db_type = Column(String(32), nullable=False, index=True)
     share_config = Column(JSON_VALUE)
+    related_db_ids = Column(String(512), nullable=True, index=False)
     created_at = Column(DateTime(timezone=True), default=utc_now_naive)
     updated_at = Column(DateTime(timezone=True), default=utc_now_naive, onupdate=utc_now_naive)
 
@@ -47,6 +48,7 @@ class SqlDatabaseTable(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     table_id = Column(String(64), unique=True, nullable=False, index=True)
     database_id = Column(String(64), ForeignKey("sql_database.db_id", ondelete="CASCADE"), nullable=False, index=True)
+    # database_name = Column(String(512), nullable=False)
     tablename = Column(String(512), nullable=False)
     description = Column(String(512), nullable=False)
     is_choose = Column(Boolean, default=False)

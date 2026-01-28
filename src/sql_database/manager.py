@@ -140,7 +140,7 @@ class SqlDataBaseManager:
         if db is None:
             raise DBNotFoundError(f"Database {db_id} not found")
 
-        db_type = db.db_type or "lightrag"
+        db_type = db.db_type or "mysql"
 
         if not DBConnectorBaseFactory.is_type_supported(db_type):
             raise DBNotFoundError(f"Unsupported knowledge base type: {db_type}")
@@ -345,6 +345,7 @@ class SqlDataBaseManager:
         db_type: str, 
         connect_info:dict, 
         share_config: dict | None = None,
+        related_db_ids: str | None = None,
         **kwargs
     ) -> dict:
         """
@@ -372,27 +373,38 @@ class SqlDataBaseManager:
             share_config = {"is_shared": True, "accessible_departments": []}
 
         db_instance = self._get_or_create_db_instance(db_type)
-        db_info = await db_instance.create_database(database_name, description, connect_info=connect_info, **kwargs)
+        db_info = await db_instance.create_database(
+            database_name, 
+            description, 
+            connect_info=connect_info, 
+            share_config=share_config,
+            related_db_ids=related_db_ids,
+            **kwargs)
         db_id = db_info["db_id"]
 
-        from src.repositories.sql_database_repository import SqlDatabaseRepository
+        created_databases = set([v['database_id'] for v in db_instance.tables_meta.values()])
+        if not created_databases or not (db_id in created_databases):
+            await self.initialize_tables(db_id)
+            logger.debug(f"Initialize tables for {db_id}")
 
-        sdb_repo = SqlDatabaseRepository()
-        updated = await sdb_repo.update(db_id, {"share_config": share_config})
-        if updated is None:
-            await sdb_repo.create(
-                {
-                    "db_id": db_id,
-                    "name": database_name,
-                    "description": description,
-                    "db_type": db_type,
-                    "connect_info": connect_info,
-                    "share_config": share_config,
-                }
-            )
+        # from src.repositories.sql_database_repository import SqlDatabaseRepository
 
-        logger.info(f"Created {db_type} database: {database_name} ({db_id}) with {kwargs}")
-        db_info["share_config"] = share_config
+        # sdb_repo = SqlDatabaseRepository()
+        # updated = await sdb_repo.update(db_id, {"share_config": share_config})
+        # if updated is None:
+        #     await sdb_repo.create(
+        #         {
+        #             "db_id": db_id,
+        #             "name": database_name,
+        #             "description": description,
+        #             "db_type": db_type,
+        #             "connect_info": connect_info,
+        #             "share_config": share_config,
+        #         }
+        #     )
+
+        # logger.info(f"Created {db_type} database: {database_name} ({db_id}) with {kwargs}")
+        # db_info["share_config"] = share_config
         return db_info
 
     async def delete_database(self, db_id: str) -> dict:
@@ -400,7 +412,7 @@ class SqlDataBaseManager:
         from src.repositories.sql_database_repository import SqlDatabaseRepository
         try:
             db_instance = await self._get_db_for_database(db_id)
-            result = db_instance.delete_database(db_id)
+            result = await db_instance.delete_database(db_id)
 
             # 删除数据库记录
             db_repo = SqlDatabaseRepository()
@@ -430,9 +442,7 @@ class SqlDataBaseManager:
 
         try:
             db_instance = await self._get_db_for_database(db_id)
-            if not len(db_instance.tables_meta):
-                await self.initialize_tables(db_id)
-                logger.debug(f"Initialize tables for {db_id}")
+            
             db_info = db_instance.get_database_info(db_id)
         except DBNotFoundError:
             db_info = {
@@ -442,7 +452,7 @@ class SqlDataBaseManager:
                 "connect_info": db.connect_info,
                 "db_type": db.db_type,
                 "tables": {},
-                "selected_tables": {},
+                "related_db_ids": [],
                 "row_count": 0,
                 "status": "已连接",
             }
@@ -462,11 +472,11 @@ class SqlDataBaseManager:
         db_instance = await self._get_db_for_database(db_id)
         return await db_instance.select_tables(db_id, table_ids)
 
-    async def update_database(self, db_id:str, name:str, description:str, share_config:dict):
+    async def update_database(self, db_id:str, name:str, description:str, share_config:dict=None, related_db_ids:str=None):
         from src.repositories.sql_database_repository import SqlDatabaseRepository
 
         db_instance = await self._get_db_for_database(db_id)
-        db_instance.update_database(db_id, name, description, share_config)
+        db_instance.update_database(db_id, name, description, share_config, related_db_ids)
 
         # 准备更新数据
         update_data: dict = {
@@ -476,9 +486,25 @@ class SqlDataBaseManager:
         if share_config is not None:
             update_data["share_config"] = share_config
 
+        if related_db_ids is not None:
+            update_data["related_db_ids"] = related_db_ids
+
+        # # 保存到数据库
+        # db_repo = SqlDatabaseRepository()
+        # await db_repo.update(db_id, update_data)
+
+        return await self.get_database_info(db_id)
+
+    async def update_tables(self, db_id:str, table_info:dict):
+        from src.repositories.sql_database_tables_repository import SqlDatabaseTableRepository
+
+        db_instance = await self._get_db_for_database(db_id)
+        db_instance.update_tables(db_id, table_info)
+
         # 保存到数据库
-        db_repo = SqlDatabaseRepository()
-        await db_repo.update(db_id, update_data)
+        dt_repo = SqlDatabaseTableRepository()
+        for table_id, table_info in db_instance.tables_meta.items():
+            await dt_repo.update(table_id, table_info)
 
         return await self.get_database_info(db_id)
 

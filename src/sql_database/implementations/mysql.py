@@ -17,11 +17,11 @@ class MySQLConnector(ConnectorBase):
 
     def __init__(self, work_dir:str, **kwargs):
         super().__init__(work_dir)
-        self.host = kwargs.get("host", os.getenv("MYSQL_HOST") or "")
-        self.user = kwargs.get("user", os.getenv("MYSQL_USER") or "")
-        self.password = kwargs.get("password", os.getenv("MYSQL_PASSWORD") or "")
-        self.port = kwargs.get("port", os.getenv("MYSQL_PORT") or "")
-        self.database = kwargs.get("database", os.getenv("MYSQL_DATABASE") or "")
+        # self.host = kwargs.get("host", os.getenv("MYSQL_HOST") or "")
+        # self.user = kwargs.get("user", os.getenv("MYSQL_USER") or "")
+        # self.password = kwargs.get("password", os.getenv("MYSQL_PASSWORD") or "")
+        # self.port = kwargs.get("port", os.getenv("MYSQL_PORT") or "")
+        # self.database = kwargs.get("database", os.getenv("MYSQL_DATABASE") or "")
 
         # 存储集合映射
         self.connections: dict[str, pymysql.Connection] = {}
@@ -77,15 +77,18 @@ class MySQLConnector(ConnectorBase):
                 table_name = table['table_name']
                 table_comment = table['table_comment']
                 metadata = self.prepare_table_name_metadata(db_id, table_name)
-                metadata['tablename'] = table_name
+                metadata['tablename'] = f"{db_name}.{table_name}"
                 metadata['description'] = table_comment
+                metadata['database_name'] = db_name
 
+                table_id = metadata['table_id']
                 table_record = metadata.copy()
-                self.tables_meta[table_name] = table_record
+
+                self.tables_meta[table_id] = table_record
 
             await self._save_metadata()
 
-    def update_database(self, db_id: str, name: str, description: str, share_config:dict=None) -> dict:
+    def update_database(self, db_id: str, name: str, description: str, share_config:dict=None, related_db_ids: str=None) -> dict:
         """
         更新数据库
 
@@ -107,9 +110,26 @@ class MySQLConnector(ConnectorBase):
         if share_config is not None:
             self.databases_meta[db_id]["share_config"] = share_config
 
+        if related_db_ids is not None:
+            self.databases_meta[db_id]["related_db_ids"] = related_db_ids.split(";")
+
         asyncio.create_task(self._save_metadata())
 
-        return self.get_database_info(db_id)
+        # return self.get_database_info(db_id)
+    
+    def update_tables(self, db_id: str, table_info:dict) -> dict:
+        """
+        更新数据表
+
+        """
+        if db_id not in self.databases_meta:
+            raise ValueError(f"数据库 {db_id} 不存在")
+
+        for table_name, table_info in table_info.items():
+            table_id = table_info['table_id']
+            self.tables_meta[table_id] = table_info
+
+        asyncio.create_task(self._save_metadata())
 
 
     def _create_connection(self, db_id) -> pymysql.Connection:
@@ -342,11 +362,13 @@ class MySQLConnector(ConnectorBase):
             self.get_connection(db_id).close()
 
             from src.repositories.sql_database_repository import SqlDatabaseRepository
+            from src.repositories.sql_database_tables_repository import SqlDatabaseTableRepository
 
             # 删除相关文件记录
             tables_to_delete = [fid for fid, finfo in self.tables_meta.items() if finfo.get("database_id") == db_id]
             for table_id in tables_to_delete:
                 del self.tables_meta[table_id]
+                await SqlDatabaseTableRepository().delete(table_id)
 
             # 删除数据库记录
             del self.databases_meta[db_id]

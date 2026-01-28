@@ -482,9 +482,9 @@ watch(
 // 组件挂载时启动示例轮播
 onMounted(() => {
   store.databaseId = route.params.database_id
-  resetFileSelectionState()
+  // resetFileSelectionState()
   store.getDatabaseInfo()
-  store.startAutoRefresh()
+  // store.startAutoRefresh()
 
   // 添加拖拽事件监听（仅水平方向）
   if (resizeHandle.value) {

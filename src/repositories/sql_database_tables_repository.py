@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy import select
 
+from src.utils.datetime_utils import utc_now_naive
 from src.storage.postgres.manager import pg_manager
 from src.storage.postgres.models_sql_database import SqlDatabaseTable
 
@@ -21,13 +22,15 @@ class SqlDatabaseTableRepository:
             session.add(table)
         return table
 
-    async def update(self, tablename: str, data: dict[str, Any]) -> SqlDatabaseTable | None:
+    async def update(self, table_id: str, data: dict[str, Any]) -> SqlDatabaseTable | None:
         async with pg_manager.get_async_session_context() as session:
-            result = await session.execute(select(SqlDatabaseTable).where(SqlDatabaseTable.tablename == tablename))
+            result = await session.execute(select(SqlDatabaseTable).where(SqlDatabaseTable.table_id == table_id))
             table = result.scalar_one_or_none()
             if table is None:
                 return None
             for key, value in data.items():
+                if key in ['updated_at', 'created_at']:
+                    value = utc_now_naive()
                 setattr(table, key, value)
         return table
     async def get_by_table_id(self, table_id: str) -> SqlDatabaseTable | None:

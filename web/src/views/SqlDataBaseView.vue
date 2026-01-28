@@ -14,6 +14,7 @@
       @cancel="cancelCreateDatabase"
       class="new-database-modal"
       width="800px"
+      destroyOnClose
     >
 
       <!-- <h3>数据库名称<span style="color: var(--color-error-500)">*</span></h3>
@@ -99,36 +100,31 @@
         />
         <div class="top">
           <div class="icon">
-            <component :is="getKbTypeIcon(database.kb_type || 'lightrag')" />
+            <component :is="getKbTypeIcon(database.db_type || 'lightrag')" />
           </div>
           <div class="info">
             <h3>{{ database.name }}</h3>
             <p>
-              <span>{{ database.files ? Object.keys(database.files).length : 0 }} 文件</span>
+              <span>{{ database.tables ? Object.values(database.tables).filter(t => t.is_choose).length : 0 }}/{{ database.tables ? Object.keys(database.tables).length : 0 }} 文件</span>
               <span class="created-time-inline" v-if="database.created_at">
                 {{ formatCreatedTime(database.created_at) }}
               </span>
             </p>
           </div>
         </div>
-        <!-- <a-tooltip :title="database.description || '暂无描述'">
-          <p class="description">{{ database.description || '暂无描述' }}</p>
-        </a-tooltip> -->
         <p class="description">{{ database.description || '暂无描述' }}</p>
         <div class="tags">
           <a-tag color="blue" v-if="database.embed_info?.name">{{
             database.embed_info.name
           }}</a-tag>
-          <!-- <a-tag color="green" v-if="database.embed_info?.dimension">{{ database.embed_info.dimension }}</a-tag> -->
           <a-tag
-            :color="getKbTypeColor(database.kb_type || 'lightrag')"
+            :color="getKbTypeColor(database.db_type || 'lightrag')"
             class="kb-type-tag"
             size="small"
           >
-            {{ getKbTypeLabel(database.kb_type || 'lightrag') }}
+            {{ getKbTypeLabel(database.db_type || 'lightrag') }}
           </a-tag>
         </div>
-        <!-- <button @click="deleteDatabase(database.collection_name)">删除</button> -->
       </div>
     </div>
   </div>
@@ -163,7 +159,7 @@ const state = reactive({
 })
 
 // 共享配置状态（用于提交数据）
-const shareConfig = reactive({
+const shareConfig = ref({
   is_shared: true,
   accessible_department_ids: []
 })
@@ -188,8 +184,10 @@ const newDatabase = reactive(createEmptyDatabaseForm())
 const resetNewDatabase = () => {
   Object.assign(newDatabase, createEmptyDatabaseForm())
   // 重置共享配置
-  shareConfig.is_shared = true
-  shareConfig.accessible_department_ids = []
+  shareConfig.value = {
+    is_shared: true,
+    accessible_department_ids: []
+  }
 }
 
 const cancelCreateDatabase = () => {
@@ -235,11 +233,13 @@ const buildRequestData = () => {
     description: newDatabase.description?.trim() || '',
     db_type: newDatabase.db_type,
   }
-
+  console.log('shareConfig.value:', shareConfig.value)
   // 添加共享配置
   requestData.share_config = {
-    is_shared: shareConfig.is_shared,
-    accessible_departments: shareConfig.is_shared ? [] : shareConfig.accessible_department_ids || []
+    is_shared: shareConfig.value.is_shared,
+    accessible_departments: shareConfig.value.is_shared
+      ? []
+      : shareConfig.value.accessible_department_ids || []
   }
   requestData.connect_info = {
     host: connectInfo.host,
@@ -256,6 +256,7 @@ const buildRequestData = () => {
 // 创建按钮处理
 const handleCreateDatabase = async () => {
   const requestData = buildRequestData()
+  console.log('requestData >> :', requestData)
   try {
     await databaseStore.createDatabase(requestData)
     resetNewDatabase()

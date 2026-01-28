@@ -174,6 +174,42 @@ export const useDatabaseStore = defineStore('sql_database', () => {
       onOk: () => deleteFile(fileId)
     })
   }
+  async function updateTables(tableInfo) {
+    state.lock = true
+    try {
+      await databaseApi.updateTables(databaseId.value, tableInfo)
+      await getDatabaseInfo(undefined, true) // Skip query params for file deletion
+    } catch (error) {
+      console.error(error)
+      message.error(error.message || '更新失败')
+      throw error
+    } finally {
+      state.lock = false
+    }
+  }
+
+  function handleBatchChoose(choose) {
+    Object.values(database.value.tables).forEach((table) => {
+      const table_id = table.table_id
+      table.is_choose = selectedRowKeys.value.includes(table_id) && choose ? true : false
+    })
+
+    Modal.confirm({
+      title: '批量选中数据库表',
+      content: `确定要选择选中的 ${selectedRowKeys.value.length} 个数据库表吗？`,
+      okText: '确认',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await updateTables(database.value.tables)
+        } catch (error) {
+          console.error('批量选择出错:', error)
+          message.error('批量选择过程中发生错误')
+        } 
+      }
+    })
+  }
+
 
   function handleBatchDelete() {
     const files = database.value.files || {}
@@ -521,6 +557,8 @@ export const useDatabaseStore = defineStore('sql_database', () => {
     deleteFile,
     handleDeleteFile,
     handleBatchDelete,
+    handleBatchChoose,
+    updateTables,
     moveFile,
     addFiles,
     parseFiles,

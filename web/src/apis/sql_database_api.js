@@ -67,4 +67,14 @@ export const databaseApi = {
   updateDatabase: async (dbId, updateData) => {
     return apiAdminPut(`/api/sql_database/database/${dbId}`, updateData)
   },
+
+  /**
+   * 更新知识库信息
+   * @param {string} dbId - 知识库ID
+   * @param {Object} updateData - 更新数据
+   * @returns {Promise} - 更新结果
+   */
+  updateTables: async (dbId, tableInfo) => {
+    return apiAdminPut(`/api/sql_database/database/${dbId}/tables`, tableInfo)
+  },
 }

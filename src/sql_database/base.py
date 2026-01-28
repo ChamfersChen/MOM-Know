@@ -74,11 +74,12 @@ class ConnectorBase(ABC):
                 "db_type": db.db_type,
                 "connect_info": db.connect_info,
                 "share_config": db.share_config,
+                "related_db_ids": db.related_db_ids.split(";") if db.related_db_ids else [],
                 "created_at": utc_isoformat(db.created_at) if db.created_at else utc_isoformat(),
             }
             for db in databases
         }
-
+        logger.debug(f"databases meta: {self.databases_meta}")
         self.tables_meta = {}
         for db in databases:
             for record in await table_repo.list_by_db_id(db.db_id):
@@ -194,6 +195,8 @@ class ConnectorBase(ABC):
         database_name: str,
         description: str,
         connect_info: dict | None = None,
+        share_config: dict | None = None,
+        related_db_ids: str | None = None,
         **kwargs,
     ) -> dict:
         """
@@ -212,7 +215,7 @@ class ConnectorBase(ABC):
         # 从 kwargs 中获取 is_private 配置
         is_private = kwargs.get("is_private", False)
         prefix = "db_private_" if is_private else "db_"
-        db_id = f"{prefix}{hashstr(database_name, with_salt=True)}"[:64]
+        db_id = f"{prefix}{hashstr(database_name, with_salt=True, length=32)}"
 
         # 创建数据库记录
         # 确保 Pydantic 模型被转换为字典，以便 JSON 序列化
@@ -222,7 +225,8 @@ class ConnectorBase(ABC):
             "description": description,
             "db_type": self.db_type,
             "connect_info": connect_info.model_dump() if hasattr(connect_info, "model_dump") else connect_info,
-            "metadata": kwargs,
+            "share_config": share_config,
+            "related_db_ids": related_db_ids if related_db_ids else [],
             "created_at": utc_isoformat(),
         }
         await self._save_metadata()
@@ -288,7 +292,6 @@ class ConnectorBase(ABC):
 
         meta = self.databases_meta[db_id].copy()
         meta["db_id"] = db_id
-
         # 检查并修复异常的processing状态
         # self._check_and_fix_processing_status(db_id)
 
@@ -305,19 +308,6 @@ class ConnectorBase(ABC):
                     "is_choose": table_info.get("is_choose", False),
                     "created_at": created_at,
                 }
-        # 获取已选择的表信息
-        # selected_db_tables = {}
-        # for table_name, table_info in self.selected_tables_meta.items():
-        #     if table_info.get("database_id") == db_id:
-        #         created_at = self._normalize_timestamp(table_info.get("created_at"))
-        #         selected_db_tables[table_name] = {
-        #             "database_id": db_id,
-        #             "table_id": table_info.get("table_id", ""),
-        #             "tablename": table_info.get("tablename", ""),
-        #             "description": table_info.get("description", ""),
-        #             "is_choose": table_info.get("is_choose", False),
-        #             "created_at": created_at,
-        #         }
 
         # 按创建时间倒序排序文件列表
         sorted_tables = dict(
@@ -328,86 +318,10 @@ class ConnectorBase(ABC):
             )
         )
 
-        # # 按创建时间倒序排序文件列表
-        # sorted_selected_tables = dict(
-        #     sorted(
-        #         selected_db_tables.items(),
-        #         key=lambda item: item[1].get("created_at") or "",
-        #         reverse=True,
-        #     )
-        # )
-
-        # meta["selected_tables"] = sorted_selected_tables
         meta["tables"] = sorted_tables
         meta["row_count"] = len(sorted_tables)
         meta["status"] = "已连接"
         return meta
-
-    def get_databases(self) -> dict:
-        """
-        获取所有数据库信息
-
-        Returns:
-            数据库列表
-        """
-        databases = []
-        for db_id, meta in self.databases_meta.items():
-            # 检查并修复异常的processing状态
-            # self._check_and_fix_processing_status(db_id)
-
-            db_dict = meta.copy()
-            db_dict["db_id"] = db_id
-
-            db_tables = {}
-            # 获取文件信息
-            for table_id, table_info in self.tables_meta.items():
-                if table_info.get("database_id") == db_id:
-                    created_at = self._normalize_timestamp(table_info.get("created_at"))
-                    db_tables[table_id] = {
-                        "database_id": db_id,
-                        "table_id": table_id,
-                        "table_name": table_info.get("table_name", ""),
-                        "created_at": created_at,
-                        "table_comment": table_info.get("table_comment", ""),
-                    }
-            # 获取已选择的表信息
-            selected_db_tables = {}
-            for table_id, table_info in self.selected_tables_meta.items():
-                if table_info.get("database_id") == db_id:
-                    created_at = self._normalize_timestamp(table_info.get("created_at"))
-                    selected_db_tables[table_id] = {
-                        "database_id": db_id,
-                        "table_id": table_id,
-                        "table_name": table_info.get("table_name", ""),
-                        "created_at": created_at,
-                        "table_comment": table_info.get("table_comment", ""),
-                    }
-
-            # 按创建时间倒序排序文件列表
-            sorted_tables = dict(
-                sorted(
-                    db_tables.items(),
-                    key=lambda item: item[1].get("created_at") or "",
-                    reverse=True,
-                )
-            )
-
-            # 按创建时间倒序排序文件列表
-            sorted_selected_tables = dict(
-                sorted(
-                    selected_db_tables.items(),
-                    key=lambda item: item[1].get("created_at") or "",
-                    reverse=True,
-                )
-            )
-
-            db_dict["tables"] = sorted_tables
-            db_dict["selected_tables"] = sorted_selected_tables
-            db_dict["row_count"] = len(sorted_selected_tables)
-            db_dict["status"] = "已连接"
-            databases.append(db_dict)
-
-        return {"databases": databases}
 
     def _serialize_metadata(self, obj):
         """递归序列化元数据中的 Pydantic 模型"""
@@ -438,7 +352,8 @@ class ConnectorBase(ABC):
                 "description": meta.get("description"),
                 "db_type": meta.get("db_type") or self.db_type,
                 "connect_info": meta.get("connect_info"),
-                "share_config": meta.get("share_config")
+                "share_config": meta.get("share_config"),
+                "related_db_ids": ";".join(meta.get("related_db_ids",[])),
             }
             if existing is None:
                 await db_repo.create(payload)
@@ -451,13 +366,14 @@ class ConnectorBase(ABC):
                         "db_type": payload["db_type"],
                         "connect_info": payload["connect_info"],
                         "share_config": payload["share_config"],
+                        "related_db_ids": payload["related_db_ids"]
                     },
                 )
         
-        for table_name, table_info in self.tables_meta.items():
-            table_id = table_info["table_id"]
+        for table_id, table_info in self.tables_meta.items():
+            existing_table = await table_repo.get_by_table_id(table_id)
             database_id = table_info["database_id"]
-            existing_table = await table_repo.get_by_table_name(table_name)
+            # existing_table = await table_repo.get_by_table_name(table_name)
             payload = {
                 "table_id": table_id,
                 "database_id": database_id,
@@ -469,7 +385,7 @@ class ConnectorBase(ABC):
                 await table_repo.create(payload)
             else:
                 await table_repo.update(
-                    table_name,
+                    table_id,
                     {
                         "tablename": payload["tablename"],
                         "description": payload["description"],

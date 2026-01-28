@@ -48,6 +48,7 @@ async def create_database(
     try:
         # 先检查名称是否已存在
         if await sql_database.database_name_exists(database_name):
+            # return {"message": f"创建数据库失败 {e}", "status": "failed"}
             raise HTTPException(
                 status_code=409,
                 detail=f"知识库名称 '{database_name}' 已存在，请使用其他名称",
@@ -64,10 +65,6 @@ async def create_database(
             share_config=share_config,
             )
 
-        # # 初始化数据库表信息
-        # init_tables_info = await sql_database.initialize_tables(database_info["db_id"])
-        # database_info["tables"] = init_tables_info
-
         # 需要重新加载所有智能体，因为工具刷新了
         from src.agents import agent_manager
 
@@ -82,7 +79,7 @@ async def create_database(
 @sql_db.get("/database/{db_id}")
 async def get_database_info(
     db_id: str, 
-    current_user: User = Depends(get_admin_user)
+    # current_user: User = Depends(get_admin_user)
     ):
     """获取数据库详细信息"""
     database = await sql_database.get_database_info(db_id)
@@ -110,16 +107,16 @@ async def delete_database(
         logger.error(f"删除数据库失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"删除数据库失败: {e}")
 
-@sql_db.get("/database/{db_id}/tables")
-async def get_tables(
-    db_id: str, 
-    # current_user: User = Depends(get_admin_user)
+@sql_db.put("/database/{db_id}/tables")
+async def update_tables(
+    db_id: str,
+    table_info: dict = Body(...),
+    current_user: User = Depends(get_admin_user)
     ):
-    """获取数据库表信息"""
-    logger.debug(f"GET tables info in {db_id}")
+    """更新数据库表信息"""
 
     try:
-        info = await sql_database.get_tables(db_id)
+        info = await sql_database.update_tables(db_id, table_info)
         return info
     except Exception as e:
         logger.error(f"Failed to get table info, {e}, {db_id=}, {traceback.format_exc()}")
@@ -168,7 +165,7 @@ async def unchoose_tables(
     try:
         if not table_id:
             raise Exception("Table IDs cannot be empty")
-        # 选择需要使用的表
+
         table_info = await sql_database.unselect_table(db_id, table_id)
         from src.agents import agent_manager
         await agent_manager.reload_all()
@@ -183,6 +180,7 @@ async def update_database_info(
     name: str = Body(...),
     description: str = Body(...),
     share_config: dict = Body(None),
+    related_db_ids: str = Body(None),
     current_user: User = Depends(get_admin_user),
 ):
     """更新知识库信息"""
@@ -195,6 +193,7 @@ async def update_database_info(
             name,
             description,
             share_config=share_config,
+            related_db_ids=related_db_ids
         )
         return {"message": "更新成功", "database": database}
     except Exception as e:
