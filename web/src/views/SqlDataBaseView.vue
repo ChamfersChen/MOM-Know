@@ -1,8 +1,9 @@
 <template>
   <div class="database-container layout-container">
-    <HeaderComponent title="文档知识库" :loading="dbState.listLoading">
+    <HeaderComponent title="SQL数据库" :loading="dbState.listLoading">
       <template #actions>
         <a-button type="primary" @click="state.openNewDatabaseModel = true"> 连接数据库 </a-button>
+        <a-button type="primary" @click="uploadToNeo4j"> 导入Neo4J </a-button>
       </template>
     </HeaderComponent>
 
@@ -137,7 +138,7 @@ import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { useDatabaseStore } from '@/stores/sql_database'
 import { LockOutlined, InfoCircleOutlined, PlusOutlined } from '@ant-design/icons-vue'
-import { typeApi } from '@/apis/knowledge_api'
+import { databaseApi } from '@/apis/sql_database_api'
 import HeaderComponent from '@/components/HeaderComponent.vue'
 import ModelSelectorComponent from '@/components/ModelSelectorComponent.vue'
 import EmbeddingModelSelector from '@/components/EmbeddingModelSelector.vue'
@@ -145,6 +146,7 @@ import ShareConfigForm from '@/components/ShareConfigForm.vue'
 import dayjs, { parseToShanghai } from '@/utils/time'
 import AiTextarea from '@/components/AiTextarea.vue'
 import { getKbTypeLabel, getKbTypeIcon, getKbTypeColor } from '@/utils/kb_utils'
+import { message } from 'ant-design-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -226,6 +228,23 @@ const formatCreatedTime = (createdAt) => {
   return `${years} 年前创建`
 }
 
+// 导入Neo4j图数据库
+const uploadToNeo4j = async () => {
+  // 根据databases info上传图数据库
+  console.log('>>> upload to neo4j: ', databaseStore.databases)
+  try{
+    const ret = await databaseApi.createGraph()
+    if(ret.code === 0){ 
+      message.success('知识图谱创建成功')
+    }else{
+      message.error('知识图谱创建失败')
+    }
+  }catch(e){
+    console.log('>>> upload to neo4j error: ', e)
+    message.error('知识图谱创建失败')
+  }
+}
+
 // 构建请求数据（只负责表单数据转换）
 const buildRequestData = () => {
   const requestData = {
@@ -282,6 +301,7 @@ watch(
 onMounted(() => {
   // loadSupportedKbTypes()
   databaseStore.loadDatabases()
+  console.log(">>> Databases: ", databaseStore.databases)
 })
 </script>
 

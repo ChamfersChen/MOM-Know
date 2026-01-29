@@ -51,6 +51,7 @@ class SqlDatabaseTable(Base):
     # database_name = Column(String(512), nullable=False)
     tablename = Column(String(512), nullable=False)
     description = Column(String(512), nullable=False)
+    total_description = Column(String(4096), nullable=True)
     is_choose = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=utc_now_naive)
     updated_at = Column(DateTime(timezone=True), default=utc_now_naive, onupdate=utc_now_naive)

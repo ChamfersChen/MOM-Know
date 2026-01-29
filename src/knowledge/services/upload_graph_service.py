@@ -83,6 +83,44 @@ class UploadGraphService:
         if self.status == "closed":
             self.start()
 
+    async def database_meta_add_entity(self,databases_meta:list, kgdb_name="neo4j", embed_model_name=None, batch_size=40):
+        """"""
+        assert self.driver is not None, "Database is not connected"
+        self.connection.status = "processing"
+        kgdb_name = kgdb_name or "neo4j"
+        self.use_database(kgdb_name)  # 切换到指定数据库
+        logger.info(f"Start adding entity to {kgdb_name} with data")
+
+        triples = []
+        db_id2h = {}
+        for database_info in databases_meta:
+            h = {
+                "name": database_info["name"],
+                "database_name": database_info["name"],
+                "description": database_info["description"]
+
+            }
+            db_id2h[database_info["db_id"]] = h
+            for table_id, table_info in database_info["tables"].items():
+                if not table_info['is_choose']:
+                    continue
+                t = {
+                    "name": table_info["tablename"],
+                    "description": table_info["total_description"],
+                    "database_name": database_info["name"],
+                    "table_name": table_info["tablename"],
+                    "table_description": table_info["description"],
+                }
+                triples.append({"h": h, "t": t, "r": "Table2Column"})
+        
+        for database_info in databases_meta:
+            for related_db_id in database_info["related_db_ids"]:
+                t = db_id2h[related_db_id]
+                triples.append({"h": h, "t": t, "r": "Table2Table"})
+        if triples:
+            await self.txt_add_vector_entity(triples, kgdb_name, embed_model_name, batch_size)
+        
+
     async def jsonl_file_add_entity(self, file_path, kgdb_name="neo4j", embed_model_name=None, batch_size=None):
         """从JSONL文件添加实体三元组到Neo4j"""
         assert self.driver is not None, "Database is not connected"
@@ -142,7 +180,7 @@ class UploadGraphService:
         self.save_graph_info()
         return kgdb_name
 
-    async def txt_add_vector_entity(self, triples, kgdb_name="neo4j", embed_model_name=None, batch_size=None):
+    async def txt_add_vector_entity(self, triples, kgdb_name="neo4j", embed_model_name=None, batch_size=40):
         """添加实体三元组"""
         assert self.driver is not None, "Database is not connected"
         self.use_database(kgdb_name)
@@ -216,7 +254,6 @@ class UploadGraphService:
             """获取没有embedding的节点列表"""
             # 构建参数字典，将列表转换为"param0"、"param1"等键值对形式
             params = {f"param{i}": name for i, name in enumerate(entity_names)}
-
             if not params:
                 return []
 
@@ -228,12 +265,18 @@ class UploadGraphService:
                 f"""
             MATCH (n:Entity)
             WHERE n.name IN [{param_placeholders}] AND n.embedding IS NULL
-            RETURN n.name AS name
+            RETURN n.name AS name, n.description AS description, n.table_description AS table_description
             """,
                 params,
             )
 
-            return [record["name"] for record in result]
+            ret = []
+            entities = []
+            for record in result:
+                ret.append(f"表 `{record['name'].replace(".", "`.`")}` 的结构:\n\n表描述: {record['table_description']}\n\n{record['description']}")
+                entities.append(record["name"])
+
+            return ret, entities
 
         def _batch_set_embeddings(tx, entity_embedding_pairs):
             """批量设置实体的嵌入向量"""
@@ -284,7 +327,7 @@ class UploadGraphService:
             all_entities_list = list(all_entities)
 
             # 筛选出没有embedding的节点
-            nodes_without_embedding = session.execute_read(_get_nodes_without_embedding, all_entities_list)
+            nodes_without_embedding, entities = session.execute_read(_get_nodes_without_embedding, all_entities_list)
             if not nodes_without_embedding:
                 logger.info("所有实体已有embedding，无需重新计算")
                 return
@@ -296,17 +339,18 @@ class UploadGraphService:
             total_entities = len(nodes_without_embedding)
 
             for i in range(0, total_entities, max_batch_size):
-                batch_entities = nodes_without_embedding[i : i + max_batch_size]
+                batch_entities_desc = nodes_without_embedding[i : i + max_batch_size]
+                batch_entities_name = entities[i:i + max_batch_size]
                 logger.debug(
                     f"Processing entities batch {i // max_batch_size + 1}/"
-                    f"{(total_entities - 1) // max_batch_size + 1} ({len(batch_entities)} entities)"
+                    f"{(total_entities - 1) // max_batch_size + 1} ({len(batch_entities_desc)} entities)"
                 )
 
                 # 批量获取嵌入向量
-                batch_embeddings = await self.aget_embedding(batch_entities, batch_size=batch_size)
+                batch_embeddings = await self.aget_embedding(batch_entities_desc, batch_size=batch_size)
 
                 # 将实体名称和嵌入向量配对
-                entity_embedding_pairs = list(zip(batch_entities, batch_embeddings))
+                entity_embedding_pairs = list(zip(batch_entities_name, batch_embeddings))
 
                 # 批量写入数据库
                 session.execute_write(_batch_set_embeddings, entity_embedding_pairs)

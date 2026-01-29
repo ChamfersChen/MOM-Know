@@ -83,12 +83,13 @@ class ConnectorBase(ABC):
         self.tables_meta = {}
         for db in databases:
             for record in await table_repo.list_by_db_id(db.db_id):
-                self.tables_meta[record.tablename] = {
+                self.tables_meta[record.table_id] = {
                     "table_id": record.table_id,
                     "database_id": record.database_id,
                     "tablename": record.tablename,
                     "description": record.description,
                     "is_choose": record.is_choose,
+                    "total_description": record.total_description,
                     "created_at": utc_isoformat(record.created_at) if record.created_at else None,
                     "updated_at": utc_isoformat(record.updated_at) if record.updated_at else None,
                 }
@@ -297,15 +298,16 @@ class ConnectorBase(ABC):
 
         # 获取文件信息
         db_tables = {}
-        for table_name, table_info in self.tables_meta.items():
+        for table_id, table_info in self.tables_meta.items():
             if table_info.get("database_id") == db_id:
                 created_at = self._normalize_timestamp(table_info.get("created_at"))
-                db_tables[table_name] = {
+                db_tables[table_id] = {
                     "database_id": db_id,
                     "table_id": table_info.get("table_id", ""),
                     "tablename": table_info.get("tablename", ""),
                     "description": table_info.get("description", ""),
                     "is_choose": table_info.get("is_choose", False),
+                    "total_description": table_info.get("total_description", ""),
                     "created_at": created_at,
                 }
 
@@ -380,6 +382,7 @@ class ConnectorBase(ABC):
                 "tablename": table_info.get("tablename", ""),
                 "description": table_info.get("description", ""),
                 "is_choose": table_info.get("is_choose", False),
+                "total_description": table_info.get("total_description", ""),
             }
             if existing_table is None:
                 await table_repo.create(payload)
@@ -391,6 +394,7 @@ class ConnectorBase(ABC):
                         "description": payload["description"],
                         "description": payload["description"],
                         "is_choose": payload["is_choose"],
+                        "total_description": payload["total_description"],
                     },
                 )
 

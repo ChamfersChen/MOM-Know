@@ -201,6 +201,7 @@ export const useDatabaseStore = defineStore('sql_database', () => {
       cancelText: '取消',
       onOk: async () => {
         try {
+          console.log("database.value.tables to update >> : ", database.value.tables)
           await updateTables(database.value.tables)
         } catch (error) {
           console.error('批量选择出错:', error)

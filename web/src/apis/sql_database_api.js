@@ -77,4 +77,11 @@ export const databaseApi = {
   updateTables: async (dbId, tableInfo) => {
     return apiAdminPut(`/api/sql_database/database/${dbId}/tables`, tableInfo)
   },
+  /**
+   * 根据知识库配置信息，创建知识图谱
+   * @returns {Promise} - 更新结果
+   */
+  createGraph: async () => {
+    return apiAdminPost(`/api/sql_database/databases/neo4j`)
+  },
 }

@@ -199,9 +199,28 @@
             trigger="click"
             overlayClassName="file-action-popover"
             v-model:open="popoverVisibleMap[record.table_id]"
+            @click="chooseRow = record.is_choose"
           >
             <template #content>
               <div class="file-action-list">
+                  <a-button
+                    v-if="chooseRow===false"
+                    type="text"
+                    block
+                    @click="handleChoose(record.table_id, true); closePopover(record.table_id)"
+                  >
+                    <template #icon><component :is="h(RotateCw)" size="14" /></template>
+                    确认选择
+                  </a-button>
+                  <a-button
+                    v-else
+                    type="text"
+                    block
+                    @click="handleChoose(record.table_id, false); closePopover(record.table_id)"
+                  >
+                    <template #icon><component :is="h(RotateCw)" size="14" /></template>
+                    取消选择
+                  </a-button>
                   <a-button
                     type="text"
                     block
@@ -321,6 +340,7 @@ const selectedRowKeys = computed({
 })
 
 const isSelectionMode = ref(false)
+const chooseRow = ref(false)
 
 const allSelectableTables = computed(() => {
   const nameFilter = tablenameFilter.value.trim().toLowerCase()
@@ -823,6 +843,18 @@ const handleBatchChoose= () => {
   store.handleBatchChoose(true)
   isSelectionMode.value = false
 }
+
+const handleChoose= (table_id, is_choose) => {
+
+  console.log("tables >> ", store.database.tables)
+  const table_info = store.database.tables[table_id] // .filter((t) => t.table_id === table_id)
+  table_info['is_choose'] = is_choose
+  try{
+    store.updateTables({[table_id]: table_info})
+  }catch (e) {
+    console.log(e)
+  }
+}
 const handleBatchUnchoose= () => {
   store.handleBatchChoose(false)
   isSelectionMode.value = false
@@ -834,9 +866,10 @@ const openFileDetail = (record) => {
 }
 
 const handleReindexFile = async (record) => {
-  closePopover(record.tablename)
+  closePopover(record.table_id)
   updateTableDescriptionModalTitle.value = '修改数据库表描述'
   descriptionForm.value = record.description || ''
+  console.log('handleReindexFile', record)
   singleChooseTable.value = record
   // 显示参数配置模态框
   updateTableDescriptionModalVisible.value = true
@@ -849,7 +882,7 @@ const handleUpdateTableDescriptionCancel = () => {
   singleChooseTable.value = null
 }
 const handleUpdateTableDescriptionConfirm =  async () => {
-  closePopover(singleChooseTable.value.tablename)
+  closePopover(singleChooseTable.value.table_id)
   const dbId = store.databaseId
   console.log('updateTableDescriptionConfirm >> ', dbId, descriptionForm.value, singleChooseTable.value)
   try {
@@ -858,7 +891,7 @@ const handleUpdateTableDescriptionConfirm =  async () => {
           description: descriptionForm.value
         }
     const newTable = {
-      [singleChooseTable.value.tablename]: newTableInfo
+      [singleChooseTable.value.table_id]: newTableInfo
     }
     console.log('updateTableDescriptionConfirm >> ', newTable)
     store.updateTables(newTable)

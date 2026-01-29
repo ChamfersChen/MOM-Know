@@ -2,7 +2,7 @@ import os
 import threading
 import time
 import asyncio
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 from typing import Any
 from src.sql_database.base import ConnectorBase
 import pymysql
@@ -61,6 +61,99 @@ class MySQLConnector(ConnectorBase):
             'is_choose': False
         }
 
+    def _describe_table(self, cursor, database_name, table_name, table_desc:str) -> tuple[str, list[dict], dict]:
+        """获取指定表的详细结构信息
+
+        这个工具用来查看表的字段信息、数据类型、是否允许NULL、默认值、键类型等。
+        帮助你了解表的结构，以便编写正确的SQL查询。
+        """
+        try:
+            # 获取表结构
+            cursor.execute(f"DESCRIBE `{table_name}`")
+            columns = cursor.fetchall()
+
+            if not columns:
+                return f"表 {table_name} 不存在或没有字段", None, None
+
+            # 获取字段备注信息
+            column_comments: dict[str, str] = {}
+            try:
+                cursor.execute(
+                    """
+                    SELECT COLUMN_NAME, COLUMN_COMMENT
+                    FROM information_schema.COLUMNS
+                    WHERE TABLE_NAME = %s AND TABLE_SCHEMA = %s
+                    """,
+                    (table_name, database_name),
+                )
+                comment_rows = cursor.fetchall()
+                for row in comment_rows:
+                    column_name = row.get("COLUMN_NAME")
+                    if column_name:
+                        column_comments[column_name] = row.get("COLUMN_COMMENT") or ""
+            except Exception as e:
+                logger.warning(f"Failed to fetch column comments for table {table_name}: {e}")
+
+            # 格式化输出
+            # result_str = f"表 `{database_name}`.`{table_name}` 的结构:\n\n"
+            # result_str += f"表描述: {table_desc}\n\n" if table_desc else ""
+            result_str = "字段名\t\t类型\t\tNULL\t键\t默认值\t\t额外\t备注\n"
+            result_str += "-" * 80 + "\n"
+            result_columns = []
+            for col in columns:
+                field = col["Field"] or ""
+                type_str = col["Type"] or ""
+                null_str = col["Null"] or ""
+                key_str = col["Key"] or ""
+                default_str = col.get("Default") or ""
+                extra_str = col.get("Extra") or ""
+                comment_str = column_comments.get(field, "")
+                result_columns.append({
+                    "field": field,
+                    "type": type_str,
+                    "null": null_str,
+                    "key": key_str,
+                    "default": default_str,
+                    "extra": extra_str,
+                    "comment": comment_str
+                })
+
+                # 格式化输出
+                result_str += (
+                    f"{field:<16}\t{type_str:<16}\t{null_str:<8}\t{key_str:<4}\t"
+                    f"{default_str:<16}\t{extra_str:<16}\t{comment_str}\n"
+                )
+            result_indexs = {}
+            # 获取索引信息
+            try:
+                cursor.execute(f"SHOW INDEX FROM `{table_name}`")
+                indexes = cursor.fetchall()
+
+                if indexes:
+                    result_str += "\n索引信息:\n"
+                    index_dict = {}
+                    for idx in indexes:
+                        key_name = idx["Key_name"]
+                        if key_name not in index_dict:
+                            index_dict[key_name] = []
+                        index_dict[key_name].append(idx["Column_name"])
+
+                    for key_name, cols in index_dict.items():
+                        result_str += f"- {key_name}: {', '.join(cols)}\n"
+                    
+                    result_indexs[key_name] = cols
+            except Exception as e:
+                logger.warning(f"Failed to get index info for table {table_name}: {e}")
+
+            logger.info(f"Retrieved structure for table {table_name}")
+
+            return result_str, result_columns, result_indexs
+
+        except Exception as e:
+            error_msg = f"获取表 {table_name} 结构失败: {str(e)}"
+            logger.error(error_msg)
+            return error_msg, None, None
+
     async def initalize_table(self, db_id):
 
         db_name = self.databases_meta[db_id]['connect_info']['database']
@@ -81,7 +174,10 @@ class MySQLConnector(ConnectorBase):
                 metadata['description'] = table_comment
                 metadata['database_name'] = db_name
 
+                table_description, is_none, _ = self._describe_table(cursor, db_name, table_name, table_comment)
+                metadata['total_description'] = table_description if is_none is not None else table_comment
                 table_id = metadata['table_id']
+
                 table_record = metadata.copy()
 
                 self.tables_meta[table_id] = table_record
@@ -125,8 +221,8 @@ class MySQLConnector(ConnectorBase):
         if db_id not in self.databases_meta:
             raise ValueError(f"数据库 {db_id} 不存在")
 
-        for table_name, table_info in table_info.items():
-            table_id = table_info['table_id']
+        for table_id, table_info in table_info.items():
+            # table_id = table_info['table_id']
             self.tables_meta[table_id] = table_info
 
         asyncio.create_task(self._save_metadata())
@@ -185,6 +281,55 @@ class MySQLConnector(ConnectorBase):
             pass
         finally:
             del self.connections[db_id]
+
+    @asynccontextmanager
+    def aget_cursor(self, db_id):
+        """获取数据库游标的上下文管理器"""
+        max_retries = 2
+        cursor = None
+        connection = None
+        last_error: Exception | None = None
+
+        # 优先确保成功获取游标再交给调用方执行查询
+        for attempt in range(max_retries):
+            try:
+                connection = self._get_connection(db_id)
+                cursor = connection.cursor()
+                break
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Failed to acquire cursor (attempt {attempt + 1}): {e}")
+                self._invalidate_connection(db_id)
+                cursor = None
+                connection = None
+                if attempt == max_retries - 1:
+                    raise e
+                time.sleep(1)
+
+        if cursor is None or connection is None:
+            raise last_error or ConnectionError("Unable to acquire MySQL cursor")
+
+        try:
+            yield cursor
+            connection.commit()
+        except Exception as e:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+
+            # 标记连接失效，等待下一次获取时重建
+            if "MySQL" in str(e) or "connection" in str(e).lower():
+                logger.warning(f"MySQL connection error encountered, invalidating connection: {e}")
+                self._invalidate_connection(db_id)
+
+            raise
+        finally:
+            if cursor:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
 
     @contextmanager
     def get_cursor(self, db_id):

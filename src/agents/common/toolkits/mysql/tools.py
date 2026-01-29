@@ -1,3 +1,4 @@
+import asyncio
 from typing import Annotated, Any
 
 from langchain.tools import tool
@@ -54,7 +55,7 @@ class QueryModel(BaseModel):
 
 
 @tool(name_or_callable="mysql_list_tables_with_query", description="根据用户问题查询表名及说明", args_schema=QueryModel)
-def mysql_list_tables_with_query(
+async def mysql_list_tables_with_query(
     query: Annotated[str, "改写后的用户问题"],
 ) -> str:
     """通过用户问题获取数据库中的所有表名
@@ -64,32 +65,35 @@ def mysql_list_tables_with_query(
     result = []
     logger.info(f">> 查询表名及说明 {query}")
     try:
-        query_results = graph_base.query_node(query, threshold=0.65, hops=3, max_entities=20)
+        query_results = graph_base.query_node(query, threshold=0.5, hops=4, max_entities=25)
 
         # 处理节点
-        tb_names = [n['name'] for n in query_results['nodes']]
+        # tb_names = [n['name'] for n in query_results['nodes']]
         tb_names = []
         map_id_name = {}
         for n in query_results['nodes']:
             tb_names.append(n['name'])
             map_id_name[n['id']] = n['name']
-
-        databases = sql_database.get_databases()
+        # loop = asyncio.new_event_loop()
+        # asyncio.set_event_loop(loop)
+        # databases = loop.run_until_complete(sql_database.get_databases())
+        databases = await sql_database.get_databases()
         for db_infos in databases.values():
             for db_info in db_infos:
                 table_names = []
                 db_desc = db_info['description']
-                db_name = db_info['connection_info']['database']
-                tables_info = db_info['selected_tables']
+                db_name = db_info['name']
+                tables_info = db_info['tables']
 
                 if not tables_info.values():
                     continue
                 for table_info in tables_info.values():
-                    if f"{db_name}.{table_info['table_name']}" not in tb_names:
+                    if f"{table_info['tablename']}" not in tb_names:
                         continue
-                    table_name = f"`{db_name}`.`{table_info['table_name']}`: {table_info['table_comment']}"
+                    table_name = f"`{table_info['tablename'].replace(".", "`.`")}`: {table_info['description']}"
                     table_names.append(table_name)
-                result.append(f"数据库说明\n`{db_name}`: {db_desc}\n数据库中的表:\n{'\n'.join(table_names)}")
+                if table_names:
+                    result.append(f"数据库说明\n`{db_name}`: {db_desc}\n数据库中的表:\n{'\n'.join(table_names)}")
 
         db_entity_info = "\n---\n".join(result)
 
@@ -99,8 +103,12 @@ def mysql_list_tables_with_query(
         for edge in t2t_edges:
             source_name = map_id_name[edge['source_id']]
             target_name = map_id_name[edge['target_id']]
+            if source_name == target_name: 
+                continue
             database_edge_info.append(f"`{source_name}` <--> `{target_name}`")
-        db_relation_info = f"数据库之间存在以下关系: \n{'\n'.join(database_edge_info)}"
+        db_relation_info = ""
+        if database_edge_info:
+            db_relation_info = f"数据库之间存在以下关系: \n{'\n'.join(database_edge_info)}"
          
         
         return f"{db_entity_info}\n===\n{db_relation_info}"
@@ -150,7 +158,7 @@ class TableDescribeModel(BaseModel):
 
 
 @tool(name_or_callable="mysql_describe_table", description="获得描述表", args_schema=TableDescribeModel)
-def mysql_describe_table(
+async def mysql_describe_table(
         database_name: Annotated[str, "要查询的数据库名"],
         table_name: Annotated[str, "要查询结构的表名"]
     ) -> str:
@@ -166,8 +174,8 @@ def mysql_describe_table(
 
         # conn_manager = get_connection_manager()
         db_id = sql_database.db_name_to_id[database_name]
-
-        with sql_database.get_cursor(db_id) as cursor:
+        db_instance = await sql_database._get_db_for_database(db_id)
+        with db_instance.get_cursor(db_id) as cursor:
             # 获取表结构
             cursor.execute(f"DESCRIBE `{table_name}`")
             columns = cursor.fetchall()
@@ -251,7 +259,7 @@ class QueryModel(BaseModel):
 
 
 @tool(name_or_callable="mysql_query", description="执行 SQL 查询", args_schema=QueryModel)
-def mysql_query(
+async def mysql_query(
     database_names: Annotated[list[str], "要查询的数据库名称列表"], #TODO 可能存在同一个连接跨数据库表查询的问题，需要判断是否为一个连接
     sql: Annotated[str, "要执行的SQL查询语句（只能是SELECT语句, 且需要带上数据库名, 如：SELECT * FROM db1.table1）"],
     timeout: Annotated[int | None, "查询超时时间（秒），默认60秒，最大600秒"] = 60,
@@ -278,7 +286,7 @@ def mysql_query(
 
         database_name = database_names[0] # 获得同一个连接下的其中一个数据库名
         db_id = sql_database.db_name_to_id[database_name]
-        connection = sql_database.get_connection(db_id)
+        connection = await sql_database.get_connection(db_id)
 
         effective_timeout = timeout or 60
         try:

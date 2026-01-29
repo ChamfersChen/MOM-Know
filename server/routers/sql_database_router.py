@@ -10,7 +10,7 @@ from starlette.responses import FileResponse as StarletteFileResponse
 
 from server.utils.auth_middleware import get_admin_user
 from src.storage.db.models import User
-# from src.sql_database import sql_database
+from src.knowledge import graph_base
 from src import sql_database
 from src.utils import logger
 
@@ -30,6 +30,27 @@ async def get_databases(
     except Exception as e:
         logger.error(f"获取数据库列表失败 {e}, {traceback.format_exc()}")
         return {"message": f"获取数据库列表失败 {e}", "databases": []}
+
+@sql_db.post("/databases/neo4j")
+async def create_graph(
+    current_user: User = Depends(get_admin_user)
+    ):
+    """获取所有数据库"""
+    try:
+        user_info = {"role": current_user.role, "department_id": current_user.department_id}
+        databases = await sql_database.get_databases_by_user(user_info)
+        databases_meta = databases['databases']
+        graph_base.delete_entity()
+        await graph_base.database_meta_add_entity(
+            databases_meta, 
+            embed_model_name="siliconflow/BAAI/bge-m3",
+            batch_size=20
+        )
+        return {"message": f"图谱创建成功", "code": 0}
+    except Exception as e:
+        logger.error(f"图谱创建失败 {e}, {traceback.format_exc()}")
+        graph_base.delete_entity()
+        return {"message": f"图谱创建失败 {e}", "code": 1}
 
 
 @sql_db.post("/database")

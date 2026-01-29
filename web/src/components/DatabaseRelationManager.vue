@@ -166,9 +166,20 @@ const fetchAvailableDatabases = async () => {
     const keyword = searchKeyword.value.trim()
     let data
     if (keyword) {
-      data = store.databases.filter((db) => db.name.includes(keyword) && db.db_id !== props.databaseId)
+      data = store.databases.filter(
+        (db) => 
+        db.name.includes(keyword) && 
+        db.db_id !== props.databaseId && 
+        store.database.connect_info.host == db.connect_info.host &&
+        store.database.connect_info.port == db.connect_info.port 
+      )
     } else {
-      data = store.databases.filter((db) => db.db_id !== props.databaseId)
+      data = store.databases.filter(
+        (db) => 
+        db.db_id !== props.databaseId && 
+        store.database.connect_info.host == db.connect_info.host &&
+        store.database.connect_info.port == db.connect_info.port
+      )
     }
     availableDatabases.value = data || []
   } catch (error) {

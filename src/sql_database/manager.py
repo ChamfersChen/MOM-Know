@@ -33,7 +33,7 @@ class SqlDataBaseManager:
         # 全局数据库元信息 {db_id: metadata_with_kb_type}
         # self.global_databases_meta: dict[str, dict] = {}
 
-        # self.db_name_to_id: dict[str, str] = {}
+        self.db_name_to_id: dict[str, str] = {}
 
         # 元数据锁
         self._metadata_lock = asyncio.Lock()
@@ -52,10 +52,15 @@ class SqlDataBaseManager:
         self._initialize_existing_dbs()
         logger.info("SqlDatabaseManager initialized")
 
-    # def _update_db_name2id(self):
-    #     for database_id, database_meta in self.global_databases_meta.items():
-    #         database_name = database_meta.get("name")
-    #         self.db_name_to_id[database_name] = database_id
+    async def _update_db_name2id(self):
+        from src.repositories.sql_database_repository import SqlDatabaseRepository
+        db_repo = SqlDatabaseRepository()
+        databases = await db_repo.get_all()
+        for db in databases:
+            self.db_name_to_id[db.name] = db.db_id
+        # for database_id, database_meta in self.global_databases_meta.items():
+        #     database_name = database_meta.get("name")
+        #     self.db_name_to_id[database_name] = database_id
 
     async def _load_all_metadata(self):
         """异步加载所有元数据 - 保留兼容性的空方法，现在由 KB 实例自行加载"""
@@ -73,6 +78,7 @@ class SqlDataBaseManager:
             for row in rows:
                 db_type = row.db_type or "mysql"
                 db_types_in_use.add(db_type)
+                self.db_name_to_id[row.name] = row.db_id
 
             logger.info(f"[InitializeKB] 发现 {len(db_types_in_use)} 种知识库类型: {db_types_in_use}")
 
@@ -423,12 +429,12 @@ class SqlDataBaseManager:
             logger.warning(f"Database {db_id} not found during deletion: {e}")
             return {"message": "删除成功"}
 
-    def get_connection(self, db_id: str):
-        db_instance = self._get_db_for_database(db_id)
+    async def get_connection(self, db_id: str):
+        db_instance = await self._get_db_for_database(db_id)
         return db_instance.get_connection(db_id)
 
-    def invalidate_connection(self, db_id: str):
-        db_instance = self._get_db_for_database(db_id)
+    async def invalidate_connection(self, db_id: str):
+        db_instance = await self._get_db_for_database(db_id)
         return db_instance.invalidate_connection(db_id)
 
     async def get_database_info(self, db_id: str) -> dict | None:
@@ -501,10 +507,11 @@ class SqlDataBaseManager:
         db_instance = await self._get_db_for_database(db_id)
         db_instance.update_tables(db_id, table_info)
 
-        # 保存到数据库
-        dt_repo = SqlDatabaseTableRepository()
-        for table_id, table_info in db_instance.tables_meta.items():
-            await dt_repo.update(table_id, table_info)
+        # # 保存到数据库
+        # dt_repo = SqlDatabaseTableRepository()
+        # import ipdb; ipdb.set_trace()
+        # for table_id, table_info in db_instance.tables_meta.items():
+        #     await dt_repo.update(table_id, table_info)
 
         return await self.get_database_info(db_id)
 
@@ -564,6 +571,6 @@ class SqlDataBaseManager:
 
         return all_cursors
 
-    def get_cursor(self, db_id):
-        db_instance = self._get_db_for_database(db_id)
-        return db_instance.get_cursor(db_id)
+    # async def get_cursor(self, db_id):
+    #     db_instance = await self._get_db_for_database(db_id)
+    #     return db_instance.aget_cursor(db_id)
