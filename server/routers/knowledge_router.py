@@ -876,6 +876,19 @@ async def download_document(db_id: str, doc_id: str, request: Request, current_u
 # === 知识库查询分组 ===
 # =============================================================================
 
+@knowledge.post("/retrieval")
+async def query_knowledge_base(
+    knowledge_id: str = Body(...), query: str = Body(...), retrieval_setting: dict = Body(...)
+):
+    """查询知识库(Dify外部知识库)"""
+    logger.debug(f"Query knowledge base {knowledge_id}: {query}")
+    try:
+        result = await knowledge_base.aquery(query, db_id=knowledge_id, **retrieval_setting)
+        return {"records": result, "status": "success"}
+    except Exception as e:
+        logger.error(f"知识库查询失败 {e}, {traceback.format_exc()}")
+        return {"message": f"知识库查询失败: {e}", "status": "failed"}
+
 
 @knowledge.post("/databases/{db_id}/query")
 async def query_knowledge_base(
