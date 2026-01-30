@@ -8,11 +8,7 @@
 
     <!-- 错误状态 -->
     <div v-else-if="error" class="error-container">
-      <a-result
-        status="error"
-        :title="error.title"
-        :sub-title="error.message"
-      >
+      <a-result status="error" :title="error.title" :sub-title="error.message">
         <template #extra>
           <a-button type="primary" @click="retryLoad">重试</a-button>
         </template>
@@ -118,13 +114,13 @@
       </div>
     </div> -->
 
-    <ProjectOverview />
+      <ProjectOverview />
 
-    <footer class="footer">
-      <div class="footer-content">
-        <p class="copyright">{{ infoStore.footer?.copyright || '© 2025 All rights reserved' }}</p>
-      </div>
-    </footer>
+      <footer class="footer">
+        <div class="footer-content">
+          <p class="copyright">{{ infoStore.footer?.copyright || '© 2025 All rights reserved' }}</p>
+        </div>
+      </footer>
     </template>
   </div>
 </template>

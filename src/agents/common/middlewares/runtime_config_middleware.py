@@ -4,27 +4,13 @@ from collections.abc import Callable
 from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
+from langchain_core.messages import SystemMessage
 
 from src.agents.common import load_chat_model
-from src.agents.common.tools import get_kb_based_tools, get_buildin_tools
+from src.agents.common.tools import get_buildin_tools, get_kb_based_tools
 from src.services.mcp_service import get_enabled_mcp_tools
+from src.utils.datetime_utils import shanghai_now
 from src.utils.logging_config import logger
-
-
-def _is_system_message(msg: Any) -> bool:
-    if isinstance(msg, dict):
-        role = msg.get("role") or msg.get("type")
-        return role == "system"
-    msg_type = getattr(msg, "type", None) or getattr(msg, "role", None)
-    return msg_type == "system"
-
-
-def _get_message_content(msg: Any) -> str | None:
-    if isinstance(msg, dict):
-        content = msg.get("content")
-        return str(content) if content is not None else None
-    content = getattr(msg, "content", None)
-    return str(content) if content is not None else None
 
 
 class RuntimeConfigMiddleware(AgentMiddleware):
@@ -32,81 +18,98 @@ class RuntimeConfigMiddleware(AgentMiddleware):
 
     注意：所有可能用到的知识库工具必须在初始化时预加载并注册到 self.tools
     运行时根据配置从 self.tools 中筛选工具，不能动态添加新工具
+
+    支持自定义上下文字段名称，以便在不同场景（如主智能体/子智能体）使用不同的配置字段
     """
 
-    def __init__(self, *, extra_tools: list[Any] | None = None):
+    def __init__(
+        self,
+        *,
+        extra_tools: list[Any] | None = None,
+        model_context_name: str = "model",
+        system_prompt_context_name: str = "system_prompt",
+        tools_context_name: str = "tools",
+        knowledges_context_name: str = "knowledges",
+        mcps_context_name: str = "mcps",
+    ):
         """初始化中间件
 
         Args:
             extra_tools: 额外工具列表（从 create_agent 的 tools 参数传入）
+            model_context_name: 上下文中的模型字段名称（默认 "model"）
+            system_prompt_context_name: 上下文中的系统提示词字段名称（默认 "system_prompt"）
+            tools_context_name: 上下文中的工具列表字段名称（默认 "tools"）
+            knowledges_context_name: 上下文中的知识库列表字段名称（默认 "knowledges"）
+            mcps_context_name: 上下文中的 MCP 服务器列表字段名称（默认 "mcps"）
         """
         super().__init__()
-        # 这里的工具只是提供给 langchain 调用，并不是真正的绑定在模型上
         self.kb_tools = get_kb_based_tools()
         self.buildin_tools = get_buildin_tools()
         self.tools = self.kb_tools + self.buildin_tools + (extra_tools or [])
-        logger.debug(f"Initialized tools: {len(self.tools)}")
+        # 存储自定义字段名称
+        self.model_context_name = model_context_name
+        self.system_prompt_context_name = system_prompt_context_name
+        self.tools_context_name = tools_context_name
+        self.knowledges_context_name = knowledges_context_name
+        self.mcps_context_name = mcps_context_name
+        logger.debug(
+            f"Initialized RuntimeConfigMiddleware with custom field names: model={model_context_name}, "
+            f"system_prompt={system_prompt_context_name}, tools={tools_context_name}, "
+            f"knowledges={knowledges_context_name}, mcps={mcps_context_name}"
+        )
 
     async def awrap_model_call(
         self, request: ModelRequest, handler: Callable[[ModelRequest], ModelResponse]
     ) -> ModelResponse:
         runtime_context = request.runtime.context
 
-        model = load_chat_model(getattr(runtime_context, "model", None))
+        model = load_chat_model(getattr(runtime_context, self.model_context_name, None))
         enabled_tools = await self.get_tools_from_context(runtime_context)
-        system_prompt = getattr(runtime_context, "system_prompt", None)
-        logger.debug(f"RuntimeConfigMiddleware: model={model}, "
-                     f"tools={[t.name for t in enabled_tools]}. ")
+        existing_tools = list(request.tools or [])
 
-        existing_systems: list[Any] = []
-        remaining: list[Any] = []
-        in_prefix = True
-        for msg in request.messages:
-            if in_prefix and _is_system_message(msg):
-                existing_systems.append(msg)
-            else:
-                in_prefix = False
-                remaining.append(msg)
+        # 合并之前中间件设置的 tools，避免覆盖
+        merged_tools = []
+        for t_bind in existing_tools:
+            if t_bind in enabled_tools or t_bind not in self.tools:
+                merged_tools.append(t_bind)
 
-        existing_contents = [_get_message_content(m) for m in existing_systems]
+        # 动态生成 system message，添加当前时间
+        cur_datetime = f"当前时间：{shanghai_now().strftime('%Y-%m-%d %H:%M:%S')} UTC"
+        system_prompt = getattr(runtime_context, self.system_prompt_context_name, "") or ""
+        new_content = list(request.system_message.content_blocks) + [
+            {"type": "text", "text": f"{cur_datetime}\n\n{system_prompt}"}
+        ]
+        new_system_message = SystemMessage(content=new_content)
 
-        new_systems: list[Any] = []
-        if system_prompt:
-            try:
-                idx = existing_contents.index(system_prompt)
-            except ValueError:
-                new_systems.append({"role": "system", "content": system_prompt})
-            else:
-                new_systems.append(existing_systems.pop(idx))
-                existing_contents.pop(idx)
+        logger.debug(f"RuntimeConfigMiddleware: model={model}, tools={[t.name for t in merged_tools]}. ")
 
-        messages = [*new_systems, *existing_systems, *remaining]
-
-        request = request.override(model=model, tools=enabled_tools, messages=messages)
+        request = request.override(model=model, tools=merged_tools, system_message=new_system_message)
         return await handler(request)
 
     async def get_tools_from_context(self, context) -> list:
         """从上下文配置中获取工具列表"""
-        # 1. 基础工具 (从 context.tools 中筛选)
         selected_tools = []
 
-        if context.tools:
-            # 创建工具映射表
+        # 1. 基础工具 (从 context.tools 中筛选)
+        tools = getattr(context, self.tools_context_name, None)
+        if tools:
             tools_map = {t.name: t for t in self.tools}
-            for tool_name in context.tools:
+            for tool_name in tools:
                 if tool_name in tools_map:
                     selected_tools.append(tools_map[tool_name])
                 else:
                     logger.warning(f"Tool '{tool_name}' not found in available tools. {tools_map.keys()=}")
 
         # 2. 知识库工具
-        if context.knowledges:
-            kb_tools = get_kb_based_tools(db_names=context.knowledges)
+        knowledges = getattr(context, self.knowledges_context_name, None)
+        if knowledges:
+            kb_tools = get_kb_based_tools(db_names=knowledges)
             selected_tools.extend(kb_tools)
 
         # 3. MCP 工具（使用统一入口，自动过滤 disabled_tools）
-        if context.mcps:
-            for server_name in context.mcps:
+        mcps = getattr(context, self.mcps_context_name, None)
+        if mcps:
+            for server_name in mcps:
                 mcp_tools = await get_enabled_mcp_tools(server_name)
                 selected_tools.extend(mcp_tools)
 
