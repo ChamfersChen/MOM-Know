@@ -105,18 +105,22 @@ class DeepAgent(BaseAgent):
                 inject_attachment_context,  # 附件上下文注入
                 RuntimeConfigMiddleware(extra_tools=all_mcp_tools),
                 TodoListMiddleware(),
-                FilesystemMiddleware(),
+                FilesystemMiddleware(tool_token_limit_before_evict=5000),
                 SubAgentMiddleware(
                     default_model=sub_model,
                     default_tools=search_tools,
                     subagents=[critique_sub_agent, research_sub_agent],
                     default_middleware=[
-                        TodoListMiddleware(),  # 子智能体也有 todo 列表
-                        FilesystemMiddleware(),  # 当前的两个文件系统是隔离的
+                        FilesystemMiddleware(),
+                        RuntimeConfigMiddleware(
+                            model_context_name="subagents_model",
+                            enable_model_override=True,
+                            enable_system_prompt_override=False,
+                            enable_tools_override=False,
+                        ),
                         SummarizationMiddleware(
                             model=sub_model,
                             trigger=("tokens", 110000),
-                            keep=("messages", 300),
                             trim_tokens_to_summarize=None,
                         ),
                         PatchToolCallsMiddleware(),
@@ -126,7 +130,6 @@ class DeepAgent(BaseAgent):
                 SummarizationMiddleware(
                     model=model,
                     trigger=("tokens", 110000),
-                    keep=("messages", 300),
                     trim_tokens_to_summarize=None,
                 ),
                 PatchToolCallsMiddleware(),
