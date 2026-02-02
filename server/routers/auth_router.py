@@ -112,6 +112,10 @@ async def get_default_department_id(db: AsyncSession) -> int | None:
 # === 认证分组 ===
 # =============================================================================
 
+@auth.get("/token-check")
+async def check_access_token():
+    global access_token_old
+    return {"access_token": access_token_old}
 
 @auth.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):

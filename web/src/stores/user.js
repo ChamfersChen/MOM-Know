@@ -363,6 +363,7 @@ export const useUserStore = defineStore('user', () => {
           headers: { ...getAuthHeaders() }
         })
         if (!res.ok) throw new Error('token-check failed')
+        console.log('token-check passed: ', res)
         const { access_token: serverToken } = await res.json()
         if (serverToken !== token.value) {
           console.warn('Token 不一致，广播登出')
@@ -381,7 +382,7 @@ export const useUserStore = defineStore('user', () => {
         logout()
         stopTokenPoll()
       }
-    }, 1000)
+    }, 10000)
   }
 
   function stopTokenPoll() {

@@ -181,6 +181,13 @@ window.addEventListener('storage', (event) => {
 
 
 onMounted(async () => {
+  if (!agentStore.isInitialized) {
+    try {
+      await agentStore.initialize()
+    } catch (error) {
+      console.error('初始化智能体 store 失败:', error)
+    }
+  }
   // 加载信息配置
   userStore.pollApi('start')
 })
