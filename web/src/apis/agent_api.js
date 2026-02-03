@@ -226,6 +226,23 @@ export const multimodalApi = {
       },
       true
     )
+  },
+  /**
+   * 上传音频文件
+   * @param {string} recordedAudioBlob - 图片URL
+   * @returns {Promise} - 获取结果
+   */
+  uploadAudio: (recordedAudioBlob) => { 
+    const formData = new FormData()
+    formData.append('file', recordedAudioBlob, 'recording.wav')
+    return apiRequest(
+      '/api/chat/audio/upload',
+      {
+        method: 'POST',
+        body: formData
+      },
+      true
+    )
   }
 }
 

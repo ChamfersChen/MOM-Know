@@ -32,20 +32,62 @@
     <textarea
       ref="inputRef"
       class="user-input"
+      :class="{ 'recording-hidden': isRecording }"
       :value="inputValue"
       @keydown="handleKeyPress"
       @input="handleInput"
       @focus="focusInput"
       :placeholder="placeholder"
-      :disabled="disabled"
+      :disabled="disabled || isRecording"
     />
 
+    <div class="audio-waveform" v-if="isRecording">
+      <canvas ref="waveformCanvas" class="waveform-canvas"></canvas>
+    </div>
+
     <div class="send-button-container">
+      <a-button
+        v-if="!isRecording"
+        @click="startRecording"
+        type="text"
+        class="voice-button"
+        title="语音输入"
+        :disabled="isTranscribing"
+      >
+        <template #icon>
+          <AudioOutlined class="voice-btn" />
+        </template>
+      </a-button>
+      <a-button
+        v-if="isRecording && !isTranscribing"
+        @click="cancelRecording"
+        type="text"
+        class="cancel-button"
+        title="取消"
+      >
+        <template #icon>
+          <CloseOutlined class="cancel-btn" />
+        </template>
+      </a-button>
+      <a-button
+        v-if="isRecording"
+        @click="confirmRecording"
+        type="text"
+        class="confirm-button"
+        title="确认"
+        :disabled="isTranscribing"
+        :loading="isTranscribing"
+      >
+        <template #icon>
+          <CheckOutlined class="confirm-btn" v-if="!isTranscribing" />
+        </template>
+      </a-button>
       <slot name="actions-right"></slot>
       <a-tooltip :title="isLoading ? '停止回答' : ''">
         <a-button
+          v-if="!isRecording"
           @click="handleSendOrStop"
-          :disabled="sendButtonDisabled"
+          :disabled="sendButtonDisabled || isTranscribing"
           type="link"
           class="send-button"
         >
@@ -69,13 +111,28 @@ import {
   ArrowUpOutlined,
   LoadingOutlined,
   PauseOutlined,
-  PlusOutlined
+  PlusOutlined,
+  AudioOutlined,
+  CloseOutlined,
+  CheckOutlined
 } from '@ant-design/icons-vue'
+
+import { multimodalApi } from "@/apis/agent_api" 
 
 const inputRef = ref(null)
 const optionsExpanded = ref(false)
-const singleLineHeight = ref(0) // Add this
-// 用于防抖的定时器
+const singleLineHeight = ref(0)
+const waveformCanvas = ref(null)
+
+const isRecording = ref(false)
+const isTranscribing = ref(false)
+const mediaRecorder = ref(null)
+const audioChunks = ref([])
+const audioContext = ref(null)
+const analyser = ref(null)
+const animationId = ref(null)
+const recordedAudioBlob = ref(null)
+
 const debounceTimer = ref(null)
 const props = defineProps({
   modelValue: {
@@ -240,6 +297,157 @@ const focusInput = () => {
   }
 }
 
+const startRecording = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    
+    audioContext.value = new (window.AudioContext || window.webkitAudioContext)()
+    const source = audioContext.value.createMediaStreamSource(stream)
+    analyser.value = audioContext.value.createAnalyser()
+    analyser.value.fftSize = 256
+    source.connect(analyser.value)
+
+    mediaRecorder.value = new MediaRecorder(stream)
+    audioChunks.value = []
+
+    mediaRecorder.value.ondataavailable = (event) => {
+      audioChunks.value.push(event.data)
+    }
+
+    mediaRecorder.value.onstop = () => {
+      recordedAudioBlob.value = new Blob(audioChunks.value, { type: 'audio/wav' })
+      stream.getTracks().forEach(track => track.stop())
+    }
+
+    mediaRecorder.value.start()
+    isRecording.value = true
+
+    await nextTick()
+    drawWaveform()
+  } catch (error) {
+    console.error('录音失败:', error)
+  }
+}
+
+const drawWaveform = () => {
+  if (!isRecording.value || !waveformCanvas.value || !analyser.value) return
+
+  const canvas = waveformCanvas.value
+  const ctx = canvas.getContext('2d')
+  const bufferLength = analyser.value.frequencyBinCount
+  const dataArray = new Uint8Array(bufferLength)
+
+  const resizeCanvas = () => {
+    const rect = canvas.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return
+    canvas.width = rect.width * window.devicePixelRatio
+    canvas.height = rect.height * window.devicePixelRatio
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio)
+  }
+
+  const draw = () => {
+    if (!isRecording.value) return
+
+    animationId.value = requestAnimationFrame(draw)
+    analyser.value.getByteFrequencyData(dataArray)
+
+    const rect = canvas.getBoundingClientRect()
+    const width = rect.width
+    const height = rect.height
+
+    if (width === 0 || height === 0) {
+      resizeCanvas()
+      return
+    }
+
+    ctx.clearRect(0, 0, width, height)
+    const barWidth = (width / bufferLength) * 2.5
+    let barHeight
+    let x = 0
+
+    for (let i = 0; i < bufferLength; i++) {
+      barHeight = Math.max(2, (dataArray[i] / 255) * height)
+
+      const gradient = ctx.createLinearGradient(0, height - barHeight, 0, height)
+      gradient.addColorStop(0, getComputedStyle(document.documentElement).getPropertyValue('--main-500').trim() || '#3b82f6')
+      gradient.addColorStop(1, getComputedStyle(document.documentElement).getPropertyValue('--main-300').trim() || '#3b82f6')
+
+      ctx.fillStyle = gradient
+      ctx.fillRect(x, height - barHeight, barWidth, barHeight)
+
+      x += barWidth + 1
+    }
+  }
+
+  nextTick(() => {
+    resizeCanvas()
+    draw()
+  })
+}
+
+const cancelRecording = () => {
+  if (mediaRecorder.value && mediaRecorder.value.state !== 'inactive') {
+    mediaRecorder.value.stop()
+  }
+  
+  if (animationId.value) {
+    cancelAnimationFrame(animationId.value)
+  }
+
+  if (audioContext.value) {
+    audioContext.value.close()
+  }
+
+  isRecording.value = false
+  audioChunks.value = []
+  recordedAudioBlob.value = null
+}
+
+const confirmRecording = async () => {
+  if (mediaRecorder.value && mediaRecorder.value.state !== 'inactive') {
+    await new Promise((resolve) => {
+      const originalOnStop = mediaRecorder.value.onstop
+      mediaRecorder.value.onstop = () => {
+        recordedAudioBlob.value = new Blob(audioChunks.value, { type: 'audio/wav' })
+        if (originalOnStop) originalOnStop()
+        resolve()
+      }
+      mediaRecorder.value.stop()
+    })
+  }
+
+  if (animationId.value) {
+    cancelAnimationFrame(animationId.value)
+  }
+
+  if (audioContext.value) {
+    audioContext.value.close()
+  }
+
+  console.log('recordedAudioBlob.value', recordedAudioBlob.value)
+  if (recordedAudioBlob.value) {
+    isTranscribing.value = true
+    try {
+      const response = await multimodalApi.uploadAudio(recordedAudioBlob.value)
+      console.log('response', response)
+      
+      if (response.data && response.data.text) {
+        emit('update:modelValue', response.data.text)
+      }
+    } catch (error) {
+      console.error('音频识别失败:', error)
+    } finally {
+      isTranscribing.value = false
+      isRecording.value = false
+    }
+  } else {
+    isRecording.value = false
+  }
+
+  audioChunks.value = []
+  recordedAudioBlob.value = null
+}
+
 // 监听输入值变化
 watch(inputValue, () => {
   nextTick(() => {
@@ -285,6 +493,18 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (debounceTimer.value) {
     clearTimeout(debounceTimer.value)
+  }
+  
+  if (mediaRecorder.value && mediaRecorder.value.state !== 'inactive') {
+    mediaRecorder.value.stop()
+  }
+  
+  if (animationId.value) {
+    cancelAnimationFrame(animationId.value)
+  }
+  
+  if (audioContext.value) {
+    audioContext.value.close()
   }
 })
 
@@ -362,11 +582,15 @@ defineExpose({
 
     .user-input {
       min-height: 24px;
-      height: 24px; /* Fix height for single line */
+      height: 24px;
       align-self: center;
       white-space: nowrap;
       overflow: hidden;
       margin-bottom: 0rem;
+
+      &.recording-hidden {
+        display: none;
+      }
     }
 
     .expand-options,
@@ -410,7 +634,7 @@ defineExpose({
   resize: none;
   line-height: 1.5;
   font-family: inherit;
-  min-height: 44px; /* Default min-height for multi-line */
+  min-height: 44px;
   max-height: 200px;
 
   &:focus {
@@ -421,6 +645,10 @@ defineExpose({
   &::placeholder {
     color: var(--gray-400);
   }
+
+  &.recording-hidden {
+    display: none;
+  }
 }
 
 .send-button-container {
@@ -428,6 +656,74 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 4px;
+}
+
+.voice-button,
+.cancel-button,
+.confirm-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gray-600);
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  background-color: transparent;
+
+  &:hover {
+    color: var(--main-color);
+    background-color: var(--gray-100);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+
+  .anticon {
+    font-size: 14px;
+  }
+}
+
+.cancel-button {
+  &:hover {
+    color: var(--color-error-500);
+    background-color: var(--color-error-50);
+  }
+}
+
+.confirm-button {
+  &:hover {
+    color: var(--color-success-500);
+    background-color: var(--color-success-50);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+}
+
+.audio-waveform {
+  grid-area: input;
+  width: 100%;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.waveform-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.input-box.single-line .audio-waveform {
+  height: 24px;
 }
 
 .expand-btn {

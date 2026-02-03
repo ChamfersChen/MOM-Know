@@ -28,6 +28,10 @@ from src.services.history_query_service import get_agent_history_view
 from src.repositories.agent_config_repository import AgentConfigRepository
 from src.utils.logging_config import logger
 from src.utils.image_processor import process_uploaded_image
+from src.utils import hashstr
+
+from server.storage.miniio import MinIOClient
+from server.utils.audio_utils import audio2text
 
 
 # 图片上传响应模型
@@ -750,6 +754,33 @@ async def get_agent_config(agent_id: str, current_user: User = Depends(get_requi
     except Exception as e:
         logger.error(f"加载智能体配置出错: {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"加载智能体配置出错: {str(e)}")
+
+minio_client = MinIOClient("http://8.130.128.22:9000", "minioadmin", "MinioAdminLcFc")
+
+@chat.post("/audio/upload")
+async def upload_audio(
+    # thread_id: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_required_user),
+):
+    """上传并解析附件为 Markdown，附加到指定对话线程。"""
+    try:
+        obj_name = hashstr("audios", with_salt=True)
+        upload_result = await minio_client.aupload_file("audios", obj_name, file.file.read(), "audio/wav")
+        url = minio_client.get_presigned_url("audios", obj_name, days=1)
+        result = audio2text(url)
+        text = result['transcripts'][0]['text']
+        return {
+            "success": True,
+            "data": {"text": text}
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+        }
+
 
 
 # ==================== 线程管理 API ====================
