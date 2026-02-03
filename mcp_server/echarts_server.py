@@ -26,6 +26,7 @@ Tool for echarts.
 """.strip(),
     # lifespan=app_lifespan,
     port=8001,
+    host="0.0.0.0",
 )
 
 
