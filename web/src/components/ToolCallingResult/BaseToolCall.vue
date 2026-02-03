@@ -290,6 +290,10 @@ const formatResultData = (data) => {
         flex-shrink: 0;
       }
 
+      :deep(span.code) {
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      }
+
       :deep(.separator) {
         color: var(--gray-300);
         flex-shrink: 0;
@@ -305,11 +309,24 @@ const formatResultData = (data) => {
 
       :deep(.tag) {
         font-size: 12px;
-        color: var(--gray-600);
-        background-color: var(--gray-100);
+        color: var(--gray-800);
+        background-color: var(--gray-50);
         padding: 0px 4px;
         border-radius: 4px;
         margin-left: 8px;
+
+        &.tag-yes {
+          color: var(--main-500);
+        }
+
+        &.success {
+          color: var(--color-success-500);
+          background-color: var(--color-success-50);
+        }
+        &.error {
+          color: var(--color-error-500);
+          background-color: var(--color-error-50);
+        }
       }
     }
   }

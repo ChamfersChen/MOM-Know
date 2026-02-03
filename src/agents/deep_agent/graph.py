@@ -1,20 +1,40 @@
 """Deep Agent - 基于create_deep_agent的深度分析智能体"""
 
+from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
 from deepagents.middleware.filesystem import FilesystemMiddleware
 from deepagents.middleware.patch_tool_calls import PatchToolCallsMiddleware
 from deepagents.middleware.subagents import SubAgentMiddleware
 from langchain.agents import create_agent
 from langchain.agents.middleware import (
-    SummarizationMiddleware,
     TodoListMiddleware,
 )
 
 from src.agents.common import BaseAgent, load_chat_model
-from src.agents.common.middlewares import RuntimeConfigMiddleware, inject_attachment_context
+from src.agents.common.middlewares import (
+    RuntimeConfigMiddleware,
+    SummaryOffloadMiddleware,
+    save_attachments_to_fs,
+)
 from src.agents.common.tools import get_tavily_search
 from src.services.mcp_service import get_tools_from_all_servers
 
 from .context import DeepContext
+
+
+def _create_filesystem_backend_factory(rt) -> CompositeBackend:
+    """创建混合文件存储后端工厂函数（供 FilesystemMiddleware 使用）。
+
+    /attachments/* 路由到真实文件系统（供附件中间件使用）
+    其他路径使用 StateBackend（内存存储，用于临时文件和大结果卸载）
+
+    注意：rt (runtime) 由 FilesystemMiddleware 在调用时自动传入。
+    """
+    return CompositeBackend(
+        default=StateBackend(rt),  # 传入 runtime 创建实例
+        routes={
+            "/attachments/": FilesystemBackend(root_dir=".", virtual_mode=False),
+        },
+    )
 
 
 def _get_research_sub_agent(search_tools: list) -> dict:
@@ -97,42 +117,44 @@ class DeepAgent(BaseAgent):
         # Build subagents with search tools
         research_sub_agent = _get_research_sub_agent(search_tools)
 
+        summary_middleware = SummaryOffloadMiddleware(
+            model=model,
+            trigger=("tokens", 160000),
+            trim_tokens_to_summarize=None,
+            summary_offload_threshold=1000,
+            max_retention_ratio=0.6,
+        )
+
+        subagents_middleware = SubAgentMiddleware(
+            default_model=sub_model,
+            default_tools=search_tools,
+            subagents=[critique_sub_agent, research_sub_agent],
+            default_middleware=[
+                FilesystemMiddleware(backend=_create_filesystem_backend_factory),
+                RuntimeConfigMiddleware(
+                    model_context_name="subagents_model",
+                    enable_model_override=True,
+                    enable_system_prompt_override=False,
+                    enable_tools_override=False,
+                ),
+                PatchToolCallsMiddleware(),
+                summary_middleware,
+            ],
+            general_purpose_agent=True,
+        )
+
         # 使用 create_deep_agent 创建深度智能体
         graph = create_agent(
             model=model,
             system_prompt=context.system_prompt,
             middleware=[
-                inject_attachment_context,  # 附件上下文注入
+                FilesystemMiddleware(backend=_create_filesystem_backend_factory),
                 RuntimeConfigMiddleware(extra_tools=all_mcp_tools),
+                save_attachments_to_fs,  # 附件保存到文件系统
                 TodoListMiddleware(),
-                FilesystemMiddleware(tool_token_limit_before_evict=5000),
-                SubAgentMiddleware(
-                    default_model=sub_model,
-                    default_tools=search_tools,
-                    subagents=[critique_sub_agent, research_sub_agent],
-                    default_middleware=[
-                        FilesystemMiddleware(),
-                        RuntimeConfigMiddleware(
-                            model_context_name="subagents_model",
-                            enable_model_override=True,
-                            enable_system_prompt_override=False,
-                            enable_tools_override=False,
-                        ),
-                        SummarizationMiddleware(
-                            model=sub_model,
-                            trigger=("tokens", 110000),
-                            trim_tokens_to_summarize=None,
-                        ),
-                        PatchToolCallsMiddleware(),
-                    ],
-                    general_purpose_agent=True,
-                ),
-                SummarizationMiddleware(
-                    model=model,
-                    trigger=("tokens", 110000),
-                    trim_tokens_to_summarize=None,
-                ),
                 PatchToolCallsMiddleware(),
+                subagents_middleware,
+                summary_middleware,
             ],
             checkpointer=await self._get_checkpointer(),
         )
