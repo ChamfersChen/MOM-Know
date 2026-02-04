@@ -4,7 +4,8 @@ import { useAgentStore } from './agent'
 
 export const useUserStore = defineStore('user', () => {
   // 状态
-  const token = ref(localStorage.getItem('user_token') || '')
+  // const token = ref(localStorage.getItem('user_token') || '')
+  const token = ref(sessionStorage.getItem('user_token') || '')
   const userId = ref(null)
   const username = ref('')
   const userIdLogin = ref('')
@@ -60,7 +61,8 @@ export const useUserStore = defineStore('user', () => {
       departmentName.value = data.department_name || ''
 
       // 只保存 token 到本地存储
-      localStorage.setItem('user_token', data.access_token)
+      // localStorage.setItem('user_token', data.access_token)
+      sessionStorage.setItem('user_token', data.access_token)
 
       return true
     } catch (error) {
@@ -86,7 +88,8 @@ export const useUserStore = defineStore('user', () => {
     agentStore.reset()
 
     // 只清除 token
-    localStorage.removeItem('user_token')
+    // localStorage.removeItem('user_token')
+    sessionStorage.removeItem('user_token')
   }
 
   async function initialize(admin) {
@@ -118,7 +121,8 @@ export const useUserStore = defineStore('user', () => {
       departmentName.value = data.department_name || ''
 
       // 只保存 token 到本地存储
-      localStorage.setItem('user_token', data.access_token)
+      // localStorage.setItem('user_token', data.access_token)
+      sessionStorage.setItem('user_token', data.access_token)
 
       return true
     } catch (error) {
@@ -372,7 +376,8 @@ export const useUserStore = defineStore('user', () => {
           logout()
 
           // 2. 通知其他页面
-          localStorage.setItem('FORCE_LOGOUT', Date.now().toString())
+          // localStorage.setItem('FORCE_LOGOUT', Date.now().toString())
+          sessionStorage.setItem('FORCE_LOGOUT', Date.now().toString())
           // 3. 当前页面跳转
           window.location.replace('/login_agents_show')
           stopTokenPoll()

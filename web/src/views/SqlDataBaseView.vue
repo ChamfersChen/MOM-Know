@@ -232,6 +232,8 @@ const formatCreatedTime = (createdAt) => {
 const uploadToNeo4j = async () => {
   // 根据databases info上传图数据库
   console.log('>>> upload to neo4j: ', databaseStore.databases)
+  const confirmed = window.confirm('即将把当前所有数据库中的表结构导入 Neo4j 并创建知识图谱，是否继续？')
+  if (!confirmed) return
   try{
     const ret = await databaseApi.createGraph()
     if(ret.code === 0){ 

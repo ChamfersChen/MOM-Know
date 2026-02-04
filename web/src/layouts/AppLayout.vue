@@ -96,22 +96,24 @@ const mainList = [
     activeIcon: Bot
   },
   {
+    name: '知识库',
+    path: '/database',
+    icon: LibraryBig,
+    activeIcon: LibraryBig,
+  }, 
+  {
+    name: '数据库',
+    path: '/sqldatabase',
+    icon: Database,
+    activeIcon: Database,
+  }, 
+  {
     name: '图谱',
     path: '/graph',
     icon: Waypoints,
     activeIcon: Waypoints
   },
   {
-    name: '知识库',
-    path: '/database',
-    icon: LibraryBig,
-    activeIcon: LibraryBig,
-  }, {
-    name: '数据库',
-    path: '/sqldatabase',
-    icon: Database,
-    activeIcon: Database,
-  }, {
     name: 'Dashboard',
     path: '/dashboard',
     icon: BarChart3,

@@ -106,6 +106,7 @@
 
 <script setup>
 import { ref, computed, onMounted, nextTick, watch, onBeforeUnmount, useSlots } from 'vue'
+import { message } from 'ant-design-vue'
 import {
   SendOutlined,
   ArrowUpOutlined,
@@ -299,6 +300,16 @@ const focusInput = () => {
 
 const startRecording = async () => {
   try {
+    if (!navigator.mediaDevices) {
+      message.error('您的浏览器不支持录音功能，请使用 Chrome、Firefox 或 Edge 浏览器')
+      return
+    }
+
+    if (!navigator.mediaDevices.getUserMedia) {
+      message.error('您的浏览器版本不支持录音功能，请更新浏览器到最新版本')
+      return
+    }
+
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     
     audioContext.value = new (window.AudioContext || window.webkitAudioContext)()
@@ -326,6 +337,13 @@ const startRecording = async () => {
     drawWaveform()
   } catch (error) {
     console.error('录音失败:', error)
+    if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+      message.error('请允许麦克风权限以使用录音功能')
+    } else if (error.name === 'NotFoundError') {
+      message.error('未检测到麦克风设备，请检查您的设备')
+    } else {
+      message.error('录音功能启动失败: ' + (error.message || '未知错误'))
+    }
   }
 }
 

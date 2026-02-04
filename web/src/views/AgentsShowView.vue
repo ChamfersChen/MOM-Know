@@ -189,7 +189,8 @@ onMounted(async () => {
     }
   }
   // 加载信息配置
-  userStore.pollApi('start')
+  // 开启轮询
+  // userStore.pollApi('start')
 })
 </script>
 

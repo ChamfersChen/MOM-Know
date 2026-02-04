@@ -111,6 +111,7 @@ async def get_default_department_id(db: AsyncSession) -> int | None:
 # =============================================================================
 # === 认证分组 ===
 # =============================================================================
+access_token_old = None
 
 @auth.get("/token-check")
 async def check_access_token():
