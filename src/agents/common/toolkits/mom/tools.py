@@ -12,7 +12,7 @@ from src.utils import logger
 
 
 MOM_API_BASE_URL = os.environ.get("MOM_API_BASE_URL")
-MOM_LOGIN_USERNAME = os.environ.get("MOM_LOGIN_USERNAME")
+# MOM_LOGIN_USERNAME = os.environ.get("MOM_LOGIN_USERNAME")
 
 
 class SystemNewsModel(BaseModel):

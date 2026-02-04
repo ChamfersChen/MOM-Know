@@ -45,6 +45,7 @@ class MinIOClient:
 
     def __init__(self, endpoint, access_key, secret_key):
         """初始化 MinIO 客户端"""
+        assert endpoint and access_key and secret_key, f"请检查 MinIO 配置, 当前配置: {endpoint}, {access_key}, {secret_key}"
         self.endpoint = endpoint
         self.access_key = access_key
         self.secret_key = secret_key

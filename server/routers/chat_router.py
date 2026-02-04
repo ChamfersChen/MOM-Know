@@ -1,6 +1,7 @@
 import traceback
 import uuid
 import json
+import os
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
@@ -755,7 +756,11 @@ async def get_agent_config(agent_id: str, current_user: User = Depends(get_requi
         logger.error(f"加载智能体配置出错: {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"加载智能体配置出错: {str(e)}")
 
-minio_client = MinIOClient("http://8.130.128.22:9000", "minioadmin", "MinioAdminLcFc")
+minio_client = MinIOClient(
+    os.environ.get("PUBLIC_MINIO_ENDPOINT"),
+    os.environ.get("PUBLIC_MINIO_ACCESS_KEY"),
+    os.environ.get("PUBLIC_MINIO_SECRET_KEY")
+)
 
 @chat.post("/audio/upload")
 async def upload_audio(
