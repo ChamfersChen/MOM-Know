@@ -98,6 +98,8 @@ class RuntimeConfigMiddleware(AgentMiddleware):
                 # (1) 已启用的工具保留
                 # (2) 非本中间件管理的工具保留
                 if t_bind.name in [t.name for t in enabled_tools] or t_bind.name not in [t.name for t in self.tools]:
+                    current_username = runtime_context.username
+                    t_bind.extras = {"current_username": current_username}
                     merged_tools.append(t_bind)
             overrides["tools"] = merged_tools
             logger.debug(f"RuntimeConfigMiddleware selected tools: {[t.name for t in merged_tools]}")

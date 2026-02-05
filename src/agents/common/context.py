@@ -41,6 +41,10 @@ class BaseContext:
         default_factory=lambda: str(uuid.uuid4()),
         metadata={"name": "用户ID", "configurable": False, "description": "用来唯一标识一个用户"},
     )
+    username: str = field(
+        default=None,
+        metadata={"name": "用户名称", "configurable": False, "description": "用来显示用户名称"},
+    )
 
     department_id: int | None = field(
         default=None,

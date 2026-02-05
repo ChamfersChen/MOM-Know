@@ -1,9 +1,8 @@
 import re
 import uuid
-import requests
 from src.utils import logger
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File
+from fastapi import APIRouter,Body, Depends, HTTPException, Request, status, UploadFile, File
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -25,6 +24,7 @@ from server.utils.user_utils import generate_unique_user_id, validate_username, 
 from server.utils.common_utils import log_operation
 from src.storage.minio import aupload_file_to_minio
 from src.utils.datetime_utils import utc_now_naive
+from src.storage.ext_redis import redis_client
 
 # 创建路由器
 auth = APIRouter(prefix="/auth", tags=["authentication"])
@@ -212,6 +212,18 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         "department_id": user.department_id,
         "department_name": department_name,
     }
+
+# 利用Redis存储MOM的Token
+@auth.post("/cache-mom-token")
+async def cache_mom_token(
+    key: str = Body(...),
+    token: str = Body(...),
+):
+    try:
+        redis_client.set(key, token)
+        return {"code": 0}
+    except Exception as e:
+        return {"code":1, "msg": str(e)}
 
 
 # 路由：校验是否需要初始化管理员

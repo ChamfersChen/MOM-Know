@@ -279,6 +279,7 @@ async def stream_agent_chat(
     messages = [human_message]
 
     user_id = str(current_user.id)
+    username = str(current_user.username)
     department_id = current_user.department_id
     if not department_id:
         yield make_chunk(status="error", error_type="no_department", error_message="当前用户未绑定部门", meta=meta)
@@ -309,6 +310,7 @@ async def stream_agent_chat(
     agent_config = (config_item.config_json or {}).get("context", {})
     input_context = {
         "user_id": user_id,
+        "username": username,
         "thread_id": thread_id,
         "department_id": department_id,
         "agent_config_id": agent_config_id,
