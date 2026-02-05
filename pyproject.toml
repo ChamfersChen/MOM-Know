@@ -69,6 +69,7 @@ dependencies = [
     "ipdb>=0.13.13",
     "torch>=2.9.1",
     "seaborn>=0.13.2",
+    "redis[hiredis]~=6.1.0",
 ]
 [tool.ruff]
 line-length = 120  # 代码最大行宽
