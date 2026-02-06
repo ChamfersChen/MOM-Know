@@ -75,13 +75,13 @@
 
     <!-- 空状态显示 -->
     <div v-else-if="!databases || databases.length === 0" class="empty-state">
-      <h3 class="empty-title">暂无知识库</h3>
-      <p class="empty-description">创建您的第一个知识库，开始管理文档和知识</p>
+      <h3 class="empty-title">暂无数据库连接</h3>
+      <p class="empty-description">创建您的第一个数据库连接，开始构建SQL助手的数据库网络</p>
       <a-button type="primary" size="large" @click="state.openNewDatabaseModel = true">
         <template #icon>
           <PlusOutlined />
         </template>
-        创建知识库
+        创建数据库连接
       </a-button>
     </div>
 

@@ -160,9 +160,15 @@ def add_mom_system_schedule_tool(title: str, description: str, start_time: str, 
 class FactoryIdModel(BaseModel):
     factory_id: str = Field(description="添加公告的工厂ID")
 
-@tool(name_or_callable="get_order_statistic_info", description="在获得MOM系统信息完成之后执行，根据工厂ID获得订单统计信息", args_schema=FactoryIdModel)
+@tool(name_or_callable="get_order_statistic_info", 
+      description=("在获得MOM系统信息完成之后执行，根据工厂ID获得订单统计信息, "
+                   "包括'订单总数', '订单总交付率', '订单总发货数', '待完成生产任务数', "
+                   "'任务总完成率', '成品库存数量', '原材库存预警', '不良上报总数'信息。"), 
+      args_schema=FactoryIdModel)
 def get_order_statistic_info(factory_id: str) -> str:
-    """根据工厂ID获得订单统计信息"""
+    """根据工厂ID获得订单统计信息, 
+    包括'订单总数', '订单总交付率', '订单总发货数', '待完成生产任务数', 
+    '任务总完成率', '成品库存数量', '原材库存预警', '不良上报总数'信息。"""
     # 添加系统公告
     extras = fetch_mom_organization_info.extras
     current_username = extras.get('current_username')

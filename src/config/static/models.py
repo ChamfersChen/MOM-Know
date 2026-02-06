@@ -137,18 +137,18 @@ DEFAULT_CHAT_MODEL_PROVIDERS: dict[str, ChatModelProvider] = {
     #         "anthropic/claude-sonnet-4",
     #     ],
     # ),
-    # "moonshot": ChatModelProvider(
-    #     name="月之暗面",
-    #     url="https://platform.moonshot.cn/docs/overview",
-    #     base_url="https://api.moonshot.cn/v1",
-    #     default="kimi-latest",
-    #     env="MOONSHOT_API_KEY",
-    #     models=[
-    #         "kimi-latest",
-    #         "kimi-k2-thinking",
-    #         "kimi-k2-0905-preview",
-    #     ],
-    # ), # 目前适配有问题 Error code: 400 - {'error': {'message': 'Invalid request: function name is invalid, must start with a letter and can contain letters, numbers, underscores, and dashes', 'type': 'invalid_request_error'}}   # noqa: E501
+    "moonshot": ChatModelProvider(
+        name="月之暗面",
+        url="https://platform.moonshot.cn/docs/overview",
+        base_url="https://api.moonshot.cn/v1",
+        default="kimi-latest",
+        env="MOONSHOT_API_KEY",
+        models=[
+            "kimi-latest",
+            "kimi-k2-thinking",
+            "kimi-k2-0905-preview",
+        ],
+    ), # 目前适配有问题 Error code: 400 - {'error': {'message': 'Invalid request: function name is invalid, must start with a letter and can contain letters, numbers, underscores, and dashes', 'type': 'invalid_request_error'}}   # noqa: E501
     "modelscope": ChatModelProvider(
         name="ModelScope",
         url="https://www.modelscope.cn/docs/model-service/API-Inference/intro",
