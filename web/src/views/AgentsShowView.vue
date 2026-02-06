@@ -78,6 +78,9 @@ import { handleChatError } from '@/utils/errorHandler';
 import { onClickOutside } from '@vueuse/core';
 
 import { storeToRefs } from 'pinia';
+import { useRoute } from 'vue-router'
+
+const route = useRoute()
 
 // 组件引用
 const feedbackModal = ref(null)
@@ -184,6 +187,20 @@ onMounted(async () => {
   if (!agentStore.isInitialized) {
     try {
       await agentStore.initialize()
+      const userId = route.query.username
+      const momAccessToken = route.query.momAccessToken
+      const sourceDomain = route.query.sourceDomain
+      console.log('>>> userId: ', userId)
+      console.log('>>> token: ', momAccessToken)
+      console.log('>>> sourceDomain: ', sourceDomain)
+      // 登录用户
+      if (sourceDomain === 'localhost'){
+        console.log('>>> 登录用户: ', userId)
+        await userStore.loginNoVerify({
+          loginId: userId,
+          password: momAccessToken,
+        })
+      }
     } catch (error) {
       console.error('初始化智能体 store 失败:', error)
     }

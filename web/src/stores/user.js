@@ -71,6 +71,56 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  async function loginNoVerify(credentials) {
+    try {
+      const formData = new FormData()
+      // 支持user_id或phone_number登录
+      formData.append('username', credentials.loginId) // 使用loginId作为通用登录标识
+      formData.append('password', credentials.password)
+
+      const response = await fetch('/api/auth/token-no-verify', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+
+        // 如果是423锁定状态码，抛出包含状态码的错误
+        if (response.status === 423) {
+          const lockError = new Error(error.detail || '账户被锁定')
+          lockError.status = 423
+          lockError.headers = response.headers
+          throw lockError
+        }
+
+        throw new Error(error.detail || '登录失败')
+      }
+
+      const data = await response.json()
+
+      // 更新状态
+      token.value = data.access_token
+      userId.value = data.user_id
+      username.value = data.username
+      userIdLogin.value = data.user_id_login
+      phoneNumber.value = data.phone_number || ''
+      avatar.value = data.avatar || ''
+      userRole.value = data.role
+      departmentId.value = data.department_id || null
+      departmentName.value = data.department_name || ''
+
+      // 只保存 token 到本地存储
+      // localStorage.setItem('user_token', data.access_token)
+      sessionStorage.setItem('user_token', data.access_token)
+
+      return true
+    } catch (error) {
+      console.error('登录错误:', error)
+      throw error
+    }
+  }
+
   function logout() {
     // 清除状态
     token.value = ''
@@ -422,6 +472,7 @@ export const useUserStore = defineStore('user', () => {
 
     // 方法
     login,
+    loginNoVerify,
     logout,
     initialize,
     checkFirstRun,
