@@ -64,6 +64,8 @@ async def mysql_list_tables_with_query(
     """
     result = []
     logger.info(f">> 查询表名及说明 {query}")
+    extras = mysql_list_tables_with_query.extras
+    user_department = extras.get('user_department')
     try:
         query_results = graph_base.query_node(query, threshold=0.5, hops=4, max_entities=25)
 
@@ -78,12 +80,16 @@ async def mysql_list_tables_with_query(
         # asyncio.set_event_loop(loop)
         # databases = loop.run_until_complete(sql_database.get_databases())
         databases = await sql_database.get_databases()
+        unaccessible_databases = []
         for db_infos in databases.values():
             for db_info in db_infos:
                 table_names = []
                 db_desc = db_info['description']
                 db_name = db_info['name']
                 tables_info = db_info['tables']
+                if not db_info['share_config']['is_shared'] and user_department not in db_info['share_config']['accessible_departments']:
+                    unaccessible_databases.append(db_name)
+                    continue
 
                 if not tables_info.values():
                     continue
@@ -103,6 +109,8 @@ async def mysql_list_tables_with_query(
         for edge in t2t_edges:
             source_name = map_id_name[edge['source_id']]
             target_name = map_id_name[edge['target_id']]
+            if source_name in unaccessible_databases or target_name in unaccessible_databases: 
+                continue
             if source_name == target_name: 
                 continue
             database_edge_info.append(f"`{source_name}` <--> `{target_name}`")
@@ -111,7 +119,7 @@ async def mysql_list_tables_with_query(
             db_relation_info = f"数据库之间存在以下关系: \n{'\n'.join(database_edge_info)}"
          
         
-        return f"{db_entity_info}\n===\n{db_relation_info}"
+        return f"{db_entity_info}\n===\n{db_relation_info}" if len(result) else "您所在的部门没有可以访问的数据库，请联系管理员，添加数据库。"
     except Exception as e:
         error_msg = f"获取表名失败: {str(e)}"
         return error_msg

@@ -83,6 +83,7 @@ class RuntimeConfigMiddleware(AgentMiddleware):
     ) -> ModelResponse:
         runtime_context = request.runtime.context
         current_username = runtime_context.username
+        user_department = runtime_context.department_id
         overrides: dict[str, Any] = {}
 
         # 1. 模型覆盖（可选）
@@ -99,7 +100,10 @@ class RuntimeConfigMiddleware(AgentMiddleware):
                 # (1) 已启用的工具保留
                 # (2) 非本中间件管理的工具保留
                 if t_bind.name in [t.name for t in enabled_tools] or t_bind.name not in [t.name for t in self.tools]:
-                    t_bind.extras = {"current_username": current_username}
+                    t_bind.extras = {
+                        "user_department": user_department,
+                        "current_username": current_username
+                    }
                     merged_tools.append(t_bind)
             overrides["tools"] = merged_tools
             logger.debug(f"RuntimeConfigMiddleware selected tools: {[t.name for t in merged_tools]}")
