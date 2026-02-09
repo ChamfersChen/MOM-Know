@@ -116,7 +116,8 @@ class UploadGraphService:
         for database_info in databases_meta:
             for related_db_id in database_info["related_db_ids"]:
                 t = db_id2h[related_db_id]
-                triples.append({"h": h, "t": t, "r": "Table2Table"})
+                if h['name'] != t['name']:
+                    triples.append({"h": h, "t": t, "r": "Table2Table"})
         if triples:
             await self.txt_add_vector_entity(triples, kgdb_name, embed_model_name, batch_size)
         
@@ -779,7 +780,7 @@ class UploadGraphService:
                 UNWIND all_results AS result_list
                 UNWIND result_list AS item
                 RETURN item.h AS h, item.r AS r, item.t AS t
-                LIMIT $limit
+                LIMIT $limit;
                 """
                 results = tx.run(query_str, entity_name=entity_name, limit=limit)
 
