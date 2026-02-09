@@ -36,6 +36,7 @@ async def create_graph(
     current_user: User = Depends(get_admin_user)
     ):
     """获取所有数据库"""
+    # TODO: 为图谱添加部门访问权限
     try:
         user_info = {"role": current_user.role, "department_id": current_user.department_id}
         databases = await sql_database.get_databases_by_user(user_info)
