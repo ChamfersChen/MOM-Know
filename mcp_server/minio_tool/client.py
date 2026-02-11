@@ -54,16 +54,22 @@ class MinIOClient:
 
         # 设置公开访问端点
         if os.getenv("RUNNING_IN_DOCKER"):
-            host_ip = (os.getenv("HOST_IP") or "").strip()
+            host_ip = (os.getenv("MINIO_HOST_IP") or "").strip()
             if not host_ip:
                 host_ip = "localhost"
             if "://" in host_ip:
                 host_ip = host_ip.split("://")[-1]
             host_ip = host_ip.rstrip("/")
-            self.public_endpoint = f"{host_ip}:9000"
+            self.public_endpoint = f"{host_ip}:19005"
             logger.debug(f"Docker MinIOClient public_endpoint: {self.public_endpoint}")
         else:
-            self.public_endpoint = "localhost:9000"
+            host_ip = (os.getenv("MINIO_HOST_IP") or "").strip()
+            if not host_ip:
+                host_ip = "localhost"
+            if "://" in host_ip:
+                host_ip = host_ip.split("://")[-1]
+            host_ip = host_ip.rstrip("/")
+            self.public_endpoint = f"{host_ip}:19005"
             logger.debug(f"Default_client: {self.public_endpoint}")
 
     @property
