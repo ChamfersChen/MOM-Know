@@ -36,7 +36,7 @@ class SqlDataBaseManager:
         self.db_name_to_id: dict[str, str] = {}
 
         # 元数据锁
-        self._metadata_lock = asyncio.Lock()
+        # self._metadata_lock = asyncio.Lock()
 
         # 加载全局元数据
         # self._load_global_metadata()
@@ -319,6 +319,7 @@ class SqlDataBaseManager:
 
         for db in all_databases:
             db_id = db.get("db_id")
+            self.db_name_to_id[db['name']] = db_id
             if not db_id:
                 continue
 
@@ -387,30 +388,14 @@ class SqlDataBaseManager:
             related_db_ids=related_db_ids,
             **kwargs)
         db_id = db_info["db_id"]
+        # 删除数据库名称与 ID 的映射
+        self.db_name_to_id[database_name] = db_id
 
         created_databases = set([v['database_id'] for v in db_instance.tables_meta.values()])
         if not created_databases or not (db_id in created_databases):
             await self.initialize_tables(db_id)
             logger.debug(f"Initialize tables for {db_id}")
 
-        # from src.repositories.sql_database_repository import SqlDatabaseRepository
-
-        # sdb_repo = SqlDatabaseRepository()
-        # updated = await sdb_repo.update(db_id, {"share_config": share_config})
-        # if updated is None:
-        #     await sdb_repo.create(
-        #         {
-        #             "db_id": db_id,
-        #             "name": database_name,
-        #             "description": description,
-        #             "db_type": db_type,
-        #             "connect_info": connect_info,
-        #             "share_config": share_config,
-        #         }
-        #     )
-
-        # logger.info(f"Created {db_type} database: {database_name} ({db_id}) with {kwargs}")
-        # db_info["share_config"] = share_config
         return db_info
 
     async def delete_database(self, db_id: str) -> dict:
@@ -418,8 +403,11 @@ class SqlDataBaseManager:
         from src.repositories.sql_database_repository import SqlDatabaseRepository
         try:
             db_instance = await self._get_db_for_database(db_id)
+            db_name = db_instance.get_database_info(db_id)["name"]
             result = await db_instance.delete_database(db_id)
-
+            # 删除数据库名称与 ID 的映射
+            if db_name in self.db_name_to_id:
+                del self.db_name_to_id[db_name]
             # 删除数据库记录
             db_repo = SqlDatabaseRepository()
             await db_repo.delete(db_id)
@@ -479,10 +467,12 @@ class SqlDataBaseManager:
         return await db_instance.select_tables(db_id, table_ids)
 
     async def update_database(self, db_id:str, name:str, description:str, share_config:dict=None, related_db_ids:str=None):
-        from src.repositories.sql_database_repository import SqlDatabaseRepository
 
         db_instance = await self._get_db_for_database(db_id)
         db_instance.update_database(db_id, name, description, share_config, related_db_ids)
+
+        # 更新db名称到ID映射
+        self.db_name_to_id[name] = db_id
 
         # 准备更新数据
         update_data: dict = {
