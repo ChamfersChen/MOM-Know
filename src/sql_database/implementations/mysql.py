@@ -462,11 +462,6 @@ class MySQLConnector(ConnectorBase):
                 self._save_metadata()
         return ret
 
-
-    async def get_tables(self) -> dict:
-        """获取数据库表信息"""
-        return {"meta": self.tables_meta}
-
     async def get_selected_tables(self) -> dict:
         """获取已选择的数据库表信息"""
         return {"meta": self.selected_tables_meta}
@@ -518,6 +513,13 @@ class MySQLConnector(ConnectorBase):
             # 删除数据库记录
             del self.databases_meta[db_id]
             await SqlDatabaseRepository().delete(db_id)
+
+            # 修改相关联的数据库信息
+            for id, values in self.databases_meta.items():
+                related_db_ids = values['related_db_ids']
+                if db_id in related_db_ids:
+                    related_db_ids.remove(db_id)
+                    await SqlDatabaseRepository().update(id, {'related_db_ids': ';'.join(related_db_ids)})
             await self._save_metadata()
 
         # 删除工作目录

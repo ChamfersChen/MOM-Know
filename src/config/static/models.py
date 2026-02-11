@@ -76,20 +76,16 @@ DEFAULT_CHAT_MODEL_PROVIDERS: dict[str, ChatModelProvider] = {
     #     env="ZHIPUAI_API_KEY",
     #     models=["glm-4.6", "glm-4.5-air", "glm-4.5-flash"],
     # ),
-    # "siliconflow": ChatModelProvider(
-    #     name="SiliconFlow",
-    #     url="https://cloud.siliconflow.cn/models",
-    #     base_url="https://api.siliconflow.cn/v1",
-    #     default="deepseek-ai/DeepSeek-V3.2",
-    #     env="SILICONFLOW_API_KEY",
-    #     models=[
-    #         "deepseek-ai/DeepSeek-V3.2",
-    #         "Qwen/Qwen3-235B-A22B-Thinking-2507",
-    #         "Qwen/Qwen3-235B-A22B-Instruct-2507",
-    #         "moonshotai/Kimi-K2-Instruct-0905",
-    #         "zai-org/GLM-4.6",
-    #     ],
-    # ),
+    "siliconflow": ChatModelProvider(
+        name="SiliconFlow",
+        url="https://cloud.siliconflow.cn/models",
+        base_url="https://api.siliconflow.cn/v1",
+        default="Qwen/Qwen3-8B",
+        env="SILICONFLOW_API_KEY",
+        models=[
+            "Qwen/Qwen3-8B",
+        ],
+    ),
     # "together": ChatModelProvider(
     #     name="Together",
     #     url="https://api.together.ai/models",
@@ -165,15 +161,15 @@ DEFAULT_CHAT_MODEL_PROVIDERS: dict[str, ChatModelProvider] = {
 # ============================================================
 
 DEFAULT_EMBED_MODELS: dict[str, EmbedModelInfo] = {
-    "siliconflow/BAAI/bge-m3": EmbedModelInfo(
-        model_id="siliconflow/BAAI/bge-m3",
-        name="bge-m3",
-        dimension=1024,
-        base_url="http://192.168.137.101:7656/v1/embeddings",
-        # base_url="http://localhost:9997/v1/embeddings",
-        # base_url="https://api.siliconflow.cn/v1/embeddings",
-        api_key="no_api_key",
-    ),
+    # "siliconflow/BAAI/bge-m3": EmbedModelInfo(
+    #     model_id="siliconflow/BAAI/bge-m3",
+    #     name="bge-m3",
+    #     dimension=1024,
+    #     # base_url="http://192.168.137.101:7656/v1/embeddings",
+    #     # base_url="http://localhost:9997/v1/embeddings",
+    #     base_url="https://api.siliconflow.cn/v1/embeddings",
+    #     api_key="no_api_key",
+    # ),
     "siliconflow/BAAI/local-bge-m3": EmbedModelInfo(
         model_id="siliconflow/BAAI/local-bge-m3",
         name="bge-m3",
@@ -183,13 +179,13 @@ DEFAULT_EMBED_MODELS: dict[str, EmbedModelInfo] = {
         # base_url="https://api.siliconflow.cn/v1/embeddings",
         api_key="no_api_key",
     ),
-    # "siliconflow/BAAI/bge-m3": EmbedModelInfo(
-    #     model_id="siliconflow/BAAI/bge-m3",
-    #     name="BAAI/bge-m3",
-    #     dimension=1024,
-    #     base_url="https://api.siliconflow.cn/v1/embeddings",
-    #     api_key="SILICONFLOW_API_KEY",
-    # ),
+    "siliconflow/BAAI/bge-m3": EmbedModelInfo(
+        model_id="siliconflow/BAAI/bge-m3",
+        name="BAAI/bge-m3",
+        dimension=1024,
+        base_url="https://api.siliconflow.cn/v1/embeddings",
+        api_key="SILICONFLOW_API_KEY",
+    ),
     # "siliconflow/Pro/BAAI/bge-m3": EmbedModelInfo(
     #     model_id="siliconflow/Pro/BAAI/bge-m3",
     #     name="Pro/BAAI/bge-m3",
