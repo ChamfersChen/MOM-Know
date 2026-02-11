@@ -45,14 +45,14 @@ _DEFAULT_MCP_SERVERS = {
         "icon": "🧠",
         "tags": ["内置", "AI"],
     },
-    "mcp-server-chart": {
-        "command": "npx",
-        "args": ["-y", "@antv/mcp-server-chart"],
-        "transport": "stdio",
-        "description": "图表生成工具，支持生成各类图表（柱状图、折线图、饼图等）",
-        "icon": "📊",
-        "tags": ["内置", "图表"],
-    },
+    # "mcp-server-chart": {
+    #     "command": "npx",
+    #     "args": ["-y", "@antv/mcp-server-chart"],
+    #     "transport": "stdio",
+    #     "description": "图表生成工具，支持生成各类图表（柱状图、折线图、饼图等）",
+    #     "icon": "📊",
+    #     "tags": ["内置", "图表"],
+    # },
     "mcp-server-mychart": {
         "url": "http://127.0.0.1:8001/mcp",
         "transport": "streamable_http",
