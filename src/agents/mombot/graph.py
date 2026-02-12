@@ -1,14 +1,10 @@
-from deepagents.backends import CompositeBackend, StateBackend
-from deepagents.middleware.filesystem import FilesystemMiddleware
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelRetryMiddleware
 from langchain.agents.middleware import HumanInTheLoopMiddleware
-from datetime import datetime
 
 from .context import MOMBotContext
 
 from src.agents.common import BaseAgent, load_chat_model
-from src.agents.common.backends.minio_backend import MinIOBackend
 from src.agents.common.middlewares import (
     RuntimeConfigMiddleware,
     save_attachments_to_fs,
@@ -41,12 +37,12 @@ class MOMbotAgent(BaseAgent):
             middleware=[
                 save_attachments_to_fs,  # 附件保存到文件系统
                 # FilesystemMiddleware(backend=_create_fs_backend_factory, tool_token_limit_before_evict=5000),
-                RuntimeConfigMiddleware(extra_tools=all_mcp_tools + get_mom_tools()),  # 运行时配置应用（模型/工具/知识库/MCP/提示词）
+                RuntimeConfigMiddleware(extra_tools=all_mcp_tools + get_mom_tools()),  # noqa E501 运行时配置应用（模型/工具/知识库/MCP/提示词）
                 ModelRetryMiddleware(),  # 模型重试中间件
                 HumanInTheLoopMiddleware({ # 人工审批中间件
                     "add_mom_system_news": True
-                    # "执行 SQL 查询": True, 
-                    # "计算器": True, 
+                    # "执行 SQL 查询": True,
+                    # "计算器": True,
                 })
             ],
             checkpointer=await self._get_checkpointer(),

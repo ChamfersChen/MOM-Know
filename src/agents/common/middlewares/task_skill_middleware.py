@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, Annotated, Literal, cast
 
 if TYPE_CHECKING:
@@ -11,7 +10,8 @@ if TYPE_CHECKING:
 from langchain_core.messages import SystemMessage, ToolMessage
 from langchain_core.tools import tool
 from langgraph.types import Command
-from typing_extensions import NotRequired, TypedDict
+from typing_extensions import TypedDict
+from typing import NotRequired
 
 from langchain.agents.middleware.types import (
     AgentMiddleware,

@@ -1,10 +1,8 @@
 from dataclasses import dataclass, field
-from typing import Annotated
 
-from src.agents.common import BaseContext, gen_tool_info
+from src.agents.common import BaseContext
 from src.knowledge import knowledge_base
 from src.services.mcp_service import get_mcp_server_names
-from .tools import get_tools
 
 
 @dataclass(kw_only=True)

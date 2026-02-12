@@ -83,8 +83,11 @@ class UploadGraphService:
         if self.status == "closed":
             self.start()
 
-    async def database_meta_add_entity(self,databases_meta:list, kgdb_name="neo4j", embed_model_name=None, batch_size=40):
-        """"""
+    async def database_meta_add_entity(self,
+                                       databases_meta:list,
+                                       kgdb_name="neo4j",
+                                       embed_model_name=None,
+                                       batch_size=40):
         assert self.driver is not None, "Database is not connected"
         self.connection.status = "processing"
         kgdb_name = kgdb_name or "neo4j"
@@ -112,7 +115,7 @@ class UploadGraphService:
                     "table_description": table_info["description"],
                 }
                 triples.append({"h": h, "t": t, "r": "Table2Column"})
-        
+
         for database_info in databases_meta:
             for related_db_id in database_info["related_db_ids"]:
                 t = db_id2h[related_db_id]
@@ -120,7 +123,7 @@ class UploadGraphService:
                     triples.append({"h": h, "t": t, "r": "Table2Table"})
         if triples:
             await self.txt_add_vector_entity(triples, kgdb_name, embed_model_name, batch_size)
-        
+
 
     async def jsonl_file_add_entity(self, file_path, kgdb_name="neo4j", embed_model_name=None, batch_size=None):
         """从JSONL文件添加实体三元组到Neo4j"""
@@ -274,7 +277,7 @@ class UploadGraphService:
             ret = []
             entities = []
             for record in result:
-                ret.append(f"表 `{record['name'].replace(".", "`.`")}` 的结构:\n\n表描述: {record['table_description']}\n\n{record['description']}")
+                ret.append(f"表 `{record['name'].replace(".", "`.`")}` 的结构:\n\n表描述: {record['table_description']}\n\n{record['description']}") # noqa E501
                 entities.append(record["name"])
 
             return ret, entities

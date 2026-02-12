@@ -1,5 +1,5 @@
 from src.utils import logger
-from src.sql_database.base import DBNotFoundError, DBOperationError
+from src.sql_database.base import DBNotFoundError
 from src.sql_database.base import ConnectorBase
 
 

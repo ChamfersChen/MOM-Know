@@ -6,7 +6,6 @@ from src.agents.common import BaseAgent, load_chat_model
 from src.knowledge import knowledge_base
 from src.utils import parse_json, format_prompt
 from src.utils.logging_config import logger
-from pydantic import BaseModel, Field
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -29,7 +28,7 @@ class RagState(TypedDict):
     kb_names: list[str] = []
 
 
-    
+
 
 class RagbotAgent(BaseAgent):
     name = "知识库问答流程"
@@ -38,13 +37,13 @@ class RagbotAgent(BaseAgent):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.llm = load_chat_model(config.default_model)  # 实际会被覆盖
-        self.llm_no_stream = load_chat_model(config.default_model, stream=False, verbose=False) # .with_structured_output(CheckDB)
+        self.llm_no_stream = load_chat_model(config.default_model, stream=False, verbose=False)
 
     async def get_graph(self, **kwargs):
         """构建图"""
         cpt = await self._get_checkpointer()
         kb_instance = knowledge_base.kb_instances.get("milvus")
-        
+
         def _should_retrieval(state: RagState):
             if not kb_instance:
                 return "summary_node"
@@ -57,7 +56,7 @@ class RagbotAgent(BaseAgent):
             messages = state.get("messages",[])
             if not messages:
                 return {"messages": messages}
-            
+
             if state["kb_names"]:
                 results = []
                 for kb_id in state["kb_names"]:
@@ -90,12 +89,12 @@ class RagbotAgent(BaseAgent):
             for kb_id, kb_meta in kb_instance.databases_meta.items():
                 kb_descriptions.append(f"- {kb_meta['name']}: {kb_meta.get('description', '')}")
                 map_name_id[kb_meta['name']] = kb_id
-            
+
             kb_description = "## 知识库描述信息\n"+"\n".join(kb_descriptions)
 
             res = self.llm_no_stream.invoke(
                 format_prompt(
-                    DB_CHECK_PROMPT, 
+                    DB_CHECK_PROMPT,
                     {"kb_description": kb_description, "query": query}
                 ),
                 config={"tags": ["internal"]}

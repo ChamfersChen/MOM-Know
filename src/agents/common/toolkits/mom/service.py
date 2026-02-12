@@ -16,7 +16,7 @@ def get_order_total_info_by_factory_id(factory_id: str, headers=None) -> dict:
     根据组织ID获取订单总数信息
     """
     response = requests.get(
-        MOM_API_BASE_URL+f"/meswms/index/getOrderInfo",
+        MOM_API_BASE_URL+"/meswms/index/getOrderInfo",
         params={'organizationIds': factory_id},
         headers=headers
     )

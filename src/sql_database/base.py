@@ -1,7 +1,5 @@
-import os, json
+import os
 import time
-import shutil
-import tempfile
 from abc import ABC, abstractmethod
 from typing import Any
 from src.utils import logger, hashstr
@@ -64,7 +62,6 @@ class ConnectorBase(ABC):
 
         db_repo = SqlDatabaseRepository()
         table_repo = SqlDatabaseTableRepository()
-        # eval_repo = EvaluationRepository()
 
         databases = [db for db in await db_repo.get_all() if db.db_type == self.db_type]
         self.databases_meta = {
@@ -258,7 +255,10 @@ class ConnectorBase(ABC):
             tables_to_delete = [fid for fid, finfo in self.tables_meta.items() if finfo.get("database_id") == db_id]
             for table_id in tables_to_delete:
                 del self.tables_meta[table_id]
-            tables_to_delete = [fid for fid, finfo in self.selected_tables_meta.items() if finfo.get("database_id") == db_id]
+            tables_to_delete = [
+                fid for fid, finfo in self.selected_tables_meta.items()
+                if finfo.get("database_id") == db_id
+            ]
             for table_id in tables_to_delete:
                 del self.selected_tables_meta[table_id]
 
@@ -293,8 +293,6 @@ class ConnectorBase(ABC):
 
         meta = self.databases_meta[db_id].copy()
         meta["db_id"] = db_id
-        # 检查并修复异常的processing状态
-        # self._check_and_fix_processing_status(db_id)
 
         # 获取文件信息
         db_tables = {}
@@ -371,7 +369,7 @@ class ConnectorBase(ABC):
                         "related_db_ids": payload["related_db_ids"]
                     },
                 )
-        
+
         for table_id, table_info in self.tables_meta.items():
             existing_table = await table_repo.get_by_table_id(table_id)
             database_id = table_info["database_id"]
@@ -391,7 +389,6 @@ class ConnectorBase(ABC):
                     table_id,
                     {
                         "tablename": payload["tablename"],
-                        "description": payload["description"],
                         "description": payload["description"],
                         "is_choose": payload["is_choose"],
                         "total_description": payload["total_description"],

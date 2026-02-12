@@ -86,14 +86,14 @@ DEFAULT_CHAT_MODEL_PROVIDERS: dict[str, ChatModelProvider] = {
             "Qwen/Qwen3-8B",
         ],
     ),
-    # "together": ChatModelProvider(
-    #     name="Together",
-    #     url="https://api.together.ai/models",
-    #     base_url="https://api.together.xyz/v1/",
-    #     default="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
-    #     env="TOGETHER_API_KEY",
-    #     models=["meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"],
-    # ),
+    "together": ChatModelProvider(
+        name="Together",
+        url="https://api.together.ai/models",
+        base_url="https://api.together.xyz/v1/",
+        default="ServiceNow-AI/Apriel-1.6-15b-Thinker",
+        env="TOGETHER_API_KEY",
+        models=["ServiceNow-AI/Apriel-1.6-15b-Thinker"],
+    ),
     # "dashscope": ChatModelProvider(
     #     name="阿里百炼 (DashScope)",
     #     url="https://bailian.console.aliyun.com/?switchAgent=10226727&productCode=p_efm#/model-market",
@@ -124,13 +124,11 @@ DEFAULT_CHAT_MODEL_PROVIDERS: dict[str, ChatModelProvider] = {
     #     name="OpenRouter",
     #     url="https://openrouter.ai/models",
     #     base_url="https://openrouter.ai/api/v1",
-    #     default="openai/gpt-4o",
+    #     default="qwen/qwen3-next-80b-a3b-instruct:free",
     #     env="OPENROUTER_API_KEY",
     #     models=[
-    #         "openai/gpt-4o",
-    #         "x-ai/grok-4",
-    #         "google/gemini-2.5-pro",
-    #         "anthropic/claude-sonnet-4",
+    #         "qwen/qwen3-next-80b-a3b-instruct:free",
+    #         "qwen/qwen3-4b:free"
     #     ],
     # ),
     "moonshot": ChatModelProvider(

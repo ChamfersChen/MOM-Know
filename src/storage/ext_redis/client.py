@@ -1,6 +1,5 @@
 import threading
 import redis
-from typing import Optional
 from src.config import redis_cfg
 
 
@@ -20,7 +19,7 @@ class RedisClient:
         host: str = "localhost",
         port: int = 6379,
         db: int = 0,
-        password: Optional[str] = None,
+        password: str | None = None,
         decode_responses: bool = True,
     ):
         # 防止 __init__ 被多次执行
@@ -49,7 +48,7 @@ class RedisClient:
     def get(self, key: str):
         return self._client.get(key)
 
-    def set(self, key: str, value, ex: Optional[int] = None):
+    def set(self, key: str, value, ex: int | None = None):
         return self._client.set(key, value, ex=ex)
 
     def delete(self, key: str):

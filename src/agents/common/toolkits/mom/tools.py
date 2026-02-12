@@ -48,7 +48,9 @@ class SystemNewsModel(BaseModel):
     end_time: str = Field(description="公告发布结束时间 (精确到天, 不需要具体时间点)", example="2025-12-31")
     factory_id: str = Field(description="添加公告的工厂ID")
 
-@tool(name_or_callable="add_mom_system_news", description="在获得MOM系统信息完成之后执行，为MOM系统添加系统公告", args_schema=SystemNewsModel)
+@tool(name_or_callable="add_mom_system_news",
+      description="在获得MOM系统信息完成之后执行，为MOM系统添加系统公告",
+      args_schema=SystemNewsModel)
 def add_mom_system_news_tool(title: str, content: str, start_time: str, end_time: str, factory_id: str) -> str:
     """为MOM系统添加系统公告
 
@@ -99,7 +101,7 @@ def add_mom_system_news_tool(title: str, content: str, start_time: str, end_time
                 "status": "",
                 "organizationIds": None
             }
-        
+
         token = redis_client.get(username)
         headers = {
                 "Authorization": "Bearer "+token,
@@ -118,7 +120,7 @@ def add_mom_system_news_tool(title: str, content: str, start_time: str, end_time
         logger.debug(str(e))
         return f"创建系统公告失败！{str(e)}"
 
-    return f"创建系统公告成功！"
+    return "创建系统公告成功！"
 
 
 class SystemScheduleModel(BaseModel):
@@ -128,7 +130,9 @@ class SystemScheduleModel(BaseModel):
     start_time: str = Field(description="日程开始时间 (精确到具体时间点)", example="2025-12-01 14:00:00")
     end_time: str = Field(description="日程结束时间 (精确到具体时间点)", example="2025-12-01 15:30:00")
 
-@tool(name_or_callable="add_mom_system_schedule", description="在获得MOM系统信息完成之后执行，为MOM系统添加日程信息", args_schema=SystemScheduleModel)
+@tool(name_or_callable="add_mom_system_schedule",
+      description="在获得MOM系统信息完成之后执行，为MOM系统添加日程信息",
+      args_schema=SystemScheduleModel)
 def add_mom_system_schedule_tool(title: str, description: str, start_time: str, end_time: str) -> str:
     mom_user_info:dict = global_variable.get("mom_user_info")
     tenant_id = mom_user_info.get("tenant_id")
@@ -155,19 +159,19 @@ def add_mom_system_schedule_tool(title: str, description: str, start_time: str, 
         logger.debug(str(e))
         return f"创建日程失败！{str(e)}"
 
-    return f"创建日程成功！"
+    return "创建日程成功！"
 
 class FactoryIdModel(BaseModel):
     factory_id: str = Field(description="添加公告的工厂ID")
 
-@tool(name_or_callable="get_order_statistic_info", 
+@tool(name_or_callable="get_order_statistic_info",
       description=("在获得MOM系统信息完成之后执行，根据工厂ID获得订单统计信息, "
                    "包括'订单总数', '订单总交付率', '订单总发货数', '待完成生产任务数', "
-                   "'任务总完成率', '成品库存数量', '原材库存预警', '不良上报总数'信息。"), 
+                   "'任务总完成率', '成品库存数量', '原材库存预警', '不良上报总数'信息。"),
       args_schema=FactoryIdModel)
 def get_order_statistic_info(factory_id: str) -> str:
-    """根据工厂ID获得订单统计信息, 
-    包括'订单总数', '订单总交付率', '订单总发货数', '待完成生产任务数', 
+    """根据工厂ID获得订单统计信息,
+    包括'订单总数', '订单总交付率', '订单总发货数', '待完成生产任务数',
     '任务总完成率', '成品库存数量', '原材库存预警', '不良上报总数'信息。"""
     # 添加系统公告
     extras = fetch_mom_organization_info.extras
@@ -182,7 +186,7 @@ def get_order_statistic_info(factory_id: str) -> str:
         factories_id = [factory.get('value') for factory in factories_info]
         if factory_id not in factories_id:
             return "组织ID不在当前用户系统中，无法添加公告。请确认组织ID是否正确，或者当前用户是否有权限添加公告。"
-        
+
         token = redis_client.get(username)
         headers = {
                 "Authorization": "Bearer "+token,

@@ -10,7 +10,6 @@ from langchain_core.tools import StructuredTool
 from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
-from src.storage.db.models import Roles
 from src import config, graph_base, knowledge_base
 from src.services.mcp_service import get_enabled_mcp_tools
 from src.storage.minio import aupload_file_to_minio

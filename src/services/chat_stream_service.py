@@ -411,7 +411,7 @@ async def stream_agent_chat(
 
         if agent_state:
             yield make_chunk(status="agent_state", agent_state=agent_state, meta=meta)
-        
+
         #######################################
         # Check for human approval interrupts #
         #######################################
@@ -514,7 +514,9 @@ async def stream_agent_resume(
     init_msg = {"type": "system", "content": f"Resume with approved: {approved}"}
     yield make_resume_chunk(status="init", meta=meta, msg=init_msg)
 
-    decision = {"type": "reject"} if not approved else {"type": "edit", "edited_action": {"name": tool_name, "args": tool_args}}
+    decision = {"type": "reject"} if not approved else {
+        "type": "edit", "edited_action": {"name": tool_name, "args": tool_args}
+    }
 
     resume_command = Command(
         resume={

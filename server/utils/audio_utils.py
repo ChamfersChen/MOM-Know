@@ -4,7 +4,6 @@ from urllib import request
 import dashscope
 import os
 import json
-import os
 
 from loguru import logger
 
@@ -16,7 +15,7 @@ def audio2text(filepath):
     task_response = Transcription.async_call(
         model='fun-asr',
         file_urls=[filepath],
-        language_hints=['zh', 'en'] 
+        language_hints=['zh', 'en']
     )
     Transcription.fetch
 

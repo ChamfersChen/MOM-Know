@@ -1,5 +1,5 @@
 import os
-from collections import deque
+import aiofiles
 from pathlib import Path
 
 import yaml
@@ -86,7 +86,7 @@ async def get_system_logs(levels: str | None = None, current_user: User = Depend
                     if len(lines) > 1000:
                         lines.pop(0)
 
-        log = "".join(last_lines)
+        log = "".join(lines)
         return {"log": log, "message": "success", "log_file": LOG_FILE}
     except Exception as e:
         logger.error(f"获取系统日志失败: {e}")

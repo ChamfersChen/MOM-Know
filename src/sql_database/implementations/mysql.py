@@ -3,13 +3,11 @@ import threading
 import time
 import asyncio
 from contextlib import contextmanager, asynccontextmanager
-from typing import Any
 from src.sql_database.base import ConnectorBase
 import pymysql
 from pymysql import MySQLError
 from pymysql.cursors import DictCursor
 from src.utils import logger, hashstr
-from src.utils.datetime_utils import coerce_any_to_utc_datetime, utc_isoformat
 
 
 class MySQLConnector(ConnectorBase):
@@ -38,7 +36,7 @@ class MySQLConnector(ConnectorBase):
         db_ids = list(self.connections.keys())
         with self._lock:
             for db_id in db_ids:
-                if not self.connections[db_id].open or current_time - self.last_connection_time > self.max_connection_age:
+                if not self.connections[db_id].open or current_time - self.last_connection_time > self.max_connection_age: # noqa E501
                     self.connections[db_id].close()
                     del self.connections[db_id]
 
@@ -46,7 +44,7 @@ class MySQLConnector(ConnectorBase):
         """获取数据库连接"""
         if db_id not in self.connections:
             return self._create_connection(db_id)
-        
+
         return self.connections[db_id]
 
     def prepare_table_name_metadata(self, db_id: str, table_name) -> dict:
@@ -140,7 +138,7 @@ class MySQLConnector(ConnectorBase):
 
                     for key_name, cols in index_dict.items():
                         result_str += f"- {key_name}: {', '.join(cols)}\n"
-                    
+
                     result_indexs[key_name] = cols
             except Exception as e:
                 logger.warning(f"Failed to get index info for table {table_name}: {e}")
@@ -159,7 +157,7 @@ class MySQLConnector(ConnectorBase):
         db_name = self.databases_meta[db_id]['connect_info']['database']
         with self.get_cursor(db_id) as cursor:
             # 获取表名
-            sql = f"SELECT TABLE_NAME AS table_name, TABLE_COMMENT AS table_comment FROM  information_schema.tables WHERE table_schema = '{db_name}';"
+            sql = f"SELECT TABLE_NAME AS table_name, TABLE_COMMENT AS table_comment FROM  information_schema.tables WHERE table_schema = '{db_name}';" # noqa E501
             cursor.execute(sql)
             # logger.debug("Executed `SHOW TABLES` query")
             tables = cursor.fetchall()
@@ -184,7 +182,12 @@ class MySQLConnector(ConnectorBase):
 
             await self._save_metadata()
 
-    def update_database(self, db_id: str, name: str, description: str, share_config:dict=None, related_db_ids: str=None) -> dict:
+    def update_database(self,
+                        db_id: str,
+                        name: str,
+                        description: str,
+                        share_config:dict=None,
+                        related_db_ids: str=None) -> dict:
         """
         更新数据库
 
@@ -202,7 +205,6 @@ class MySQLConnector(ConnectorBase):
         self.databases_meta[db_id]["name"] = name
         self.databases_meta[db_id]["description"] = description
 
-        # 如果提供了 llm_info，则更新（仅针对 LightRAG 类型）
         if share_config is not None:
             self.databases_meta[db_id]["share_config"] = share_config
 
@@ -211,8 +213,6 @@ class MySQLConnector(ConnectorBase):
 
         asyncio.create_task(self._save_metadata())
 
-        # return self.get_database_info(db_id)
-    
     def update_tables(self, db_id: str, table_info:dict) -> dict:
         """
         更新数据表
@@ -222,7 +222,6 @@ class MySQLConnector(ConnectorBase):
             raise ValueError(f"数据库 {db_id} 不存在")
 
         for table_id, table_info in table_info.items():
-            # table_id = table_info['table_id']
             self.tables_meta[table_id] = table_info
 
         asyncio.create_task(self._save_metadata())
@@ -391,7 +390,7 @@ class MySQLConnector(ConnectorBase):
             }
         return cursors
 
-        
+
     def close(self):
         """关闭数据库连接"""
         for db_id, connection in self.connections.items():
@@ -412,19 +411,19 @@ class MySQLConnector(ConnectorBase):
     # def database_name(self) -> str:
     #     """返回当前配置的数据库名称"""
     #     return self.config["database"]
-    
+
 
     @property
     def db_type(self) -> str:
         """数据库类型标识"""
         return "mysql"
-    
+
     async def select_tables(self, db_id: str, table_ids: list[str]) -> list[dict]:
         """设置指定db的表"""
         if db_id not in self.databases_meta:
             raise ValueError(f"Database {db_id} not found")
 
-        
+
         # 删除db_id的表
         del_table_ids = []
         for table_id in self.selected_tables_meta.keys():
@@ -435,7 +434,7 @@ class MySQLConnector(ConnectorBase):
 
         processed_items_info = []
         for table_id in table_ids:
-            
+
             # table_name = table['table_name']
             assert table_id in self.tables_meta.keys(), "Table not found"
 
@@ -445,7 +444,7 @@ class MySQLConnector(ConnectorBase):
             self.selected_tables_meta[table_id] = table_record
             table_record["table_id"] = table_id
             processed_items_info.append(table_record)
-        
+
         async with self._metadata_lock:
             self._save_metadata()
 
@@ -487,7 +486,7 @@ class MySQLConnector(ConnectorBase):
             raise Exception(f"File not found: {table_id}")
 
         return {"meta": self.tables_meta[table_id]}
-    
+
     async def delete_database(self, db_id: str) -> dict:
         """
         删除数据库

@@ -1,9 +1,7 @@
-import asyncio
 from typing import Annotated, Any
 
 from langchain.tools import tool
 from pydantic import BaseModel, Field
-from src.storage.db.models import Roles
 from src.utils import logger
 from src.knowledge import graph_base
 
@@ -87,7 +85,7 @@ async def mysql_list_tables_with_query(
                 db_desc = db_info['description']
                 db_name = db_info['name']
                 tables_info = db_info['tables']
-                if not db_info['share_config']['is_shared'] and user_department not in db_info['share_config']['accessible_departments']:
+                if not db_info['share_config']['is_shared'] and user_department not in db_info['share_config']['accessible_departments']: # noqa E501
                     unaccessible_databases.append(db_name)
                     continue
 
@@ -109,17 +107,17 @@ async def mysql_list_tables_with_query(
         for edge in t2t_edges:
             source_name = map_id_name[edge['source_id']]
             target_name = map_id_name[edge['target_id']]
-            if source_name in unaccessible_databases or target_name in unaccessible_databases: 
+            if source_name in unaccessible_databases or target_name in unaccessible_databases:
                 continue
-            if source_name == target_name: 
+            if source_name == target_name:
                 continue
             database_edge_info.append(f"`{source_name}` <--> `{target_name}`")
         db_relation_info = ""
         if database_edge_info:
             db_relation_info = f"数据库之间存在以下关系: \n{'\n'.join(database_edge_info)}"
-         
-        
-        return f"{db_entity_info}\n===\n{db_relation_info}" if len(result) else "您所在的部门没有可以访问的数据库，请联系管理员，添加数据库。"
+
+
+        return f"{db_entity_info}\n===\n{db_relation_info}" if len(result) else "您所在的部门没有可以访问的数据库，请联系管理员，添加数据库。" # noqa E501
     except Exception as e:
         error_msg = f"获取表名失败: {str(e)}"
         return error_msg
@@ -150,8 +148,8 @@ def mysql_list_tables() -> str:
                 for table_info in tables_info.values():
                     table_name = f"{db_name}.{table_info['table_name']}: {table_info['table_comment']}"
                     table_names.append(table_name)
-                result.append(f"数据库说明\n{db_name}: {db_desc}\n数据库中的表:\n{'\n'.join(table_names)}")              
-        
+                result.append(f"数据库说明\n{db_name}: {db_desc}\n数据库中的表:\n{'\n'.join(table_names)}")
+
         return "\n---\n".join(result)
     except Exception as e:
         error_msg = f"获取表名失败: {str(e)}"
@@ -268,7 +266,7 @@ class QueryModel(BaseModel):
 
 @tool(name_or_callable="mysql_query", description="执行 SQL 查询", args_schema=QueryModel)
 async def mysql_query(
-    database_names: Annotated[list[str], "要查询的数据库名称列表"], #TODO 可能存在同一个连接跨数据库表查询的问题，需要判断是否为一个连接
+    database_names: Annotated[list[str], "要查询的数据库名称列表"], # noqa E501 TODO 可能存在同一个连接跨数据库表查询的问题，需要判断是否为一个连接
     sql: Annotated[str, "要执行的SQL查询语句（只能是SELECT语句, 且需要带上数据库名, 如：SELECT * FROM db1.table1）"],
     timeout: Annotated[int | None, "查询超时时间（秒），默认60秒，最大600秒"] = 60,
 ) -> str:

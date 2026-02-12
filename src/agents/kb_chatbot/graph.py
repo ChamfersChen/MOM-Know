@@ -2,16 +2,12 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import ModelRetryMiddleware
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 
-from src.storage.db.models import User
 from src.agents.common import BaseAgent, load_chat_model
-from src.services.mcp_service import get_enabled_mcp_tools
 from src.agents.common.middlewares import (
     RuntimeConfigMiddleware,
     inject_attachment_context,
 )
-from src.agents.common.tools import get_kb_based_tools
 
-from .context import Context
 
 
 class KBChatbotAgent(BaseAgent):
@@ -56,8 +52,8 @@ class KBChatbotAgent(BaseAgent):
                 RuntimeConfigMiddleware(),  # 运行时配置应用（模型/工具/知识库/MCP/提示词）
                 ModelRetryMiddleware(),  # 模型重试中间件
                 HumanInTheLoopMiddleware({ # 人工审批中间件
-                    # "执行 SQL 查询": True, 
-                    # "计算器": True, 
+                    # "执行 SQL 查询": True,
+                    # "计算器": True,
                 })
             ],
             checkpointer=await self._get_checkpointer(),

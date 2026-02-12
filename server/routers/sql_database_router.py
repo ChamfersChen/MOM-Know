@@ -4,9 +4,7 @@
 
 import traceback
 
-from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse
-from starlette.responses import FileResponse as StarletteFileResponse
+from fastapi import APIRouter, Body, Depends, HTTPException
 
 from server.utils.auth_middleware import get_admin_user
 from src.storage.db.models import User
@@ -25,8 +23,6 @@ async def get_databases(
     try:
         user_info = {"role": current_user.role, "department_id": current_user.department_id}
         return await sql_database.get_databases_by_user(user_info)
-        # database = sql_database.get_databases()
-        # return database
     except Exception as e:
         logger.error(f"获取数据库列表失败 {e}, {traceback.format_exc()}")
         return {"message": f"获取数据库列表失败 {e}", "databases": []}
@@ -36,18 +32,17 @@ async def create_graph(
     current_user: User = Depends(get_admin_user)
     ):
     """获取所有数据库"""
-    # TODO: 为图谱添加部门访问权限
     try:
         user_info = {"role": current_user.role, "department_id": current_user.department_id}
         databases = await sql_database.get_databases_by_user(user_info)
         databases_meta = databases['databases']
         graph_base.delete_entity()
         await graph_base.database_meta_add_entity(
-            databases_meta, 
+            databases_meta,
             embed_model_name="siliconflow/BAAI/bge-m3",
             batch_size=20
         )
-        return {"message": f"图谱创建成功", "code": 0}
+        return {"message": "图谱创建成功", "code": 0}
     except Exception as e:
         logger.error(f"图谱创建失败 {e}, {traceback.format_exc()}")
         graph_base.delete_entity()
@@ -78,18 +73,19 @@ async def create_database(
 
         connect_info_dict = connect_info.model_dump() if hasattr(connect_info, "model_dump") else connect_info
 
-        # sql_database.test_connection(connection_info)
+        # 验证数据库连接信息
+        sql_database.test_connection(connect_info_dict)
+
         database_info = await sql_database.create_database(
-            database_name, 
-            description, 
-            db_type, 
+            database_name,
+            description,
+            db_type,
             connect_info=connect_info_dict,
             share_config=share_config,
             )
 
         # 需要重新加载所有智能体，因为工具刷新了
         from src.agents import agent_manager
-
         await agent_manager.reload_all()
 
         return database_info
@@ -100,8 +96,8 @@ async def create_database(
 
 @sql_db.get("/database/{db_id}")
 async def get_database_info(
-    db_id: str, 
-    # current_user: User = Depends(get_admin_user)
+    db_id: str,
+    current_user: User = Depends(get_admin_user)
     ):
     """获取数据库详细信息"""
     database = await sql_database.get_database_info(db_id)
@@ -111,8 +107,8 @@ async def get_database_info(
 
 @sql_db.delete("/database/{db_id}")
 async def delete_database(
-    db_id: str, 
-    # current_user: User = Depends(get_admin_user)
+    db_id: str,
+    current_user: User = Depends(get_admin_user)
     ):
     """删除数据库"""
     logger.debug(f"Delete database {db_id}")
@@ -146,8 +142,8 @@ async def update_tables(
 
 @sql_db.get("/database/{db_id}/tables/selected")
 async def get_tables(
-    db_id: str, 
-    # current_user: User = Depends(get_admin_user)
+    db_id: str,
+    current_user: User = Depends(get_admin_user)
     ):
     logger.debug(f"GET tables info in {db_id}")
 
@@ -160,8 +156,8 @@ async def get_tables(
 
 @sql_db.post("/database/{db_id}/tables/choose")
 async def choose_tables(
-    db_id: str, 
-    table_ids: list[str] = Body(...), 
+    db_id: str,
+    table_ids: list[str] = Body(...),
     current_user: User = Depends(get_admin_user)
 ):
     try:
@@ -175,26 +171,6 @@ async def choose_tables(
     except Exception as e:
         logger.error(f"Failed to choose tables, {e}, {db_id=}, {traceback.format_exc()}")
         return {"message": "Failed to choose tables", "status": "failed"}
-
-@sql_db.delete("/database/{db_id}/tables/{table_id}")
-async def unchoose_tables(
-    db_id: str, 
-    table_id: str, 
-    # current_user: User = Depends(get_admin_user)
-):
-    """取消选择数据库表"""
-    logger.debug(f"Unchoose tables for db_id {db_id}: {table_id}")
-    try:
-        if not table_id:
-            raise Exception("Table IDs cannot be empty")
-
-        table_info = await sql_database.unselect_table(db_id, table_id)
-        from src.agents import agent_manager
-        await agent_manager.reload_all()
-        return table_info
-    except Exception as e:
-        logger.error(f"Failed to unchoose tables, {e}, {db_id=}, {traceback.format_exc()}")
-        return {"message": "Failed to unchoose tables", "status": "failed"}
 
 @sql_db.put("/database/{db_id}")
 async def update_database_info(

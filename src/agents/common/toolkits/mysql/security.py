@@ -86,9 +86,3 @@ class MySQLSecurityChecker:
     def validate_timeout(cls, timeout: int) -> bool:
         """验证timeout参数"""
         return isinstance(timeout, int) and 1 <= timeout <= 600
-
-if __name__ == "__main__":
-    # 示例用法
-    sql = "SELECT COUNT(*) AS count FROM raw_material_issuance_voucher WHERE create_by = 'fhj3';"
-    import ipdb; ipdb.set_trace()
-    print(MySQLSecurityChecker.validate_sql(sql))  # 输出：True

@@ -3,7 +3,6 @@ from deepagents.middleware.filesystem import FilesystemMiddleware
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelRetryMiddleware
 from langchain.agents.middleware import HumanInTheLoopMiddleware
-from datetime import datetime
 
 from src.agents.common import BaseAgent, load_chat_model
 from src.agents.common.backends.minio_backend import MinIOBackend
@@ -57,8 +56,8 @@ class ChatbotAgent(BaseAgent):
                 ModelRetryMiddleware(),  # 模型重试中间件
                 HumanInTheLoopMiddleware({ # 人工审批中间件
                     # "add_mom_system_news": True
-                    # "执行 SQL 查询": True, 
-                    "计算器": True, 
+                    # "执行 SQL 查询": True,
+                    "计算器": True,
                 })
             ],
             checkpointer=await self._get_checkpointer(),

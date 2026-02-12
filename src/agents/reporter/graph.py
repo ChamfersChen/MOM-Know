@@ -13,7 +13,6 @@ from src.utils import logger
 
 # from src.agents.common.middlewares import TaskSkillMiddleware
 
-# _mcp_servers = {"mcp-server-chart": {"command": "npx", "args": ["-y", "@antv/mcp-server-chart"], "transport": "stdio"}}
 SQL_PAIRS_KB_ID = "kb_8d6732060fbf23a102aab44a50ffe953"
 
 PROMPT = """你的任务是根据用户的指令，使用数据库工具和图表绘制工具，构建 SQL 查询报告。

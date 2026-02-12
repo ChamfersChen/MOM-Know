@@ -1,13 +1,11 @@
-import os, asyncio, json
-import tempfile
+import os
+import asyncio
 import pymysql
-import shutil
 from pymysql import MySQLError
 from pymysql.cursors import DictCursor
-from src.sql_database.base import DBNotFoundError, DBOperationError
+from src.sql_database.base import DBNotFoundError
 from src.sql_database.implementations.mysql import MySQLConnector
 from src.sql_database.factory import DBConnectorBaseFactory
-from src.utils.datetime_utils import coerce_any_to_utc_datetime, utc_isoformat
 
 from src.utils import logger
 
@@ -30,37 +28,14 @@ class SqlDataBaseManager:
         # 知识库实例缓存 {kb_type: kb_instance}
         self.db_instances: dict[str, MySQLConnector] = {}
 
-        # 全局数据库元信息 {db_id: metadata_with_kb_type}
-        # self.global_databases_meta: dict[str, dict] = {}
-
+        # 知识库名称与ID映射, 用于Tool调用时使用
         self.db_name_to_id: dict[str, str] = {}
-
-        # 元数据锁
-        # self._metadata_lock = asyncio.Lock()
-
-        # 加载全局元数据
-        # self._load_global_metadata()
-        # self._normalize_global_metadata()
-
-        # # 初始化已存在的知识库实例
-        # self._initialize_existing_dbs()
-
 
     async def initialize(self):
         """异步初始化"""
-        # 初始化已存在的知识库实例
+        # 初始化已存在数据库实例
         self._initialize_existing_dbs()
         logger.info("SqlDatabaseManager initialized")
-
-    async def _update_db_name2id(self):
-        from src.repositories.sql_database_repository import SqlDatabaseRepository
-        db_repo = SqlDatabaseRepository()
-        databases = await db_repo.get_all()
-        for db in databases:
-            self.db_name_to_id[db.name] = db.db_id
-        # for database_id, database_meta in self.global_databases_meta.items():
-        #     database_name = database_meta.get("name")
-        #     self.db_name_to_id[database_name] = database_id
 
     async def _load_all_metadata(self):
         """异步加载所有元数据 - 保留兼容性的空方法，现在由 KB 实例自行加载"""
@@ -80,15 +55,15 @@ class SqlDataBaseManager:
                 db_types_in_use.add(db_type)
                 self.db_name_to_id[row.name] = row.db_id
 
-            logger.info(f"[InitializeKB] 发现 {len(db_types_in_use)} 种知识库类型: {db_types_in_use}")
+            logger.info(f"[InitializeDB] 发现 {len(db_types_in_use)} 种数据库类型: {db_types_in_use}")
 
-            # 为每种使用中的知识库类型创建实例并加载元数据
+            # 为每种使用中的数据库类型创建实例并加载元数据
             for db_type in db_types_in_use:
                 try:
                     db_instance = self._get_or_create_db_instance(db_type)
-                    # 让 KB 实例自行加载元数据
+                    # 让 DB 实例自行加载元数据
                     await db_instance._load_metadata()
-                    logger.info(f"[InitializeKB] {db_type} 实例已初始化")
+                    logger.info(f"[InitializeDB] {db_type} 实例已初始化")
                 except Exception as e:
                     logger.error(f"Failed to initialize {db_type} knowledge base: {e}")
                     import traceback
@@ -102,7 +77,7 @@ class SqlDataBaseManager:
         except RuntimeError:
             asyncio.run(_async_init())
 
-    
+
     def _get_or_create_db_instance(self, db_type: str) -> MySQLConnector:
         """
         获取或创建知识库实例
@@ -113,11 +88,10 @@ class SqlDataBaseManager:
         Returns:
             知识库实例
         """
-        # self._update_db_name2id()
         if db_type in self.db_instances:
             return self.db_instances[db_type]
 
-        # 创建新的知识库实例
+        # 创建新的数据库实例
         db_work_dir = os.path.join(self.work_dir, f"{db_type}_data")
         db_instance = DBConnectorBaseFactory.create(db_type, db_work_dir)
 
@@ -212,6 +186,7 @@ class SqlDataBaseManager:
         """获取所有数据库信息"""
         from src.repositories.sql_database_repository import SqlDatabaseRepository
 
+        # get all databases from database
         db_repo = SqlDatabaseRepository()
         rows = await db_repo.get_all()
 
@@ -220,9 +195,8 @@ class SqlDataBaseManager:
             db_instance = self._get_or_create_db_instance(row.db_type or "mysql")
             db_info = db_instance.get_database_info(row.db_id)
             if db_info:
-                # 补充 share_config 和 additional_params
+                # 补充 share_config
                 db_info["share_config"] = row.share_config or {"is_shared": True, "accessible_departments": []}
-                # db_info["additional_params"] = row.additional_params or {}
                 all_databases.append(db_info)
         return {"databases": all_databases}
 
@@ -346,11 +320,11 @@ class SqlDataBaseManager:
         return False
 
     async def create_database(
-        self, 
-        database_name: str, 
-        description: str, 
-        db_type: str, 
-        connect_info:dict, 
+        self,
+        database_name: str,
+        description: str,
+        db_type: str,
+        connect_info:dict,
         share_config: dict | None = None,
         related_db_ids: str | None = None,
         **kwargs
@@ -381,9 +355,9 @@ class SqlDataBaseManager:
 
         db_instance = self._get_or_create_db_instance(db_type)
         db_info = await db_instance.create_database(
-            database_name, 
-            description, 
-            connect_info=connect_info, 
+            database_name,
+            description,
+            connect_info=connect_info,
             share_config=share_config,
             related_db_ids=related_db_ids,
             **kwargs)
@@ -392,7 +366,7 @@ class SqlDataBaseManager:
         self.db_name_to_id[database_name] = db_id
 
         created_databases = set([v['database_id'] for v in db_instance.tables_meta.values()])
-        if not created_databases or not (db_id in created_databases):
+        if not created_databases or db_id not in created_databases:
             await self.initialize_tables(db_id)
             logger.debug(f"Initialize tables for {db_id}")
 
@@ -400,7 +374,6 @@ class SqlDataBaseManager:
 
     async def delete_database(self, db_id: str) -> dict:
         """删除数据库"""
-        from src.repositories.sql_database_repository import SqlDatabaseRepository
         try:
             db_instance = await self._get_db_for_database(db_id)
             db_name = db_instance.get_database_info(db_id)["name"]
@@ -408,9 +381,6 @@ class SqlDataBaseManager:
             # 删除数据库名称与 ID 的映射
             if db_name in self.db_name_to_id:
                 del self.db_name_to_id[db_name]
-            # 删除数据库记录
-            db_repo = SqlDatabaseRepository()
-            await db_repo.delete(db_id)
 
             return result
         except DBNotFoundError as e:
@@ -436,7 +406,6 @@ class SqlDataBaseManager:
 
         try:
             db_instance = await self._get_db_for_database(db_id)
-            
             db_info = db_instance.get_database_info(db_id)
         except DBNotFoundError:
             db_info = {
@@ -460,13 +429,18 @@ class SqlDataBaseManager:
         db_instance = await self._get_db_for_database(db_id)
         return await db_instance.initalize_table(db_id)
 
-
     async def select_tables(self, db_id: str, table_ids: list[dict]) -> list[dict]:
         """设置表信息"""
         db_instance = await self._get_db_for_database(db_id)
         return await db_instance.select_tables(db_id, table_ids)
 
-    async def update_database(self, db_id:str, name:str, description:str, share_config:dict=None, related_db_ids:str=None):
+    async def update_database(
+            self,
+            db_id:str,
+            name:str,
+            description:str,
+            share_config:dict=None,
+            related_db_ids:str=None) -> dict:
 
         db_instance = await self._get_db_for_database(db_id)
         db_instance.update_database(db_id, name, description, share_config, related_db_ids)
@@ -485,69 +459,19 @@ class SqlDataBaseManager:
         if related_db_ids is not None:
             update_data["related_db_ids"] = related_db_ids
 
-        # # 保存到数据库
-        # db_repo = SqlDatabaseRepository()
-        # await db_repo.update(db_id, update_data)
-
         return await self.get_database_info(db_id)
 
     async def update_tables(self, db_id:str, table_info:dict):
-        from src.repositories.sql_database_tables_repository import SqlDatabaseTableRepository
 
         db_instance = await self._get_db_for_database(db_id)
         db_instance.update_tables(db_id, table_info)
-
-        # # 保存到数据库
-        # dt_repo = SqlDatabaseTableRepository()
-        # import ipdb; ipdb.set_trace()
-        # for table_id, table_info in db_instance.tables_meta.items():
-        #     await dt_repo.update(table_id, table_info)
-
         return await self.get_database_info(db_id)
-
-    
-    async def unselect_table(self, db_id: str, table_id: str) -> dict:
-        """取消设置表"""
-        db_instance = self._get_db_for_database(db_id)
-        return await db_instance.unselect_table(table_id)
-
-    async def get_table_basic_info(self, db_id: str, file_id: str) -> dict:
-        """获取文件基本信息（仅元数据）"""
-        db_instance = self._get_db_for_database(db_id)
-        return await db_instance.get_table_basic_info(db_id, file_id)
 
     async def get_tables(self, db_id: str) -> dict:
         """获取数据库表信息"""
         db_instance = await self._get_db_for_database(db_id)
         return await db_instance.get_tables()
 
-    async def get_selected_tables(self, db_id: str) -> dict:
-        """获取已选择的数据库表信息"""
-        db_instance = self._get_db_for_database(db_id)
-        return await db_instance.get_selected_tables()
-
-    async def get_table_info(self, db_id: str, table_id: str) -> dict:
-        """获取文件完整信息（基本信息+内容信息）- 保持向后兼容"""
-        db_instance = self._get_db_for_database(db_id)
-        return await db_instance.get_table_info(db_id, table_id)
-
-    def table_existed_in_db(self, db_id: str | None, table_name: str | None) -> bool:
-        """检查指定数据库中是否存在相同内容哈希的文件"""
-        if not db_id or not table_name:
-            return False
-
-        try:
-            db_instance = self._get_db_for_database(db_id)
-        except DBNotFoundError:
-            return False
-
-        for file_info in db_instance.tables_meta.values():
-            if file_info.get("database_id") != db_id:
-                continue
-            if file_info.get("table_name") == table_name:
-                return True
-
-        return False
 
 
     def get_cursors(self) -> dict[str, dict]:
@@ -560,7 +484,3 @@ class SqlDataBaseManager:
             all_cursors.update(cursors)
 
         return all_cursors
-
-    # async def get_cursor(self, db_id):
-    #     db_instance = await self._get_db_for_database(db_id)
-    #     return db_instance.aget_cursor(db_id)

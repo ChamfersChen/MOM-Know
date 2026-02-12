@@ -4,7 +4,6 @@ import os
 import tempfile
 import traceback
 import textwrap
-import traceback
 from urllib.parse import quote, unquote
 
 import aiofiles
@@ -12,9 +11,9 @@ from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Reques
 from fastapi.responses import FileResponse
 from starlette.responses import StreamingResponse
 
+from src.utils import hashstr
 from src.services.task_service import TaskContext, tasker
 from server.utils.auth_middleware import get_admin_user, get_required_user
-from src.storage.db.models import User
 from src import config, knowledge_base
 from src.knowledge.indexing import SUPPORTED_FILE_EXTENSIONS, is_supported_file_extension, process_file_to_markdown
 from src.knowledge.utils import calculate_content_hash
@@ -471,14 +470,14 @@ async def process_db_and_upload(
     with tempfile.NamedTemporaryFile(mode='w+', suffix='.txt', delete=False, encoding='utf-8') as tmp_file:
         tmp_file.write(text_data)
         tmp_file_path = tmp_file.name
-    try: 
+    try:
         # 3. 读取临时文件为 UploadFile
-        with open(tmp_file_path, 'r', encoding='utf-8') as file:
+        with open(tmp_file_path, encoding='utf-8') as file:
             file_content = file.read()
 
         with open(tmp_file_path, 'rb') as file:
             file_bytes = file.read()
-        
+
         # 根据db_id获取上传路径，如果db_id为None则使用默认路径
         if db_id:
             upload_dir = knowledge_base.get_db_upload_path(db_id)
@@ -513,14 +512,14 @@ async def process_db_and_upload(
         # 使用异步文件写入，避免阻塞事件循环
         async with aiofiles.open(file_path, "w", encoding='utf-8') as buffer:
             await buffer.write(file_content)
-            
+
     finally:
         # 5. 清理临时文件
         if os.path.exists(tmp_file_path):
             os.unlink(tmp_file_path)
 
-    return await _upload_db_file(db_id, [file_path], 
-                         params={ 
+    return await _upload_db_file(db_id, [file_path],
+                         params={
                             "chunk_size": 1000,
                             "chunk_overlap": 200,
                             "enable_ocr": 'disable',
@@ -877,7 +876,7 @@ async def download_document(db_id: str, doc_id: str, request: Request, current_u
 # =============================================================================
 
 @knowledge.post("/retrieval")
-async def query_knowledge_base(
+async def query_knowledge_base_for_dify(
     knowledge_id: str = Body(...), query: str = Body(...), retrieval_setting: dict = Body(...)
 ):
     """查询知识库(Dify外部知识库)"""
