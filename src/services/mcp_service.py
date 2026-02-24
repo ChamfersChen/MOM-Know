@@ -53,10 +53,10 @@ _DEFAULT_MCP_SERVERS = {
     #     "icon": "📊",
     #     "tags": ["内置", "图表"],
     # },
-    "mcp-server-mychart": {
-        "url": "http://127.0.0.1:8001/mcp",
-        "transport": "streamable_http",
-    },
+    # "mcp-server-mychart": {
+    #     "url": "http://127.0.0.1:8001/mcp",
+    #     "transport": "streamable_http",
+    # },
 }
 
 # =============================================================================
