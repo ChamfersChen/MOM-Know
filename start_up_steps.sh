@@ -17,4 +17,4 @@ mineru-api --host 0.0.0.0 --port 30001
 pnpm run dev
 
 # Start the main server
-uv run --no-dev uvicorn server.main:app --host 0.0.0.0 --port 5050
+uv run --no-dev uvicorn server.main:app --host 0.0.0.0 --port 5051

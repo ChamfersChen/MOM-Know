@@ -114,13 +114,13 @@ class UploadGraphService:
                     "table_name": table_info["tablename"],
                     "table_description": table_info["description"],
                 }
-                triples.append({"h": h, "t": t, "r": "Table2Column"})
+                triples.append({"h": h, "t": t, "r": "Database2Table"})
 
         for database_info in databases_meta:
             for related_db_id in database_info["related_db_ids"]:
                 t = db_id2h[related_db_id]
                 if h['name'] != t['name']:
-                    triples.append({"h": h, "t": t, "r": "Table2Table"})
+                    triples.append({"h": h, "t": t, "r": "Database2Database"})
         if triples:
             await self.txt_add_vector_entity(triples, kgdb_name, embed_model_name, batch_size)
 
