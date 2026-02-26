@@ -128,9 +128,10 @@ class TableListModel(BaseModel):
     pass
 
 
+# @tool(name_or_callable="mysql_list_tables", args_schema=TableListModel)
 # @tool(name_or_callable="查询表名及说明", args_schema=TableListModel)
 def mysql_list_tables() -> str:
-    """获取数据库中的所有表名
+    """【查询表名及说明】获取数据库中的所有表名
 
     这个工具用来列出当前数据库中所有的表名，帮助你了解数据库的结构。
     """
@@ -270,7 +271,7 @@ async def mysql_query(
     sql: Annotated[str, "要执行的SQL查询语句（只能是SELECT语句, 且需要带上数据库名, 如：SELECT * FROM db1.table1）"],
     timeout: Annotated[int | None, "查询超时时间（秒），默认60秒，最大600秒"] = 60,
 ) -> str:
-    """执行只读的SQL查询语句
+    """【执行 SQL 查询】执行只读的SQL查询语句
 
     这个工具用来执行SQL查询并返回结果。支持复杂的SELECT查询，包括JOIN、GROUP BY等。
     注意：只能执行查询操作，不能修改数据。

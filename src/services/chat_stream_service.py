@@ -458,6 +458,8 @@ async def stream_agent_chat(
             config_dict=langgraph_config,
         )
 
+        yield make_chunk(status="finished", meta=meta)
+
     except (asyncio.CancelledError, ConnectionError) as e:
         logger.warning(f"Client disconnected, cancelling stream: {e}")
 
@@ -618,8 +620,8 @@ async def stream_agent_resume(
             yield chunk
 
         meta["time_cost"] = asyncio.get_event_loop().time() - start_time
-        yield make_resume_chunk(status="finished", meta=meta)
 
+        # 先存储数据库，再返回 finished，避免前端查询时数据未落库
         conv_repo = ConversationRepository(db)
         await save_messages_from_langgraph_state(
             agent_instance=agent,
@@ -627,6 +629,8 @@ async def stream_agent_resume(
             conv_repo=conv_repo,
             config_dict=langgraph_config,
         )
+
+        yield make_resume_chunk(status="finished", meta=meta)
 
     except (asyncio.CancelledError, ConnectionError) as e:
         logger.warning(f"Client disconnected during resume: {e}")

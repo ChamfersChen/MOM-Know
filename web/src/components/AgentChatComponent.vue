@@ -626,12 +626,15 @@ const deleteThread = async (threadId) => {
 const updateThread = async (threadId, title) => {
   if (!threadId || !title) return
 
+  const normalizedTitle = String(title).replace(/\s+/g, ' ').trim().slice(0, 255)
+  if (!normalizedTitle) return
+
   chatState.isRenamingThread = true
   try {
-    await threadApi.updateThread(threadId, title)
+    await threadApi.updateThread(threadId, normalizedTitle)
     const thread = threads.value.find((t) => t.id === threadId)
     if (thread) {
-      thread.title = title
+      thread.title = normalizedTitle
     }
   } catch (error) {
     console.error('Failed to update thread:', error)
@@ -750,7 +753,10 @@ const sendMessage = async ({
 
   // 如果是新对话，用消息内容作为标题
   if ((threadMessages.value[threadId] || []).length === 0) {
-    updateThread(threadId, text)
+    const autoTitle = text.replace(/\s+/g, ' ').trim().slice(0, 255)
+    if (autoTitle) {
+      void updateThread(threadId, autoTitle).catch(() => {})
+    }
   }
 
   const requestData = {
@@ -956,7 +962,7 @@ const handleSendMessage = async ({ image } = {}) => {
   } finally {
     threadState.streamAbortController = null
     // 异步加载历史记录，保持当前消息显示直到历史记录加载完成
-    fetchThreadMessages({ agentId: currentAgentId.value, threadId: threadId, delay: 500 }).finally(
+    fetchThreadMessages({ agentId: currentAgentId.value, threadId: threadId }).finally(
       () => {
         // 历史记录加载完成后，安全地清空当前进行中的对话
         resetOnGoingConv(threadId)
@@ -976,7 +982,7 @@ const handleSendOrStop = async (payload) => {
 
     // 中断后刷新消息历史，确保显示最新的状态
     try {
-      await fetchThreadMessages({ agentId: currentAgentId.value, threadId: threadId, delay: 500 })
+      await fetchThreadMessages({ agentId: currentAgentId.value, threadId: threadId })
       message.info('已中断对话生成')
     } catch (error) {
       console.error('刷新消息历史失败:', error)
@@ -1038,7 +1044,7 @@ const handleApprovalWithStream = async (approved, toolName = null, toolArgs = nu
     }
 
     // 异步加载历史记录，保持当前消息显示直到历史记录加载完成
-    fetchThreadMessages({ agentId: currentAgentId.value, threadId: threadId, delay: 500 }).finally(
+    fetchThreadMessages({ agentId: currentAgentId.value, threadId: threadId }).finally(
       () => {
         // 历史记录加载完成后，安全地清空当前进行中的对话
         resetOnGoingConv(threadId)
@@ -1400,7 +1406,7 @@ watch(
   background: var(--gray-0);
   border-radius: 12px;
   box-shadow: 0 4px 20px var(--shadow-1);
-  border: 1px solid var(--gray-200);
+  border: 1px solid var(--gray-150);
   min-width: 0;
   will-change: flex-basis;
 }
