@@ -27,6 +27,14 @@ export const databaseApi = {
   createChooseDatabaseTables: async (db_id, databaseData) => {
     return apiAdminPost(`/api/sql_database/database/${db_id}/tables/choose`, databaseData)
   },
+  /**
+   * 创建数据库
+   * @param {Object} databaseData - 数据库数据
+   * @returns {Promise} - 创建结果
+   */
+  checkConnection: async (databaseData) => {
+    return apiAdminPost('/api/sql_database/check_connection', databaseData)
+  },
 
   /**
    * 创建数据库

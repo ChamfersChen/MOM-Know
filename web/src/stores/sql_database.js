@@ -23,6 +23,7 @@ export const useDatabaseStore = defineStore('sql_database', () => {
   const state = reactive({
     listLoading: false,
     creating: false,
+    checking: false, 
     databaseLoading: false,
     refrashing: false,
     searchLoading: false,
@@ -62,6 +63,33 @@ export const useDatabaseStore = defineStore('sql_database', () => {
     } finally {
       state.listLoading = false
     }
+  }
+
+  async function checkConnection(formData) { 
+    // 校验数据库连接
+    console.log('checkConnection', formData)
+    if (!formData.database_name?.trim()) {
+      message.error('数据库名称不能为空')
+      return false
+    }
+
+    state.checking = true
+    try {
+      const data = await databaseApi.checkConnection(formData)
+      console.log(data.status)
+      if (data.status === 'success') {
+        message.success('校验成功')
+      } else {
+        message.error(data.message || '校验失败')
+      }
+    } catch (error) {
+      console.error('数据库连接校验失败', error)
+      message.error('数据库连接校验失败')
+      throw error
+    } finally {
+      state.checking = false
+    }
+
   }
 
   async function createDatabase(formData) {
@@ -551,6 +579,7 @@ export const useDatabaseStore = defineStore('sql_database', () => {
     selectedRowKeys,
     state,
     loadDatabases,
+    checkConnection,
     createDatabase,
     getDatabaseInfo,
     updateDatabaseInfo,

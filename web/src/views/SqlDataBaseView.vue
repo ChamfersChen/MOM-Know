@@ -56,7 +56,14 @@
       <h3>共享设置</h3>
       <ShareConfigForm v-model="shareConfig" :auto-select-user-dept="true" />
       <template #footer>
-        <a-button key="back" @click="cancelCreateDatabase">取消</a-button>
+        <a-button key="back" @click="cancelCreateDatabase" danger>取消</a-button>
+        <a-button
+          key="check"
+          type="dashed"
+          :loading="dbState.checking"
+          @click="handleCheckConnection"
+          >校验</a-button
+        >
         <a-button
           key="submit"
           type="primary"
@@ -244,6 +251,39 @@ const uploadToNeo4j = async () => {
   }catch(e){
     console.log('>>> upload to neo4j error: ', e)
     message.error('知识图谱创建失败')
+  }
+}
+
+// 构建请求数据（只负责表单数据转换）
+const buildCheckConnectionRequestData = () => {
+  const requestData = {
+    database_name: connectInfo.database,
+    db_type: newDatabase.db_type,
+  }
+  // 添加共享配置
+  requestData.share_config = {
+    is_shared: shareConfig.value.is_shared,
+    accessible_departments: shareConfig.value.is_shared
+      ? []
+      : shareConfig.value.accessible_department_ids || []
+  }
+  requestData.connect_info = {
+    host: connectInfo.host,
+    port: connectInfo.port,
+    username: connectInfo.user,
+    password: connectInfo.password,
+    database: connectInfo.database,
+  }
+  return requestData
+}
+// 校验按钮处理
+const handleCheckConnection = async () => {
+  console.log('>>> check connection: ', connectInfo)
+  const requestData = buildCheckConnectionRequestData()
+  try {
+    await databaseStore.checkConnection(requestData)
+  } catch (error) {
+    // 错误已在 store 中处理
   }
 }
 

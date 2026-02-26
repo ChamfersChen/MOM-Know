@@ -165,10 +165,10 @@ class SqlDataBaseManager:
         try:
             connection = pymysql.connect(
                 host=config["host"],
-                user=config["user"],
+                user=config["username"],
                 password=config["password"],
                 database=config["database"],
-                port=config["port"],
+                port=int(config["port"]),
                 charset=config.get("charset", "utf8mb4"),
                 cursorclass=DictCursor,
                 connect_timeout=10,

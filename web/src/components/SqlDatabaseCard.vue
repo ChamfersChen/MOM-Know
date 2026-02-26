@@ -56,15 +56,18 @@
       <a-button key="submit" type="primary" @click="handleEditSubmit">确定</a-button>
     </template>
     <a-form :model="editForm" :rules="rules" ref="editFormRef" layout="vertical">
-      <a-form-item label="知识库名称" name="name" required>
-        <a-input v-model:value="editForm.name" placeholder="请输入知识库名称" />
+      <a-form-item label="数据库名称" name="name">
+        <a-input v-model:value="editForm.name" placeholder="请输入数据库名称" disabled style="color: #262626; background-color: #fafafa;" />
       </a-form-item>
-      <a-form-item label="知识库描述" name="description">
+      <a-form-item label="数据库IP" name="name">
+        <a-input v-model:value="editForm.host" placeholder="请输入知识库名称" disabled style="color: #262626; background-color: #fafafa;" />
+      </a-form-item>
+      <a-form-item label="数据库描述" name="description">
         <AiTextarea
           v-model="editForm.description"
           :name="editForm.name"
           :files="fileList"
-          placeholder="请输入知识库描述"
+          placeholder="请输入数据库描述"
           :rows="4"
         />
       </a-form-item>
@@ -217,6 +220,7 @@ const editFormRef = ref(null)
 const shareConfigFormRef = ref(null)
 const editForm = reactive({
   name: '',
+  host: '',
   description: '',
   auto_generate_questions: false,
   llm_info: {
@@ -237,6 +241,7 @@ const showEditModal = () => {
   editForm.description = database.value.description || ''
   editForm.auto_generate_questions =
     database.value.additional_params?.auto_generate_questions || false
+  editForm.host = database.value.connect_info.host || ''
 
   // 如果是 LightRAG 类型，加载当前的 LLM 配置
   if (database.value.db_type === 'lightrag') {

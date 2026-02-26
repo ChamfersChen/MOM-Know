@@ -49,6 +49,32 @@ async def create_graph(
         return {"message": f"图谱创建失败 {e}", "code": 1}
 
 
+@sql_db.post("/check_connection")
+async def check_connection(
+    database_name: str = Body(...),
+    connect_info: dict = Body(None),
+    db_type: str = Body("mysql"),
+    current_user: User = Depends(get_admin_user),
+):
+    """创建数据库"""
+    logger.debug(
+        f"Check connection connect_info {connect_info}"
+    )
+    try:
+        # 先检查名称是否已存在
+        if await sql_database.database_name_exists(database_name):
+            return {"message": f"数据库连接校验失败。'{database_name}' 已存在，请使用其他名称", "status": "failed"}
+
+        connect_info_dict = connect_info.model_dump() if hasattr(connect_info, "model_dump") else connect_info
+
+        # 验证数据库连接信息
+        sql_database.test_connection(connect_info_dict)
+    except Exception as e:
+        logger.error(f"创建数据库失败 {e}, {traceback.format_exc()}")
+        return {"message": f"数据库连接校验失败，请检查连接信息是否正确。", "status": "failed"}
+    
+    return {"message": "连接成功", "status": "success"}
+
 @sql_db.post("/database")
 async def create_database(
     database_name: str = Body(...),
