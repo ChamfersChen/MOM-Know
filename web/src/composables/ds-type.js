@@ -10,11 +10,8 @@ import redshift from '@/assets/datasource/icon_redshift.png'
 import es from '@/assets/datasource/icon_es.png'
 import kingbase from '@/assets/datasource/icon_kingbase.png'
 import starrocks from '@/assets/datasource/icon_starrocks.png'
-import { i18n } from '@/i18n'
 
-const t = i18n.global.t
 export const dsType = [
-  { label: t('ds.local_excelcsv'), value: 'excel' },
   { label: 'MySQL', value: 'mysql' },
   { label: 'Oracle', value: 'oracle' },
   { label: 'PostgreSQL', value: 'pg' },
