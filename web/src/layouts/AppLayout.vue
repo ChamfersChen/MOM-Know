@@ -102,7 +102,7 @@ const mainList = [
     activeIcon: LibraryBig,
   }, 
   {
-    name: '数据库',
+    name: '数据源',
     path: '/sqldatabase',
     icon: Database,
     activeIcon: Database,

@@ -4,7 +4,8 @@ import pymysql
 from pymysql import MySQLError
 from pymysql.cursors import DictCursor
 from src.sql_database.base import DBNotFoundError
-from src.sql_database.implementations.mysql import MySQLConnector
+# from src.sql_database.implementations.mysql import MySQLConnector
+from src.sql_database.base import ConnectorBase
 from src.sql_database.factory import DBConnectorBaseFactory
 
 from src.utils import logger
@@ -26,7 +27,8 @@ class SqlDataBaseManager:
         os.makedirs(work_dir, exist_ok=True)
 
         # 知识库实例缓存 {kb_type: kb_instance}
-        self.db_instances: dict[str, MySQLConnector] = {}
+        # self.db_instances: dict[str, MySQLConnector] = {}
+        self.db_instances: dict[str, ConnectorBase] = {}
 
         # 知识库名称与ID映射, 用于Tool调用时使用
         self.db_name_to_id: dict[str, str] = {}
@@ -78,7 +80,7 @@ class SqlDataBaseManager:
             asyncio.run(_async_init())
 
 
-    def _get_or_create_db_instance(self, db_type: str) -> MySQLConnector:
+    def _get_or_create_db_instance(self, db_type: str) -> ConnectorBase:
         """
         获取或创建知识库实例
 
@@ -99,7 +101,7 @@ class SqlDataBaseManager:
         logger.info(f"Created {db_type} knowledge base instance")
         return db_instance
 
-    async def _get_db_for_database(self, db_id: str) -> MySQLConnector:
+    async def _get_db_for_database(self, db_id: str) -> ConnectorBase:
         """
         根据数据库ID获取对应的知识库实例
 
@@ -127,7 +129,7 @@ class SqlDataBaseManager:
 
         return self._get_or_create_db_instance(db_type)
 
-    def _get_db_for_database_sync(self, db_id: str) -> MySQLConnector:
+    def _get_db_for_database_sync(self, db_id: str) -> ConnectorBase:
         """同步版本的 _get_db_for_database，用于兼容同步调用"""
         try:
             loop = asyncio.get_running_loop()
@@ -139,7 +141,7 @@ class SqlDataBaseManager:
     # 统一的外部接口 - 与原始 LightRagBasedKB 兼容
     # =============================================================================
 
-    async def aget_kb(self, db_id: str) -> MySQLConnector:
+    async def aget_kb(self, db_id: str) -> ConnectorBase:
         """异步获取知识库实例
 
         Args:
@@ -150,7 +152,7 @@ class SqlDataBaseManager:
         """
         return await self._get_db_for_database(db_id)
 
-    def get_kb(self, db_id: str) -> MySQLConnector:
+    def get_kb(self, db_id: str) -> ConnectorBase:
         """同步获取知识库实例（兼容性方法，用于同步上下文）
 
         Args:
@@ -200,7 +202,7 @@ class SqlDataBaseManager:
                 all_databases.append(db_info)
         return {"databases": all_databases}
 
-    def get_database_instance(self, db_id: str) -> MySQLConnector:
+    def get_database_instance(self, db_id: str) -> ConnectorBase:
         """Public accessor to fetch the underlying knowledge base instance by database id.
 
         This provides a simple compatibility layer for callers that expect a
@@ -208,7 +210,7 @@ class SqlDataBaseManager:
         """
         return self._get_db_for_database(db_id)
 
-    def _get_or_create_kb_instance(self, kb_type: str) -> MySQLConnector:
+    def _get_or_create_kb_instance(self, kb_type: str) -> ConnectorBase:
         """
         获取或创建知识库实例
 

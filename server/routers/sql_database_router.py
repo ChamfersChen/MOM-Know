@@ -58,7 +58,7 @@ async def check_connection(
 ):
     """创建数据库"""
     logger.debug(
-        f"Check connection connect_info {connect_info}"
+        f"Check connection connect_info {connect_info}, datasource_type {db_type}"
     )
     try:
         # 先检查名称是否已存在

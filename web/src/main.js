@@ -4,6 +4,7 @@ import piniaPluginPersistedstate from 'pinia-plugin-persistedstate'
 
 import App from './App.vue'
 import router from './router'
+import { i18n } from './i18n'
 
 import Antd from 'ant-design-vue'
 import 'ant-design-vue/dist/reset.css'
@@ -16,6 +17,7 @@ pinia.use(piniaPluginPersistedstate)
 app.use(pinia)
 app.use(router)
 app.use(Antd)
+app.use(i18n)
 
 // 预加载信息配置
 import { useInfoStore } from '@/stores/info'

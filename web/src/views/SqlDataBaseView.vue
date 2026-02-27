@@ -1,15 +1,15 @@
 <template>
   <div class="database-container layout-container">
-    <HeaderComponent title="SQL数据库" :loading="dbState.listLoading">
+    <HeaderComponent title="数据数据源" :loading="dbState.listLoading">
       <template #actions>
-        <a-button type="primary" @click="state.openNewDatabaseModel = true"> 连接数据库 </a-button>
-        <a-button type="primary" @click="uploadToNeo4j"> 导入Neo4J </a-button>
+        <a-button type="primary" @click="state.openNewDatabaseModel = true"> 创建数据源 </a-button>
+        <a-button type="primary" @click="uploadToNeo4j"> 导入图谱 </a-button>
       </template>
     </HeaderComponent>
 
     <a-modal
       :open="state.openNewDatabaseModel"
-      title="连接数据库"
+      title="创建数据源"
       :confirm-loading="dbState.creating"
       @ok="handleCreateDatabase"
       @cancel="cancelCreateDatabase"
@@ -17,60 +17,136 @@
       width="800px"
       destroyOnClose
     >
+      <!-- 步骤条 -->
+      <a-steps :current="state.currentStep" size="small" class="steps-container">
+        <a-step title="选择数据源" />
+        <a-step title="配置连接信息" />
+      </a-steps>
 
-      <!-- <h3>数据库名称<span style="color: var(--color-error-500)">*</span></h3>
-      <a-input v-model:value="newDatabase.name" placeholder="新建知识库名称" size="large" /> -->
+      <!-- 第一步：选择数据源类型 -->
+      <div v-show="state.currentStep === 0" class="step-content">
+        <h3>选择数据库类型<span style="color: var(--error-color)">*</span></h3>
+        <div class="db-type-cards">
+          <div
+            v-for="dbType in supportedDbTypes"
+            :key="dbType.name"
+            class="db-type-card"
+            :class="{ active: newDatabase.db_type === dbType.type }"
+            @click="newDatabase.db_type = dbType.type"
+          >
+            <img class="db-type-icon" :src="dbType.img" :alt="dbType.name" />
+            <!-- <div class="db-type-icon">
+              <component :is="dbType.img" />
+            </div> -->
+            <div class="db-type-info">
+              <h4>{{ dbType.name }}</h4>
+              <p>{{ dbType.description }}</p>
+            </div>
+            <div v-if="newDatabase.db_type === dbType.type" class="check-icon">
+              <CheckCircleFilled />
+            </div>
+          </div>
+        </div>
+      </div>
 
-      <h3>数据库配置<span style="color: var(--error-color)">*</span></h3>
-      <!-- 数据库配置表单 -->
-      <a-form :model="newDatabase" layout="vertical">
-        <a-form-item label="主机地址" required>
-          <a-input v-model:value="connectInfo.host" placeholder="例如：127.0.0.1" size="large" />
-        </a-form-item>
+      <!-- 第二步：配置连接信息 -->
+      <div v-show="state.currentStep === 1" class="step-content">
+        <div class="connection-config">
+          <a-form layout="vertical" class="config-form">
+            <a-form-item label="数据源名称" required>
+              <a-input v-model:value="newDatabase.name" placeholder="请输入数据源名称" size="large" />
+            </a-form-item>
+            
+            <div class="config-row">
+              <a-form-item label="类型" required>
+                <a-select v-model:value="newDatabase.db_type" size="large" style="width: 150px">
+                  <a-select-option v-for="db in supportedDbTypes" :key="db.type" :value="db.type">
+                    {{ db.name }}
+                  </a-select-option>
+                </a-select>
+              </a-form-item>
+              
+              <a-form-item label="主机地址" required class="flex-1">
+                <a-input v-model:value="connectInfo.host" placeholder="例如：127.0.0.1" size="large" />
+              </a-form-item>
+              
+              <a-form-item label="端口" required>
+                <a-input-number 
+                  v-model:value="connectInfo.port" 
+                  :min="1" 
+                  :max="65535" 
+                  size="large" 
+                  style="width: 100px" 
+                />
+              </a-form-item>
+            </div>
+            
+            <div class="config-row">
+              <a-form-item label="用户名" required class="flex-1">
+                <a-input v-model:value="connectInfo.user" placeholder="请输入用户名" size="large" />
+              </a-form-item>
+              
+              <a-form-item label="密码" required class="flex-1">
+                <a-input-password v-model:value="connectInfo.password" placeholder="请输入密码" size="large" />
+              </a-form-item>
+            </div>
+            
+            <a-form-item label="数据库名" required v-if="newDatabase.db_type !== 'oracle'">
+              <a-input v-model:value="connectInfo.database" placeholder="请输入数据库名称" size="large" />
+            </a-form-item>
+            
+            <a-form-item label="服务名" required v-if="newDatabase.db_type === 'oracle'">
+              <a-input v-model:value="connectInfo.serviceName" placeholder="请输入服务名" size="large" />
+            </a-form-item>
+            
+            <a-form-item label="描述">
+              <a-textarea
+                v-model:value="newDatabase.description"
+                placeholder="请输入数据源描述（可选）"
+                :auto-size="{ minRows: 2, maxRows: 3 }"
+              />
+            </a-form-item>
+          </a-form>
+        </div>
+        
+        <!-- 共享配置 -->
+        <div class="share-config">
+          <h3>共享设置</h3>
+          <ShareConfigForm v-model="shareConfig" :auto-select-user-dept="true" />
+        </div>
+      </div>
 
-        <a-form-item label="端口" required>
-          <a-input-number v-model:value="connectInfo.port" :min="1" :max="65535" size="large" style="width: 100%;" />
-        </a-form-item>
-
-        <a-form-item label="用户名" required>
-          <a-input v-model:value="connectInfo.user" placeholder="请输入数据库用户名" size="large" />
-        </a-form-item>
-
-        <a-form-item label="密码" required>
-          <a-input-password v-model:value="connectInfo.password" placeholder="请输入数据库密码" size="large" />
-        </a-form-item>
-
-        <a-form-item label="数据库名称" required>
-          <a-input v-model:value="connectInfo.database" placeholder="请输入要连接的数据库名称" size="large" />
-        </a-form-item>
-
-        <a-form-item label="描述" required>
-          <a-textarea
-            v-model:value="newDatabase.description"
-            placeholder="请输入数据库连接描述（可选）"
-            :auto-size="{ minRows: 3, maxRows: 5 }"
-          />
-        </a-form-item>
-      </a-form>
-      <!-- 共享配置 -->
-      <h3>共享设置</h3>
-      <ShareConfigForm v-model="shareConfig" :auto-select-user-dept="true" />
       <template #footer>
+        <a-button v-if="state.currentStep === 1" key="prev" @click="state.currentStep = 0">
+          上一步
+        </a-button>
         <a-button key="back" @click="cancelCreateDatabase" danger>取消</a-button>
         <a-button
+          v-if="state.currentStep === 1"
           key="check"
           type="dashed"
           :loading="dbState.checking"
           @click="handleCheckConnection"
-          >校验</a-button
         >
+          校验
+        </a-button>
         <a-button
+          v-if="state.currentStep === 0"
+          key="next"
+          type="primary"
+          @click="state.currentStep = 1"
+        >
+          下一步
+        </a-button>
+        <a-button
+          v-else
           key="submit"
           type="primary"
           :loading="dbState.creating"
           @click="handleCreateDatabase"
-          >创建</a-button
         >
+          创建
+        </a-button>
       </template>
     </a-modal>
 
@@ -82,13 +158,13 @@
 
     <!-- 空状态显示 -->
     <div v-else-if="!databases || databases.length === 0" class="empty-state">
-      <h3 class="empty-title">暂无数据库连接</h3>
-      <p class="empty-description">创建您的第一个数据库连接，开始构建SQL助手的数据库网络</p>
+      <h3 class="empty-title">暂无数据源</h3>
+      <p class="empty-description">创建您的第一个数据源</p>
       <a-button type="primary" size="large" @click="state.openNewDatabaseModel = true">
         <template #icon>
           <PlusOutlined />
         </template>
-        创建数据库连接
+        创建数据源
       </a-button>
     </div>
 
@@ -139,13 +215,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive, watch, computed } from 'vue'
+import { ref, onMounted, reactive, watch, computed, shallowRef } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { useDatabaseStore } from '@/stores/sql_database'
-import { LockOutlined, InfoCircleOutlined, PlusOutlined } from '@ant-design/icons-vue'
+import { LockOutlined, InfoCircleOutlined, PlusOutlined, CheckCircleFilled, DatabaseOutlined, FileTextOutlined, CloudServerOutlined } from '@ant-design/icons-vue'
 import { databaseApi } from '@/apis/sql_database_api'
+import { dsTypeWithImg } from '@/composables/ds-type'
 import HeaderComponent from '@/components/HeaderComponent.vue'
 import ModelSelectorComponent from '@/components/ModelSelectorComponent.vue'
 import EmbeddingModelSelector from '@/components/EmbeddingModelSelector.vue'
@@ -159,13 +236,81 @@ const route = useRoute()
 const router = useRouter()
 const configStore = useConfigStore()
 const databaseStore = useDatabaseStore()
-
 // 使用 store 的状态
 const { databases, state: dbState } = storeToRefs(databaseStore)
 
 const state = reactive({
-  openNewDatabaseModel: false
+  openNewDatabaseModel: false,
+  currentStep: 0
 })
+const supportedDbTypes = shallowRef(dsTypeWithImg)
+
+// const supportedDbTypes = shallowRef([
+//   {
+//     type: 'mysql',
+//     name: 'MySQL',
+//     description: '开源关系型数据库',
+//     img: DatabaseOutlined,
+//     defaultPort: 3306
+//   },
+//   {
+//     type: 'postgresql',
+//     name: 'PostgreSQL',
+//     description: '功能强大的开源对象关系型数据库',
+//     img: DatabaseOutlined,
+//     defaultPort: 5432
+//   },
+//   {
+//     type: 'sqlserver',
+//     name: 'SQL Server',
+//     description: '微软企业级关系型数据库',
+//     img: CloudServerOutlined,
+//     defaultPort: 1433
+//   },
+//   {
+//     type: 'oracle',
+//     name: 'Oracle',
+//     description: '甲骨文企业级关系型数据库',
+//     img: CloudServerOutlined,
+//     defaultPort: 1521
+//   }
+// ])
+
+const getDbTypeConfig = (dbType) => {
+  const configMap = {
+    mysql: [
+      { key: 'host', label: '主机地址', placeholder: '例如：127.0.0.1', type: 'input' },
+      { key: 'port', label: '端口', placeholder: '例如：3306', type: 'number' },
+      { key: 'user', label: '用户名', placeholder: '请输入用户名', type: 'input' },
+      { key: 'password', label: '密码', placeholder: '请输入密码', type: 'password' },
+      { key: 'database', label: '数据库名', placeholder: '请输入数据库名称', type: 'input' }
+    ],
+    postgresql: [
+      { key: 'host', label: '主机地址', placeholder: '例如：127.0.0.1', type: 'input' },
+      { key: 'port', label: '端口', placeholder: '例如：5432', type: 'number' },
+      { key: 'user', label: '用户名', placeholder: '请输入用户名', type: 'input' },
+      { key: 'password', label: '密码', placeholder: '请输入密码', type: 'password' },
+      { key: 'database', label: '数据库名', placeholder: '请输入数据库名称', type: 'input' }
+    ],
+    sqlserver: [
+      { key: 'host', label: '主机地址', placeholder: '例如：127.0.0.1', type: 'input' },
+      { key: 'port', label: '端口', placeholder: '例如：1433', type: 'number' },
+      { key: 'user', label: '用户名', placeholder: '请输入用户名', type: 'input' },
+      { key: 'password', label: '密码', placeholder: '请输入密码', type: 'password' },
+      { key: 'database', label: '数据库名', placeholder: '请输入数据库名称', type: 'input' }
+    ],
+    oracle: [
+      { key: 'host', label: '主机地址', placeholder: '例如：127.0.0.1', type: 'input' },
+      { key: 'port', label: '端口', placeholder: '例如：1521', type: 'number' },
+      { key: 'serviceName', label: '服务名', placeholder: '请输入服务名', type: 'input' },
+      { key: 'user', label: '用户名', placeholder: '请输入用户名', type: 'input' },
+      { key: 'password', label: '密码', placeholder: '请输入密码', type: 'password' }
+    ]
+  }
+  return configMap[dbType] || configMap.mysql
+}
+
+const currentDbConfig = computed(() => getDbTypeConfig(newDatabase.db_type))
 
 // 共享配置状态（用于提交数据）
 const shareConfig = ref({
@@ -175,11 +320,17 @@ const shareConfig = ref({
 
 const connectInfo = reactive({
   host: '127.0.0.1',
-  port: '3306',
+  port: 3306,
   user: 'root',
   password: '',
   database: 'mom',
+  serviceName: ''
 })
+
+const getDefaultPort = (dbType) => {
+  const db = supportedDbTypes.value.find(d => d.value === dbType)
+  return db?.defaultPort || ""
+}
 
 const createEmptyDatabaseForm = () => ({
   name: '',
@@ -189,10 +340,16 @@ const createEmptyDatabaseForm = () => ({
 
 const newDatabase = reactive(createEmptyDatabaseForm())
 
-
 const resetNewDatabase = () => {
   Object.assign(newDatabase, createEmptyDatabaseForm())
-  // 重置共享配置
+  state.currentStep = 0
+  const defaultPort = getDefaultPort(newDatabase.db_type)
+  connectInfo.host = '127.0.0.1'
+  connectInfo.port = defaultPort
+  connectInfo.user = 'root'
+  connectInfo.password = ''
+  connectInfo.database = 'mom'
+  connectInfo.serviceName = ''
   shareConfig.value = {
     is_shared: true,
     accessible_department_ids: []
@@ -340,6 +497,17 @@ watch(
   }
 )
 
+watch(
+  () => newDatabase.db_type,
+  (newType) => {
+    connectInfo.port = getDefaultPort(newType)
+    connectInfo.database = ''
+    connectInfo.serviceName = ''
+    connectInfo.user = 'root'
+    connectInfo.password = ''
+  }
+)
+
 onMounted(() => {
   // loadSupportedKbTypes()
   databaseStore.loadDatabases()
@@ -349,8 +517,145 @@ onMounted(() => {
 
 <style lang="less" scoped>
 .new-database-modal {
+  .steps-container {
+    margin-bottom: 24px;
+  }
+
+  .step-content {
+    min-height: 300px;
+  }
+
+  .connection-config {
+    .config-form {
+      .config-row {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 0;
+        
+        .full-width {
+          width: 100%;
+          
+          :deep(.ant-form-item-control-wrapper) {
+            width: 100%;
+          }
+        }
+        
+        .fixed-width {
+          width: auto;
+        }
+        
+        .flex-1 {
+          flex: 1;
+          min-width: 150px;
+        }
+        
+        .dynamic-field {
+          flex: 1;
+          min-width: 150px;
+          
+          &.full-width {
+            flex: 0 0 100%;
+          }
+        }
+      }
+      
+      .ant-form-item {
+        margin-bottom: 0;
+      }
+      
+      :deep(.ant-form-item-label) {
+        padding-bottom: 4px;
+        
+        > label {
+          font-size: 13px;
+          color: var(--gray-700);
+        }
+      }
+    }
+  }
+  
+  .share-config {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--gray-200);
+    
+    h3 {
+      margin: 0 0 12px 0;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--gray-800);
+    }
+  }
+
   .kb-type-guide {
     margin: 12px 0;
+  }
+
+  .db-type-cards {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-top: 16px;
+
+    .db-type-card {
+      border: 2px solid var(--gray-150);
+      border-radius: 12px;
+      padding: 20px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      background: var(--gray-0);
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+
+      &:hover {
+        border-color: var(--main-color);
+        background: var(--main-10);
+      }
+
+      &.active {
+        border-color: var(--main-color);
+        background: var(--main-10);
+
+        .db-type-icon {
+          color: var(--main-color);
+        }
+      }
+
+      .db-type-icon {
+        width: 48px;
+        height: 48px;
+        font-size: 28px;
+        color: var(--gray-600);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+
+      .db-type-info {
+        flex: 1;
+
+        h4 {
+          margin: 0 0 4px 0;
+          font-size: 16px;
+          font-weight: 600;
+          color: var(--gray-800);
+        }
+
+        p {
+          margin: 0;
+          font-size: 13px;
+          color: var(--gray-600);
+        }
+      }
+
+      .check-icon {
+        color: var(--main-color);
+        font-size: 20px;
+      }
+    }
   }
 
   .privacy-config {

@@ -227,7 +227,7 @@ class MySQLConnector(ConnectorBase):
         asyncio.create_task(self._save_metadata())
 
 
-    def _create_connection(self, db_id) -> pymysql.Connection:
+    def _create_connection(self, db_id) -> pymysql.Connection | None:
         """创建新的数据库连接"""
         max_retries = 3
         config = self.databases_meta[db_id]['connect_info']

@@ -5,7 +5,9 @@ import vue from '@vitejs/plugin-vue'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
-    plugins: [vue()],
+    plugins: [
+      vue(),
+    ],
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url))
@@ -23,6 +25,7 @@ export default defineConfig(({ mode }) => {
         ignored: ['**/node_modules/**', '**/dist/**'],
       },
       host: '0.0.0.0',
+      port: 5174
     }
   }
 })
