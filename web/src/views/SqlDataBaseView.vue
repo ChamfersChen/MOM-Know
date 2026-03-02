@@ -2,8 +2,8 @@
   <div class="database-container layout-container">
     <HeaderComponent title="数据数据源" :loading="dbState.listLoading">
       <template #actions>
-        <a-button type="primary" @click="state.openNewDatabaseModel = true"> 创建数据源 </a-button>
-        <a-button type="primary" @click="uploadToNeo4j"> 导入图谱 </a-button>
+        <a-button type="primary" @click="handleCreateNewDatasource"> 创建数据源 </a-button>
+        <a-button @click="navigateToGraph"> 查看图谱 </a-button>
       </template>
     </HeaderComponent>
 
@@ -35,9 +35,6 @@
             @click="newDatabase.db_type = dbType.type"
           >
             <img class="db-type-icon" :src="dbType.img" :alt="dbType.name" />
-            <!-- <div class="db-type-icon">
-              <component :is="dbType.img" />
-            </div> -->
             <div class="db-type-info">
               <h4>{{ dbType.name }}</h4>
               <p>{{ dbType.description }}</p>
@@ -168,46 +165,79 @@
       </a-button>
     </div>
 
-    <!-- 数据库列表 -->
-    <div v-else class="databases">
+    <!-- 数据库列表 - 分组显示 -->
+    <div v-else class="databases-group">
       <div
-        v-for="database in databases"
-        :key="database.db_id"
-        class="database dbcard"
-        @click="navigateToDatabase(database.db_id)"
+        v-for="group in groupedDatabases"
+        :key="group.key"
+        class="database-group"
+        :class="{ 
+          'is-imported': selectedGraphGroupsStore.isGroupSelected(group),
+          'is-modified': selectedGraphGroupsStore.isGroupSelected(group) && selectedGraphGroupsStore.hasModifiedTables(group)
+        }"
       >
-        <!-- 私有知识库锁定图标 -->
-        <LockOutlined
-          v-if="database.metadata?.is_private"
-          class="private-lock-icon"
-          title="私有知识库"
-        />
-        <div class="top">
-          <div class="icon">
-            <component :is="getKbTypeIcon(database.db_type || 'lightrag')" />
+        <div class="group-header">
+          <div class="group-info">
+            <span class="group-type">{{ getDbTypeLabel(group.dbType) }}</span>
+            <span class="group-divider">|</span>
+            <span class="group-address">{{ group.host }}:{{ group.port }}</span>
+            <a-tag class="group-count">{{ group.databases.length }} 个数据源</a-tag>
+            <a-tag v-if="selectedGraphGroupsStore.isGroupSelected(group) && selectedGraphGroupsStore.hasModifiedTables(group)" color="orange">
+              <ExclamationCircleFilled /> 请同步更新
+            </a-tag>
+            <a-tag v-else-if="selectedGraphGroupsStore.isGroupSelected(group)" color="green">
+              <CheckCircleFilled /> 已导入图谱
+            </a-tag>
           </div>
-          <div class="info">
-            <h3>{{ database.name }}</h3>
-            <p>
-              <span>{{ database.tables ? Object.values(database.tables).filter(t => t.is_choose).length : 0 }}/{{ database.tables ? Object.keys(database.tables).length : 0 }} 文件</span>
-              <span class="created-time-inline" v-if="database.created_at">
-                {{ formatCreatedTime(database.created_at) }}
-              </span>
-            </p>
+          <div class="group-actions">
+            <a-button type="primary" size="small" @click="handleAddToGroup(group)">
+              <PlusOutlined /> 添加
+            </a-button>
+            <a-button 
+              class="graph-btn" 
+              size="small" 
+              @click="uploadToNeo4j(group)"
+            >
+              {{ selectedGraphGroupsStore.isGroupSelected(group) ? '重新导入' : '选择数据源并导入图谱' }}
+            </a-button>
           </div>
         </div>
-        <p class="description">{{ database.description || '暂无描述' }}</p>
-        <div class="tags">
-          <a-tag color="blue" v-if="database.embed_info?.name">{{
-            database.embed_info.name
-          }}</a-tag>
-          <a-tag
-            :color="getKbTypeColor(database.db_type || 'lightrag')"
-            class="kb-type-tag"
-            size="small"
+        
+        <div class="group-content">
+          <div
+            v-for="database in group.databases"
+            :key="database.db_id"
+            class="database dbcard"
+            @click="navigateToDatabase(database.db_id)"
           >
-            {{ getKbTypeLabel(database.db_type || 'lightrag') }}
-          </a-tag>
+            <div class="top">
+              <div class="icon">
+                <component :is="getKbTypeIcon(database.db_type || 'mysql')" />
+              </div>
+              <div class="info">
+                <h3>{{ database.name }}</h3>
+                <p>
+                  <span>{{ database.tables ? Object.values(database.tables).filter(t => t.is_choose).length : 0 }}/{{ database.tables ? Object.keys(database.tables).length : 0 }} 文件</span>
+                  <span class="created-time-inline" v-if="database.created_at">
+                    {{ formatCreatedTime(database.created_at) }}
+                  </span>
+                </p>
+              </div>
+            </div>
+            <p class="description">{{ database.description || '暂无描述' }}</p>
+            <!-- <div class="tags">
+              <a-tag color="blue" v-if="database.embed_info?.name">
+                {{ database.embed_info.name }}
+              </a-tag>
+              <a-tag
+                :color="getKbTypeColor(database.db_type || 'lightrag')"
+                class="kb-type-tag"
+                size="small"
+              >
+                {{ getKbTypeLabel(database.db_type || 'lightrag') }}
+              </a-tag>
+            </div> -->
+          </div>
         </div>
       </div>
     </div>
@@ -220,7 +250,8 @@ import { useRouter, useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { useDatabaseStore } from '@/stores/sql_database'
-import { LockOutlined, InfoCircleOutlined, PlusOutlined, CheckCircleFilled, DatabaseOutlined, FileTextOutlined, CloudServerOutlined } from '@ant-design/icons-vue'
+import { useSelectedGraphGroupsStore } from '@/stores/selectedGraphGroups'
+import { LockOutlined, InfoCircleOutlined, PlusOutlined, CheckCircleFilled, ExclamationCircleFilled, DatabaseOutlined, FileTextOutlined, CloudServerOutlined } from '@ant-design/icons-vue'
 import { databaseApi } from '@/apis/sql_database_api'
 import { dsTypeWithImg } from '@/composables/ds-type'
 import HeaderComponent from '@/components/HeaderComponent.vue'
@@ -230,87 +261,67 @@ import ShareConfigForm from '@/components/ShareConfigForm.vue'
 import dayjs, { parseToShanghai } from '@/utils/time'
 import AiTextarea from '@/components/AiTextarea.vue'
 import { getKbTypeLabel, getKbTypeIcon, getKbTypeColor } from '@/utils/kb_utils'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 
 const route = useRoute()
 const router = useRouter()
 const configStore = useConfigStore()
 const databaseStore = useDatabaseStore()
+const selectedGraphGroupsStore = useSelectedGraphGroupsStore()
 // 使用 store 的状态
 const { databases, state: dbState } = storeToRefs(databaseStore)
 
 const state = reactive({
   openNewDatabaseModel: false,
-  currentStep: 0
+  currentStep: 0,
+  importing: false
 })
-const supportedDbTypes = shallowRef(dsTypeWithImg)
 
-// const supportedDbTypes = shallowRef([
-//   {
-//     type: 'mysql',
-//     name: 'MySQL',
-//     description: '开源关系型数据库',
-//     img: DatabaseOutlined,
-//     defaultPort: 3306
-//   },
-//   {
-//     type: 'postgresql',
-//     name: 'PostgreSQL',
-//     description: '功能强大的开源对象关系型数据库',
-//     img: DatabaseOutlined,
-//     defaultPort: 5432
-//   },
-//   {
-//     type: 'sqlserver',
-//     name: 'SQL Server',
-//     description: '微软企业级关系型数据库',
-//     img: CloudServerOutlined,
-//     defaultPort: 1433
-//   },
-//   {
-//     type: 'oracle',
-//     name: 'Oracle',
-//     description: '甲骨文企业级关系型数据库',
-//     img: CloudServerOutlined,
-//     defaultPort: 1521
-//   }
-// ])
+const groupedDatabases = computed(() => {
+  const groups = {}
+  
+  databases.value.forEach(db => {
+    const dbType = db.db_type || 'unknown'
+    const connectInfo = db.connect_info || {}
+    const host = connectInfo.host || 'unknown'
+    const port = connectInfo.port || 'unknown'
+    const key = `${dbType}:${host}:${port}`
+    
+    if (!groups[key]) {
+      groups[key] = {
+        key,
+        dbType,
+        host,
+        port,
+        databases: []
+      }
+    }
+    groups[key].databases.push(db)
+  })
+  
+  return Object.values(groups).sort((a, b) => {
+    if (a.dbType !== b.dbType) return a.dbType.localeCompare(b.dbType)
+    if (a.host !== b.host) return a.host.localeCompare(b.host)
+    return a.port - b.port
+  })
+})
 
-const getDbTypeConfig = (dbType) => {
-  const configMap = {
-    mysql: [
-      { key: 'host', label: '主机地址', placeholder: '例如：127.0.0.1', type: 'input' },
-      { key: 'port', label: '端口', placeholder: '例如：3306', type: 'number' },
-      { key: 'user', label: '用户名', placeholder: '请输入用户名', type: 'input' },
-      { key: 'password', label: '密码', placeholder: '请输入密码', type: 'password' },
-      { key: 'database', label: '数据库名', placeholder: '请输入数据库名称', type: 'input' }
-    ],
-    postgresql: [
-      { key: 'host', label: '主机地址', placeholder: '例如：127.0.0.1', type: 'input' },
-      { key: 'port', label: '端口', placeholder: '例如：5432', type: 'number' },
-      { key: 'user', label: '用户名', placeholder: '请输入用户名', type: 'input' },
-      { key: 'password', label: '密码', placeholder: '请输入密码', type: 'password' },
-      { key: 'database', label: '数据库名', placeholder: '请输入数据库名称', type: 'input' }
-    ],
-    sqlserver: [
-      { key: 'host', label: '主机地址', placeholder: '例如：127.0.0.1', type: 'input' },
-      { key: 'port', label: '端口', placeholder: '例如：1433', type: 'number' },
-      { key: 'user', label: '用户名', placeholder: '请输入用户名', type: 'input' },
-      { key: 'password', label: '密码', placeholder: '请输入密码', type: 'password' },
-      { key: 'database', label: '数据库名', placeholder: '请输入数据库名称', type: 'input' }
-    ],
-    oracle: [
-      { key: 'host', label: '主机地址', placeholder: '例如：127.0.0.1', type: 'input' },
-      { key: 'port', label: '端口', placeholder: '例如：1521', type: 'number' },
-      { key: 'serviceName', label: '服务名', placeholder: '请输入服务名', type: 'input' },
-      { key: 'user', label: '用户名', placeholder: '请输入用户名', type: 'input' },
-      { key: 'password', label: '密码', placeholder: '请输入密码', type: 'password' }
-    ]
+const getDbTypeLabel = (type) => {
+  const typeMap = {
+    'mysql': 'MySQL',
+    'pg': 'PostgreSQL',
+    'oracle': 'Oracle',
+    'sqlServer': 'SQL Server',
+    'ck': 'ClickHouse',
+    'dm': '达梦',
+    'doris': 'Apache Doris',
+    'redshift': 'AWS Redshift',
+    'es': 'Elasticsearch',
+    'kingbase': 'Kingbase'
   }
-  return configMap[dbType] || configMap.mysql
+  return typeMap[type] || type
 }
-
-const currentDbConfig = computed(() => getDbTypeConfig(newDatabase.db_type))
+const supportedDbTypes = shallowRef(dsTypeWithImg)
 
 // 共享配置状态（用于提交数据）
 const shareConfig = ref({
@@ -392,24 +403,24 @@ const formatCreatedTime = (createdAt) => {
   return `${years} 年前创建`
 }
 
-// 导入Neo4j图数据库
-const uploadToNeo4j = async () => {
-  // 根据databases info上传图数据库
-  console.log('>>> upload to neo4j: ', databaseStore.databases)
-  const confirmed = window.confirm('即将把当前所有数据库中的表结构导入 Neo4j 并创建知识图谱，是否继续？')
-  if (!confirmed) return
-  try{
-    const ret = await databaseApi.createGraph()
-    if(ret.code === 0){ 
-      message.success('知识图谱创建成功')
-    }else{
-      message.error('知识图谱创建失败')
-    }
-  }catch(e){
-    console.log('>>> upload to neo4j error: ', e)
-    message.error('知识图谱创建失败')
-  }
-}
+// // 导入Neo4j图数据库
+// const uploadToNeo4j = async () => {
+//   // 根据databases info上传图数据库
+//   console.log('>>> upload to neo4j: ', databaseStore.databases)
+//   const confirmed = window.confirm('即将把当前所有数据库中的表结构导入 Neo4j 并创建知识图谱，是否继续？')
+//   if (!confirmed) return
+//   try{
+//     const ret = await databaseApi.createGraph()
+//     if(ret.code === 0){ 
+//       message.success('知识图谱创建成功')
+//     }else{
+//       message.error('知识图谱创建失败')
+//     }
+//   }catch(e){
+//     console.log('>>> upload to neo4j error: ', e)
+//     message.error('知识图谱创建失败')
+//   }
+// }
 
 // 构建请求数据（只负责表单数据转换）
 const buildCheckConnectionRequestData = () => {
@@ -476,7 +487,10 @@ const handleCreateDatabase = async () => {
   const requestData = buildRequestData()
   console.log('requestData >> :', requestData)
   try {
-    await databaseStore.createDatabase(requestData)
+    const result = await databaseStore.createDatabase(requestData)
+    if (result && result.db_id) {
+      selectedGraphGroupsStore.markTableModified(result.db_id, 'database_added')
+    }
     resetNewDatabase()
     state.openNewDatabaseModel = false
   } catch (error) {
@@ -486,6 +500,82 @@ const handleCreateDatabase = async () => {
 
 const navigateToDatabase = (databaseId) => {
   router.push({ path: `/sqldatabase/${databaseId}` })
+}
+
+const navigateToGraph = () => {
+  router.push({ path: '/graph' })
+}
+
+const handleAddToGroup = (group) => {
+  state.openNewDatabaseModel = true
+  state.currentStep = 1
+  newDatabase.db_type = group.dbType
+  connectInfo.host = group.host
+  connectInfo.port = group.port
+  newDatabase.name = ''
+  newDatabase.description = ''
+  connectInfo.user = 'root'
+  connectInfo.password = ''
+  connectInfo.database = ''
+  connectInfo.serviceName = ''
+}
+
+const handleCreateNewDatasource = () => {
+  state.openNewDatabaseModel = true
+  state.currentStep = 0
+  newDatabase.db_type = 'mysql'
+  connectInfo.host = '127.0.0.1'
+  connectInfo.port = 3306
+  newDatabase.name = ''
+  newDatabase.description = ''
+  connectInfo.user = 'root'
+  connectInfo.password = ''
+  connectInfo.database = ''
+  connectInfo.serviceName = ''
+}
+
+const uploadToNeo4j = async (group) => {
+  console.log('>>> upload to neo4j for group: ', group)
+  console.log('>>> databases: ', databaseStore.databases)
+  
+  const action = selectedGraphGroupsStore.isGroupSelected(group) ? '重新导入' : '导入'
+  const groupName = `${getDbTypeLabel(group.dbType)} - ${group.host}:${group.port}`
+  const dbCount = group.databases.length
+  
+  const totalSelectedTables = group.databases.reduce((sum, db) => {
+    const tables = db.tables || {}
+    const selected = Object.values(tables).filter(t => t.is_choose).length
+    return sum + selected
+  }, 0)
+  
+  if (totalSelectedTables === 0) {
+    message.warning('该分组下没有选择任何数据表，请先在数据源中选择需要导入的表后再进行导入')
+    return
+  }
+  
+  Modal.confirm({
+    title: `${action}图谱`,
+    content: `即将${action}「${groupName}」分组下已选择的 ${totalSelectedTables} 张数据表导入 Neo4j 并创建知识图谱。该分组下共有 ${dbCount} 个数据源。`,
+    okText: '确认',
+    cancelText: '取消',
+    onOk: async () => {
+      state.importing = true
+      try {
+        const ret = await databaseApi.createGraph(group.databases)
+        if (ret.code === 0) {
+          selectedGraphGroupsStore.selectGroup(group)
+          message.success(`「${groupName}」已${action}图谱`)
+        } else {
+          message.error('知识图谱创建失败')
+        }
+      } catch (e) {
+        console.log('>>> upload to neo4j error: ', e)
+        message.error('知识图谱创建失败')
+      } finally {
+        state.importing = false
+      }
+    }
+  })
 }
 
 watch(
@@ -809,6 +899,96 @@ onMounted(() => {
   gap: 16px;
 }
 
+.databases-group {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+
+  .database-group {
+    background: var(--gray-0);
+    border-radius: 12px;
+    border: 1px solid var(--gray-200);
+    overflow: hidden;
+    transition: all 0.3s ease;
+
+    &.is-imported {
+      border-color: var(--color-success-300);
+      box-shadow: 0 0 0 2px var(--color-success-100);
+      
+      .group-header {
+        background: var(--color-success-50);
+        border-bottom-color: var(--color-success-200);
+      }
+    }
+
+    &.is-modified {
+      border-color: #fa8c16;
+      box-shadow: 0 0 0 2px #ffe7ba;
+      
+      .group-header {
+        background: #fff7e6;
+        border-bottom-color: #ffd591;
+      }
+    }
+
+    .group-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 20px;
+      background: var(--gray-50);
+      border-bottom: 1px solid var(--gray-200);
+
+      .group-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+
+        .group-type {
+          font-size: 16px;
+          font-weight: 600;
+          color: var(--gray-800);
+        }
+
+        .group-divider {
+          color: var(--gray-400);
+        }
+
+        .group-address {
+          font-size: 14px;
+          color: var(--gray-600);
+          font-family: monospace;
+        }
+
+        .group-count {
+          margin-left: 8px;
+        }
+      }
+
+      .group-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+
+        .graph-btn {
+          white-space: normal;
+          height: auto;
+          line-height: 1.25;
+          padding: 4px 12px;
+        }
+      }
+    }
+
+    .group-content {
+      padding: 16px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
+    }
+  }
+}
+
 .database,
 .graphbase {
   background: linear-gradient(145deg, var(--gray-0) 0%, var(--gray-10) 100%);
@@ -821,9 +1001,9 @@ onMounted(() => {
 .dbcard,
 .database {
   width: 100%;
-  padding: 16px;
+  padding: 10px;
   border-radius: 16px;
-  height: 156px;
+  // height: 156px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -915,9 +1095,9 @@ onMounted(() => {
     -webkit-line-clamp: 1;
     -webkit-box-orient: vertical;
     text-overflow: ellipsis;
-    margin-bottom: 12px;
+    margin-bottom: 2px;
     font-size: 13px;
-    font-weight: 400;
+    font-weight: 500;
     flex: 1;
   }
 }

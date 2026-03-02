@@ -243,8 +243,9 @@
 <script setup>
 import { ref, computed, watch, h } from 'vue'
 import { useDatabaseStore } from '@/stores/sql_database'
-import { message, Modal } from 'ant-design-vue'
 import { useUserStore } from '@/stores/user'
+import { useSelectedGraphGroupsStore } from '@/stores/selectedGraphGroups'
+import { message, Modal } from 'ant-design-vue'
 import { documentApi } from '@/apis/knowledge_api'
 import {
   CheckCircleFilled,
@@ -280,6 +281,7 @@ import {
 
 const store = useDatabaseStore()
 const userStore = useUserStore()
+const selectedGraphGroupsStore = useSelectedGraphGroupsStore()
 
 const sortField = ref('filename')
 const sortOptions = [
@@ -840,6 +842,10 @@ const onFilterChange = (e) => {
 }
 
 const handleBatchChoose= () => {
+  const tableIds = Object.keys(store.database.tables || {})
+  tableIds.forEach(tableId => {
+    selectedGraphGroupsStore.markTableModified(store.databaseId, tableId)
+  })
   store.handleBatchChoose(true)
   isSelectionMode.value = false
 }
@@ -847,15 +853,20 @@ const handleBatchChoose= () => {
 const handleChoose= (table_id, is_choose) => {
 
   console.log("tables >> ", store.database.tables)
-  const table_info = store.database.tables[table_id] // .filter((t) => t.table_id === table_id)
+  const table_info = store.database.tables[table_id] 
   table_info['is_choose'] = is_choose
   try{
     store.updateTables({[table_id]: table_info})
+    selectedGraphGroupsStore.markTableModified(store.databaseId, table_id)
   }catch (e) {
     console.log(e)
   }
 }
 const handleBatchUnchoose= () => {
+  const tableIds = Object.keys(store.database.tables || {})
+  tableIds.forEach(tableId => {
+    selectedGraphGroupsStore.markTableModified(store.databaseId, tableId)
+  })
   store.handleBatchChoose(false)
   isSelectionMode.value = false
 }
@@ -895,6 +906,7 @@ const handleUpdateTableDescriptionConfirm =  async () => {
     }
     console.log('updateTableDescriptionConfirm >> ', newTable)
     store.updateTables(newTable)
+    selectedGraphGroupsStore.markTableModified(dbId, singleChooseTable.value.table_id)
   } catch (error) {
     console.error(error)
     message.error(error.message || '更新失败')

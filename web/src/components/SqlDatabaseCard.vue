@@ -123,6 +123,7 @@ import { ref, reactive, computed, h, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDatabaseStore } from '@/stores/sql_database'
 import { useUserStore } from '@/stores/user'
+import { useSelectedGraphGroupsStore } from '@/stores/selectedGraphGroups'
 import { getKbTypeLabel, getKbTypeColor } from '@/utils/kb_utils'
 import { message } from 'ant-design-vue'
 import { LeftOutlined } from '@ant-design/icons-vue'
@@ -135,6 +136,7 @@ import ShareConfigForm from '@/components/ShareConfigForm.vue'
 const router = useRouter()
 const store = useDatabaseStore()
 const userStore = useUserStore()
+const selectedGraphGroupsStore = useSelectedGraphGroupsStore()
 
 const database = computed(() => store.database)
 
@@ -298,6 +300,7 @@ const handleEditSubmit = () => {
       )
 
       await store.updateDatabaseInfo(updateData)
+      selectedGraphGroupsStore.markTableModified(store.databaseId, 'database_info')
       editModalVisible.value = false
     })
     .catch((err) => {

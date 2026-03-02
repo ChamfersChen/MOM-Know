@@ -321,6 +321,25 @@ class SqlDataBaseManager:
                 return True
         return False
 
+    async def database_ip_port_name_exists(self, connect_info: dict) -> bool:
+        """检查知识库名称是否已存在"""
+        from src.repositories.sql_database_repository import SqlDatabaseRepository
+
+        from src.storage.postgres.manager import pg_manager
+
+        # 确保 pg_manager 已初始化
+        if not pg_manager._initialized:
+            pg_manager.initialize()
+
+        sdb_repo = SqlDatabaseRepository()
+        rows = await sdb_repo.get_all()
+        for row in rows:
+            if ( (row.connect_info.get("database") or "").lower() == str(connect_info.get("database", "")).lower()
+                and (row.connect_info.get("host") or "").lower() == str(connect_info.get("host", "")).lower()
+                and str(row.connect_info.get("port", "")).lower() == str(connect_info.get("port", "")).lower() ):
+                return True
+        return False
+
     async def create_database(
         self,
         database_name: str,
@@ -348,7 +367,8 @@ class SqlDataBaseManager:
             available_types = list(DBConnectorBaseFactory.get_available_types().keys())
             raise ValueError(f"Unsupported knowledge base type: {db_type}. Available types: {available_types}")
         # 检查名称是否已存在
-        if await self.database_name_exists(database_name):
+        # if await self.database_name_exists(database_name):
+        if await self.database_ip_port_name_exists(connect_info):
             raise ValueError(f"数据库名称 '{database_name}' 已存在，请使用其他名称")
 
         # 默认共享配置

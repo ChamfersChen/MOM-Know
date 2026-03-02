@@ -3,7 +3,8 @@ import { Database, Waypoints, DatabaseZap } from 'lucide-vue-next'
 export const getKbTypeLabel = (type) => {
   const labels = {
     lightrag: 'LightRAG',
-    milvus: 'CommonRAG'
+    milvus: 'CommonRAG',
+    mysql: 'MySQL'
   }
   return labels[type] || type
 }

@@ -5,10 +5,12 @@ import { databaseApi } from '@/apis/sql_database_api'
 import { useTaskerStore } from '@/stores/tasker'
 import { useRouter } from 'vue-router'
 import { parseToShanghai } from '@/utils/time'
+import { useSelectedGraphGroupsStore } from './selectedGraphGroups'
 
 export const useDatabaseStore = defineStore('sql_database', () => {
   const router = useRouter()
   const taskerStore = useTaskerStore()
+  const selectedGraphGroupsStore = useSelectedGraphGroupsStore()
 
   // State
   const databases = ref([])
@@ -168,6 +170,7 @@ export const useDatabaseStore = defineStore('sql_database', () => {
         try {
           const data = await databaseApi.deleteDatabase(databaseId.value)
           message.success(data.message || '删除成功')
+          selectedGraphGroupsStore.markTableModified(databaseId.value, 'database_deleted')
           router.push('/sqldatabase')
         } catch (error) {
           console.error(error)

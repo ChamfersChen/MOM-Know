@@ -27,18 +27,37 @@ async def get_databases(
         logger.error(f"获取数据库列表失败 {e}, {traceback.format_exc()}")
         return {"message": f"获取数据库列表失败 {e}", "databases": []}
 
+# @sql_db.post("/databases/neo4j")
+# async def create_graph(
+#     current_user: User = Depends(get_admin_user)
+#     ):
+#     """获取所有数据库"""
+#     try:
+#         user_info = {"role": current_user.role, "department_id": current_user.department_id}
+#         databases = await sql_database.get_databases_by_user(user_info)
+#         databases_meta = databases['databases']
+#         graph_base.delete_entity()
+#         await graph_base.database_meta_add_entity(
+#             databases_meta,
+#             embed_model_name="siliconflow/BAAI/bge-m3",
+#             batch_size=20
+#         )
+#         return {"message": "图谱创建成功", "code": 0}
+#     except Exception as e:
+#         logger.error(f"图谱创建失败 {e}, {traceback.format_exc()}")
+#         graph_base.delete_entity()
+#         return {"message": f"图谱创建失败 {e}", "code": 1}
+
 @sql_db.post("/databases/neo4j")
 async def create_graph(
+    datasource_group: list = Body(None),
     current_user: User = Depends(get_admin_user)
     ):
-    """获取所有数据库"""
+    """根据选择的数据源组，创建图谱并使用该数据源进行问答"""
     try:
-        user_info = {"role": current_user.role, "department_id": current_user.department_id}
-        databases = await sql_database.get_databases_by_user(user_info)
-        databases_meta = databases['databases']
         graph_base.delete_entity()
         await graph_base.database_meta_add_entity(
-            databases_meta,
+            datasource_group,
             embed_model_name="siliconflow/BAAI/bge-m3",
             batch_size=20
         )
@@ -62,7 +81,7 @@ async def check_connection(
     )
     try:
         # 先检查名称是否已存在
-        if await sql_database.database_name_exists(database_name):
+        if await sql_database.database_ip_port_name_exists(connect_info):
             return {"message": f"数据库连接校验失败。'{database_name}' 已存在，请使用其他名称", "status": "failed"}
 
         connect_info_dict = connect_info.model_dump() if hasattr(connect_info, "model_dump") else connect_info
@@ -90,12 +109,12 @@ async def create_database(
     )
     try:
         # 先检查名称是否已存在
-        if await sql_database.database_name_exists(database_name):
-            # return {"message": f"创建数据库失败 {e}", "status": "failed"}
-            raise HTTPException(
-                status_code=409,
-                detail=f"知识库名称 '{database_name}' 已存在，请使用其他名称",
-            )
+        if await sql_database.database_ip_port_name_exists(connect_info):
+            return {"message": f"创建数据库失败", "status": "failed"}
+            # raise HTTPException(
+            #     status_code=409,
+            #     detail=f"知识库名称 '{database_name}' 已存在，请使用其他名称",
+            # )
 
         connect_info_dict = connect_info.model_dump() if hasattr(connect_info, "model_dump") else connect_info
 

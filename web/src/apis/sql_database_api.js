@@ -87,9 +87,10 @@ export const databaseApi = {
   },
   /**
    * 根据知识库配置信息，创建知识图谱
+   * @param {Object} params - 数据库分组信息
    * @returns {Promise} - 更新结果
    */
-  createGraph: async () => {
-    return apiAdminPost(`/api/sql_database/databases/neo4j`)
+  createGraph: async (params = {}) => {
+    return apiAdminPost(`/api/sql_database/databases/neo4j`, params)
   },
 }
