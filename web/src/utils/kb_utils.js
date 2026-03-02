@@ -4,6 +4,7 @@ export const getKbTypeLabel = (type) => {
   const labels = {
     lightrag: 'LightRAG',
     milvus: 'CommonRAG',
+    dify: 'Dify',
     mysql: 'MySQL'
   }
   return labels[type] || type
@@ -12,7 +13,8 @@ export const getKbTypeLabel = (type) => {
 export const getKbTypeIcon = (type) => {
   const icons = {
     lightrag: Waypoints,
-    milvus: DatabaseZap
+    milvus: DatabaseZap,
+    dify: Database
   }
   return icons[type] || Database
 }
@@ -20,7 +22,8 @@ export const getKbTypeIcon = (type) => {
 export const getKbTypeColor = (type) => {
   const colors = {
     lightrag: 'purple',
-    milvus: 'red'
+    milvus: 'red',
+    dify: 'gold'
   }
   return colors[type] || 'blue'
 }

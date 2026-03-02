@@ -22,7 +22,7 @@
       <div class="left-panel" :style="{ width: leftPanelWidth + '%' }">
         <KnowledgeBaseCard />
         <!-- 待处理文件提示条 -->
-        <div class="info-panel" v-if="pendingParseCount > 0 || pendingIndexCount > 0">
+        <div v-if="!isDify && (pendingParseCount > 0 || pendingIndexCount > 0)" class="info-panel">
           <div class="banner-item" v-if="pendingParseCount > 0" @click="confirmBatchParse">
             <FileText :size="14" />
             <span>{{ pendingParseCount }} 个文件待解析，点击解析</span>
@@ -33,6 +33,7 @@
           </div>
         </div>
       <FileTable
+          v-if="!isDify"
         :right-panel-visible="state.rightPanelVisible"
         @show-add-files-modal="showAddFilesModal"
         @toggle-right-panel="toggleRightPanel"
@@ -40,13 +41,13 @@
       />
     </div>
 
-      <div class="resize-handle" ref="resizeHandle"></div>
+      <div v-if="!isDify" class="resize-handle" ref="resizeHandle"></div>
 
       <div
         class="right-panel"
         :style="{
           width: 100 - leftPanelWidth + '%',
-          display: store.state.rightPanelVisible ? 'flex' : 'none'
+          display: isDify || store.state.rightPanelVisible ? 'flex' : 'none'
         }"
       >
         <a-tabs
@@ -62,7 +63,7 @@
               </a-button>
             </a-tooltip>
           </template>
-          <a-tab-pane key="graph" tab="知识图谱" v-if="isGraphSupported">
+          <a-tab-pane v-if="!isDify && isGraphSupported" key="graph" tab="知识图谱">
             <KnowledgeGraphSection
               :visible="true"
               :active="activeTab === 'graph'"
@@ -72,10 +73,10 @@
           <a-tab-pane key="query" tab="检索测试">
             <QuerySection ref="querySectionRef" :visible="true" @toggle-visible="() => {}" />
           </a-tab-pane>
-          <a-tab-pane key="mindmap" tab="知识导图">
+          <a-tab-pane v-if="!isDify" key="mindmap" tab="知识导图">
             <MindMapSection v-if="databaseId" :database-id="databaseId" ref="mindmapSectionRef" />
           </a-tab-pane>
-          <a-tab-pane key="evaluation" tab="RAG评估" :disabled="!isEvaluationSupported">
+          <a-tab-pane v-if="!isDify" key="evaluation" tab="RAG评估" :disabled="!isEvaluationSupported">
             <template #tab>
               <span :style="{ color: !isEvaluationSupported ? 'var(--gray-400)' : '' }">
                 RAG评估
@@ -90,7 +91,7 @@
               @switch-to-benchmarks="activeTab = 'benchmarks'"
             />
           </a-tab-pane>
-          <a-tab-pane key="benchmarks" tab="评估基准" :disabled="!isEvaluationSupported">
+          <a-tab-pane v-if="!isDify" key="benchmarks" tab="评估基准" :disabled="!isEvaluationSupported">
             <template #tab>
               <span :style="{ color: !isEvaluationSupported ? 'var(--gray-400)' : '' }">
                 评估基准
@@ -126,7 +127,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref, watch, onUnmounted, computed } from 'vue'
+import { onMounted, ref, watch, onUnmounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDatabaseStore } from '@/stores/database'
 import { useTaskerStore } from '@/stores/tasker'
@@ -153,6 +154,7 @@ const taskerStore = useTaskerStore()
 const databaseId = computed(() => store.databaseId)
 const database = computed(() => store.database)
 const state = computed(() => store.state)
+const isDify = computed(() => database.value.kb_type?.toLowerCase() === 'dify')
 // 计算属性：是否支持知识图谱
 const isGraphSupported = computed(() => {
   const kbType = database.value.kb_type?.toLowerCase()
@@ -255,11 +257,16 @@ const resetGraphStats = () => {
 
 // LightRAG 默认展示知识图谱
 watch(
-  () => [databaseId.value, isGraphSupported.value, isEvaluationSupported.value],
-  ([newDbId, supported, evaluationSupported], oldValue = []) => {
-    const [oldDbId, previouslySupported, previouslyEvaluationSupported] = oldValue
+  () => [databaseId.value, isGraphSupported.value, isEvaluationSupported.value, isDify.value],
+  ([newDbId, supported, , difyMode], oldValue = []) => {
+    const [oldDbId, previouslySupported] = oldValue
 
     if (!newDbId) {
+      return
+    }
+
+    if (difyMode) {
+      activeTab.value = 'query'
       return
     }
 
@@ -398,7 +405,7 @@ const resetFileSelectionState = () => {
 
 watch(
   () => route.params.database_id,
-  async (newId, oldId) => {
+  async (newId) => {
     // 切换知识库时，标记为初次加载
     isInitialLoad.value = true
 
@@ -417,7 +424,7 @@ const previousFileCount = ref(0)
 
 watch(
   () => database.value?.files,
-  (newFiles, oldFiles) => {
+  (newFiles) => {
     if (!newFiles) return
 
     const newFileCount = Object.keys(newFiles).length

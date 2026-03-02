@@ -34,6 +34,7 @@ class EmbedModelInfo(BaseModel):
     base_url: str = Field(..., description="API 基础 URL")
     api_key: str = Field(..., description="API Key 或环境变量名")
     model_id: str | None = Field(None, description="可选的模型 ID")
+    batch_size: int = Field(40, description="批量向量化大小")
 
 
 class RerankerInfo(BaseModel):
