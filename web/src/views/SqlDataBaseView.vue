@@ -193,6 +193,9 @@
             <a-button type="primary" size="small" @click="handleAddToGroup(group)">
               <PlusOutlined /> 添加
             </a-button>
+            <a-button size="small" @click="navigateToTermConfig(group)">
+              <SettingOutlined /> 术语配置
+            </a-button>
             <a-button 
               class="graph-btn" 
               size="small" 
@@ -251,7 +254,7 @@ import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { useDatabaseStore } from '@/stores/sql_database'
 import { useSelectedGraphGroupsStore } from '@/stores/selectedGraphGroups'
-import { LockOutlined, InfoCircleOutlined, PlusOutlined, CheckCircleFilled, ExclamationCircleFilled, DatabaseOutlined, FileTextOutlined, CloudServerOutlined } from '@ant-design/icons-vue'
+import { LockOutlined, InfoCircleOutlined, PlusOutlined, CheckCircleFilled, ExclamationCircleFilled, DatabaseOutlined, FileTextOutlined, CloudServerOutlined, SettingOutlined } from '@ant-design/icons-vue'
 import { databaseApi } from '@/apis/sql_database_api'
 import { dsTypeWithImg } from '@/composables/ds-type'
 import HeaderComponent from '@/components/HeaderComponent.vue'
@@ -504,6 +507,17 @@ const navigateToDatabase = (databaseId) => {
 
 const navigateToGraph = () => {
   router.push({ path: '/graph' })
+}
+
+const navigateToTermConfig = (group) => {
+  router.push({ 
+    path: '/sqldatabase/term-config', 
+    query: { 
+      dbType: group.dbType, 
+      host: group.host, 
+      port: group.port 
+    } 
+  })
 }
 
 const handleAddToGroup = (group) => {

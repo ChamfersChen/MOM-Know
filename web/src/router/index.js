@@ -101,6 +101,12 @@ const router = createRouter({
           meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
         },
         {
+          path: 'term-config',
+          name: 'SqlTermConfigComp',
+          component: () => import('../views/SqlTermConfigView.vue'),
+          meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
+        },
+        {
           path: ':database_id',
           name: 'SqlDatabaseInfoComp',
           component: () => import('../views/SqlDataBaseInfoView.vue'),
