@@ -39,13 +39,13 @@ _UNSET = object()
 
 # Default MCP Server configurations (Imported to DB on first run)
 _DEFAULT_MCP_SERVERS = {
-    "sequentialthinking": {
-        "url": "https://remote.mcpservers.org/sequentialthinking/mcp",
-        "transport": "streamable_http",
-        "description": "顺序思考工具，帮助 AI 将复杂问题分解为多个步骤",
-        "icon": "🧠",
-        "tags": ["内置", "AI"],
-    },
+    # "sequentialthinking": {
+    #     "url": "https://remote.mcpservers.org/sequentialthinking/mcp",
+    #     "transport": "streamable_http",
+    #     "description": "顺序思考工具，帮助 AI 将复杂问题分解为多个步骤",
+    #     "icon": "🧠",
+    #     "tags": ["内置", "AI"],
+    # },
     # "mcp-server-chart": {
     #     "command": "npx",
     #     "args": ["-y", "@antv/mcp-server-chart"],

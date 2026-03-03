@@ -1,4 +1,5 @@
-from deepagents.backends import CompositeBackend, StateBackend
+from deepagents.backends import CompositeBackend, StateBackend, LocalShellBackend
+
 
 from src.services.skill_resolver import normalize_selected_skills
 from src.services.skill_service import is_valid_skill_slug
@@ -23,6 +24,16 @@ def create_agent_composite_backend(runtime) -> CompositeBackend:
     visible_skills = _get_visible_skills_from_runtime(runtime)
     return CompositeBackend(
         default=StateBackend(runtime),
+        routes={
+            "/skills/": SelectedSkillsReadonlyBackend(selected_slugs=visible_skills),
+        },
+    )
+
+def create_agent_local_shell_backend(runtime) -> CompositeBackend:
+    """为 agent 构建 LocalShellBackend。"""
+    visible_skills = _get_visible_skills_from_runtime(runtime)
+    return CompositeBackend(
+        default=LocalShellBackend("saves/shell"),
         routes={
             "/skills/": SelectedSkillsReadonlyBackend(selected_slugs=visible_skills),
         },
