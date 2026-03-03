@@ -1,17 +1,21 @@
+from langchain_core.tools import StructuredTool
 import os
 import traceback
 import uuid
 from typing import Annotated, Any
+from pydantic import BaseModel, Field
 
 import requests
 from langchain.tools import tool
 from langgraph.types import interrupt
+
 
 from src import config, graph_base
 from src.agents.common.toolkits.kbs import get_kb_based_tools
 from src.services.mcp_service import get_enabled_mcp_tools
 from src.storage.minio import aupload_file_to_minio
 from src.utils import logger
+from src.knowledge import knowledge_base
 
 # Lazy initialization for TavilySearch (only when TAVILY_API_KEY is available)
 _tavily_search_instance = None

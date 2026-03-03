@@ -4,16 +4,26 @@
 
 import traceback
 
-from fastapi import APIRouter, Body, Depends, HTTPException
-
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from pydantic import BaseModel
 from server.utils.auth_middleware import get_admin_user
+
 from src.storage.db.models import User
 from src.knowledge import graph_base
 from src import sql_database
 from src.utils import logger
+from src.storage.postgres.models_terminology import TerminologyInfo
+from src.services.term_service import TermService
 
 sql_db = APIRouter(prefix="/sql_database", tags=["sql database"])
+term_service = TermService()
 
+class DatasourceConnectionInfo(BaseModel):
+    host: str
+    port: int
+
+class TermQueryInfo(BaseModel):
+    query: str
 
 @sql_db.get("/databases")
 async def get_databases(
@@ -242,3 +252,30 @@ async def update_database_info(
     except Exception as e:
         logger.error(f"更新数据库失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"更新数据库失败: {e}")
+
+
+# 术语接口
+@sql_db.post("/term")
+async def update_database_info(
+    term_model: TerminologyInfo = Body(...),
+):
+    """添加术语"""
+    terms = await term_service.create_terminology(term_model)
+    return terms
+
+
+@sql_db.delete("/term/{id}")
+async def delete_database_info(
+    id: str,
+):
+    """添加术语"""
+    await term_service.delete_by_id(int(id))
+    return {"message": "删除成功"}
+
+@sql_db.get("/term/query")
+async def get_terms_info_with_query(
+    term_query_info: TermQueryInfo = Body(...),
+):
+    """根据查询语句获取术语"""
+    terms = await term_service.get_terms_with_query(term_query_info.query)
+    return terms
