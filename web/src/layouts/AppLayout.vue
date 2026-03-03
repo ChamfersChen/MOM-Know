@@ -133,6 +133,13 @@ const mainList = computed(() => {
     })
   }
 
+  items.push({
+    name: 'Dashboard',
+    path: '/dashboard',
+    icon: BarChart3,
+    activeIcon: BarChart3
+  })
+
   return items
 })
 
