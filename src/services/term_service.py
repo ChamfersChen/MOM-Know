@@ -19,11 +19,21 @@ class TermService:
             )
 
 
-    async def get_all_terminology(self) -> list[Terminology]:
-        return await self.terminology_repository.get_all()
+    async def get_all_terminology(self) -> dict[int, TerminologyInfo]:
+        all_terms = await self.terminology_repository.get_all()
+        res: dict[int, TerminologyInfo] = {}
+        for term in all_terms:
+            if term.pid is None:
+                res[term.id] = TerminologyInfo(**term.__dict__)
+        
+        for term in all_terms:
+            if term.pid is not None:
+                res[term.pid].other_words.append(term.word)
+        return res
 
 
-    async def create_terminology(self, terminology: TerminologyInfo) -> list[Terminology]:
+
+    async def create_terminology(self, terminology: TerminologyInfo) -> TerminologyInfo:
         word = terminology.word
         description = terminology.description
         specific_ds = terminology.specific_ds
@@ -31,7 +41,6 @@ class TermService:
         datasource_port = terminology.datasource_port
         enabled = terminology.enabled
         embedding = await self.embedder.aencode(word) # TODO : 需要根据术语名称生成embedding
-        list_terms = []
         term = await self.terminology_repository.create(
             {
                 "word":word,
@@ -43,7 +52,6 @@ class TermService:
                 "enabled":enabled,
             }
         )
-        list_terms.append(term)
 
         pid = term.id
         other_words = terminology.other_words
@@ -60,9 +68,60 @@ class TermService:
                     "enabled":enabled,
                 }
             )
-            list_terms.append(term)
         
-        return list_terms
+        return terminology
+
+    async def update_terminology(self, terminology: TerminologyInfo) -> TerminologyInfo:
+        """更新术语
+
+        Parameters
+        ----------
+        terminology : TerminologyInfo
+
+        Returns
+        -------
+        list[TerminologyInfo]
+        """
+        id = terminology.id
+        word = terminology.word
+        description = terminology.description
+        specific_ds = terminology.specific_ds
+        datasource_host = terminology.datasource_host
+        datasource_port = terminology.datasource_port
+        enabled = terminology.enabled
+        other_words = terminology.other_words
+
+        embedding = await self.embedder.aencode(word) # TODO : 需要根据术语名称生成embedding
+        term = await self.terminology_repository.update(
+            {
+                "id":id,
+                "word":word,
+                "description":description,
+                "embedding":embedding[0],
+                "specific_ds":specific_ds,
+                "datasource_host":datasource_host,
+                "datasource_port":datasource_port,
+                "enabled":enabled,
+            }
+        )
+        await self.terminology_repository.delete_by_pid(id)
+        ret = TerminologyInfo(**term.__dict__)
+        for other_word in other_words:
+            embedding = await self.embedder.aencode(other_word) # TODO : 需要根据术语名称生成embedding
+            term = await self.terminology_repository.create(
+                {
+                    "pid":id,
+                    "word":other_word,
+                    "embedding":embedding[0],
+                    "specific_ds":specific_ds,
+                    "datasource_host":datasource_host,
+                    "datasource_port":datasource_port,
+                    "enabled":enabled,
+                }
+            )
+            ret.other_words.append(term.word)
+
+        return ret
 
 
     async def get_terms_with_query(self, query: str) -> list[Terminology]:

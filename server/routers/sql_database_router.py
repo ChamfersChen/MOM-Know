@@ -8,7 +8,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
 from server.utils.auth_middleware import get_admin_user
 
-from src.storage.db.models import User
+from src.storage.postgres.models_business import User
 from src.knowledge import graph_base
 from src import sql_database
 from src.utils import logger
@@ -195,38 +195,6 @@ async def update_tables(
         logger.error(f"Failed to get table info, {e}, {db_id=}, {traceback.format_exc()}")
         return {"message": "Failed to get table info", "status": "failed"}
 
-@sql_db.get("/database/{db_id}/tables/selected")
-async def get_tables(
-    db_id: str,
-    current_user: User = Depends(get_admin_user)
-    ):
-    logger.debug(f"GET tables info in {db_id}")
-
-    try:
-        info = await sql_database.get_selected_tables(db_id)
-        return info
-    except Exception as e:
-        logger.error(f"Failed to get selected table info, {e}, {db_id=}, {traceback.format_exc()}")
-        return {"message": "Failed to get selected table info", "status": "failed"}
-
-@sql_db.post("/database/{db_id}/tables/choose")
-async def choose_tables(
-    db_id: str,
-    table_ids: list[str] = Body(...),
-    current_user: User = Depends(get_admin_user)
-):
-    try:
-        if not table_ids:
-            raise Exception("Table IDs cannot be empty")
-        # 选择需要使用的表
-        table_info = await sql_database.select_tables(db_id, table_ids)
-        from src.agents import agent_manager
-        await agent_manager.reload_all()
-        return table_info
-    except Exception as e:
-        logger.error(f"Failed to choose tables, {e}, {db_id=}, {traceback.format_exc()}")
-        return {"message": "Failed to choose tables", "status": "failed"}
-
 @sql_db.put("/database/{db_id}")
 async def update_database_info(
     db_id: str,
@@ -256,13 +224,20 @@ async def update_database_info(
 
 # 术语接口
 @sql_db.post("/term")
-async def update_database_info(
+async def create_term_info(
     term_model: TerminologyInfo = Body(...),
 ):
     """添加术语"""
     terms = await term_service.create_terminology(term_model)
-    return terms
+    return {"message": "添加成功", "data": terms}
 
+@sql_db.put("/term")
+async def update_term_info(
+    term_model: TerminologyInfo = Body(...),
+):
+    """更新术语"""
+    terms = await term_service.update_terminology(term_model)
+    return {"message": "更新成功", "data": terms}
 
 @sql_db.delete("/term/{id}")
 async def delete_database_info(
@@ -278,4 +253,11 @@ async def get_terms_info_with_query(
 ):
     """根据查询语句获取术语"""
     terms = await term_service.get_terms_with_query(term_query_info.query)
-    return terms
+    return {"message": "success", "data": terms}
+
+@sql_db.get("/term")
+async def get_terms_info(
+):
+    """根据查询语句获取术语"""
+    all_terms = await term_service.get_all_terminology()
+    return {"message": "success", "data": list(all_terms.values())}

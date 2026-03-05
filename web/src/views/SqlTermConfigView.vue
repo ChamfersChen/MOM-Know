@@ -24,13 +24,15 @@
       row-key="id"
     >
       <template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'status'">
-          <a-tag :color="record.status === 'active' ? 'green' : 'default'">
-            {{ record.status === 'active' ? '启用' : '禁用' }}
-          </a-tag>
+        <template v-if="column.key === 'enabled'">
+          <a-switch 
+            :checked="record.enabled" 
+            @change="(checked) => handleStatusChange(record, checked)"
+            :loading="record.statusLoading"
+          />
         </template>
-        <template v-else-if="column.key === 'created_at'">
-          {{ formatDate(record.created_at) }}
+        <template v-else-if="column.key === 'create_time'">
+          {{ formatDate(record.create_time) }}
         </template>
         <template v-else-if="column.key === 'action'">
           <a-space>
@@ -69,10 +71,55 @@
           />
         </a-form-item>
         <a-form-item label="状态" name="status">
-          <a-select v-model:value="formData.status" placeholder="请选择状态">
-            <a-select-option value="active">启用</a-select-option>
-            <a-select-option value="inactive">禁用</a-select-option>
-          </a-select>
+          <a-switch v-model:checked="formData.statusActive" />
+          <span style="margin-left: 8px">{{ formData.statusActive ? '启用' : '禁用' }}</span>
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <a-modal
+      v-model:open="editModalVisible"
+      title="编辑术语"
+      @ok="handleEditSubmit"
+      @cancel="handleEditCancel"
+      :confirm-loading="submitting"
+      width="600px"
+    >
+      <a-form
+        ref="editFormRef"
+        :model="editFormData"
+        :rules="editFormRules"
+        layout="vertical"
+      >
+        <a-form-item label="术语名称" name="name">
+          <a-input v-model:value="editFormData.name" placeholder="请输入术语名称" />
+        </a-form-item>
+        <a-form-item label="术语描述" name="description">
+          <a-textarea 
+            v-model:value="editFormData.description" 
+            placeholder="请输入术语描述"
+            :rows="3"
+          />
+        </a-form-item>
+        <a-form-item label="同义词">
+          <div class="synonyms-list">
+            <div 
+              v-for="(synonym, index) in editFormData.synonyms" 
+              :key="index"
+              style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;"
+            >
+              <a-input 
+                v-model:value="editFormData.synonyms[index]" 
+                placeholder="请输入同义词"
+              />
+              <a-button type="text" danger size="small" @click="removeSynonym(index)">
+                <DeleteOutlined />
+              </a-button>
+            </div>
+            <a-button type="dashed" block @click="addSynonym">
+              <PlusOutlined /> 添加同义词
+            </a-button>
+          </div>
         </a-form-item>
       </a-form>
     </a-modal>
@@ -90,7 +137,9 @@ import {
   LeftOutlined,
   SettingOutlined 
 } from '@ant-design/icons-vue'
+import { useDatabaseStore } from '@/stores/sql_database'
 
+const databaseStore = useDatabaseStore()
 const route = useRoute()
 const router = useRouter()
 
@@ -110,12 +159,23 @@ const formRef = ref(null)
 const formData = reactive({
   name: '',
   description: '',
-  status: 'active'
+  statusActive: true
 })
 
 const formRules = {
-  name: [{ required: true, message: '请输入术语名称', trigger: 'blur' }],
-  status: [{ required: true, message: '请选择状态', trigger: 'change' }]
+  name: [{ required: true, message: '请输入术语名称', trigger: 'blur' }]
+}
+
+const editModalVisible = ref(false)
+const editFormRef = ref(null)
+const editFormData = reactive({
+  name: '',
+  description: '',
+  synonyms: []
+})
+
+const editFormRules = {
+  name: [{ required: true, message: '请输入术语名称', trigger: 'blur' }]
 }
 
 const pagination = reactive({
@@ -129,8 +189,8 @@ const pagination = reactive({
 const columns = [
   {
     title: '术语名称',
-    dataIndex: 'name',
-    key: 'name',
+    dataIndex: 'word',
+    key: 'word',
     width: '25%'
   },
   {
@@ -141,14 +201,14 @@ const columns = [
   },
   {
     title: '状态',
-    dataIndex: 'status',
-    key: 'status',
+    dataIndex: 'enabled',
+    key: 'enabled',
     width: '10%'
   },
   {
     title: '创建时间',
-    dataIndex: 'created_at',
-    key: 'created_at',
+    dataIndex: 'create_time',
+    key: 'create_time',
     width: '15%'
   },
   {
@@ -170,31 +230,9 @@ const goBack = () => {
 const loadTerms = async () => {
   loading.value = true
   try {
-    const mockData = [
-      {
-        id: 1,
-        name: '客户',
-        description: '指购买产品或服务的用户或组织',
-        status: 'active',
-        created_at: '2024-01-15 10:30:00'
-      },
-      {
-        id: 2,
-        name: '订单',
-        description: '客户下达的购买请求',
-        status: 'active',
-        created_at: '2024-01-16 14:20:00'
-      },
-      {
-        id: 3,
-        name: '产品',
-        description: '公司提供的商品或服务',
-        status: 'inactive',
-        created_at: '2024-01-17 09:15:00'
-      }
-    ]
-    terms.value = mockData
-    pagination.total = mockData.length
+    const data = await databaseStore.getAllTerms()
+    terms.value = data
+    pagination.total = data.length
   } catch (error) {
     message.error('加载术语列表失败')
   } finally {
@@ -207,23 +245,74 @@ const handleAdd = () => {
   editingId.value = null
   formData.name = ''
   formData.description = ''
-  formData.status = 'active'
+  formData.statusActive = true
   modalVisible.value = true
 }
 
 const handleEdit = (record) => {
   isEdit.value = true
   editingId.value = record.id
-  formData.name = record.name
-  formData.description = record.description
-  formData.status = record.status
-  modalVisible.value = true
+  editFormData.name = record.word
+  editFormData.description = record.description
+  editFormData.synonyms = record.other_words ? [...record.other_words] : []
+  editModalVisible.value = true
+}
+
+const handleStatusChange = async (record, checked) => {
+  record.statusLoading = true
+  try {
+    await new Promise(resolve => setTimeout(resolve, 300))
+    record.enabled = checked
+    message.success(checked ? '已启用' : '已禁用')
+  } catch (error) {
+    message.error('状态更新失败')
+  } finally {
+    record.statusLoading = false
+  }
+}
+
+const addSynonym = () => {
+  editFormData.synonyms.push('')
+}
+
+const removeSynonym = (index) => {
+  editFormData.synonyms.splice(index, 1)
+}
+
+const handleEditSubmit = async () => {
+  try {
+    await editFormRef.value.validate()
+    submitting.value = true
+    
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    const index = terms.value.findIndex(t => t.id === editingId.value)
+    if (index !== -1) {
+      terms.value[index] = { 
+        ...terms.value[index], 
+        word: editFormData.name,
+        description: editFormData.description,
+        other_words: editFormData.synonyms.filter(s => s.trim())
+      }
+    }
+    message.success('更新成功')
+    editModalVisible.value = false
+  } catch (error) {
+    console.error(error)
+  } finally {
+    submitting.value = false
+  }
+}
+
+const handleEditCancel = () => {
+  editModalVisible.value = false
+  editFormRef.value?.resetFields()
 }
 
 const handleDelete = (record) => {
   Modal.confirm({
     title: '确认删除',
-    content: `确定要删除术语「${record.name}」吗？`,
+    content: `确定要删除术语「${record.word}」吗？`,
     okText: '确认',
     cancelText: '取消',
     onOk: async () => {
@@ -245,24 +334,16 @@ const handleSubmit = async () => {
     
     await new Promise(resolve => setTimeout(resolve, 500))
     
-    if (isEdit.value) {
-      const index = terms.value.findIndex(t => t.id === editingId.value)
-      if (index !== -1) {
-        terms.value[index] = { 
-          ...terms.value[index], 
-          ...formData 
-        }
-      }
-      message.success('更新成功')
-    } else {
-      terms.value.unshift({
-        id: Date.now(),
-        ...formData,
-        created_at: new Date().toLocaleString('zh-CN')
-      })
-      pagination.total = terms.value.length
-      message.success('添加成功')
-    }
+    terms.value.unshift({
+      id: Date.now(),
+      word: formData.name,
+      description: formData.description,
+      enabled: formData.statusActive,
+      create_time: new Date().toLocaleString('zh-CN'),
+      other_words: []
+    })
+    pagination.total = terms.value.length
+    message.success('添加成功')
     
     modalVisible.value = false
   } catch (error) {

@@ -78,6 +78,12 @@ class TerminologyRepository:
             for child in children.scalars().all():
                 await session.delete(child)
 
+    async def delete_by_pid(self, pid: int) -> None:
+        async with pg_manager.get_async_session_context() as session:
+            children = await session.execute(select(Terminology).where(Terminology.pid == pid))
+            for child in children.scalars().all():
+                await session.delete(child)
+
     async def get_terms_with_embedding(self, embedding) -> list[dict[str, Any]]:
         async with pg_manager.get_async_session_context() as session:
             result = await session.execute(text(embedding_sql),

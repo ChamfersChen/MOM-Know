@@ -19,15 +19,6 @@ export const databaseApi = {
   },
 
   /**
-   * 选择数据库表
-   * @param {string} db_id - 数据库ID
-   * @param {Object} databaseData - 数据库数据
-   * @returns {Promise} - 创建结果
-   */
-  createChooseDatabaseTables: async (db_id, databaseData) => {
-    return apiAdminPost(`/api/sql_database/database/${db_id}/tables/choose`, databaseData)
-  },
-  /**
    * 创建数据库
    * @param {Object} databaseData - 数据库数据
    * @returns {Promise} - 创建结果
@@ -92,5 +83,14 @@ export const databaseApi = {
    */
   createGraph: async (params = {}) => {
     return apiAdminPost(`/api/sql_database/databases/neo4j`, params)
+  },
+
+  /**
+   * 获得配置术语列表
+   * @param {Object} params - 数据库分组信息
+   * @returns {Promise} - 更新结果
+   */
+  getAllTerms: async () => {
+    return apiAdminGet(`/api/sql_database/term`)
   },
 }

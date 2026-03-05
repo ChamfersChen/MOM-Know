@@ -572,6 +572,26 @@ export const useDatabaseStore = defineStore('sql_database', () => {
     }
   }
 
+  async function getAllTerms() {
+    const response = await databaseApi.getAllTerms()
+    if (response && response.data) {
+      // const transformedTerms = response.data.map(term => ({
+      //   id: term.id,
+      //   name: term.word,
+      //   description: term.description || '',
+      //   status: term.enabled ? 'active' : 'inactive',
+      //   synonyms: term.other_words || [],
+      //   statusLoading: false,
+      //   created_at: term.create_time || '',
+      //   datasource_host: term.datasource_host,
+      //   datasource_port: term.datasource_port,
+      //   specific_ds: term.specific_ds
+      // }))
+      return response.data
+    }
+    return []
+  }
+
   return {
     databases,
     database,
@@ -584,6 +604,7 @@ export const useDatabaseStore = defineStore('sql_database', () => {
     loadDatabases,
     checkConnection,
     createDatabase,
+    getAllTerms,
     getDatabaseInfo,
     updateDatabaseInfo,
     deleteDatabase,

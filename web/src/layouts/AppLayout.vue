@@ -116,12 +116,6 @@ const mainList = computed(() => {
       icon: Waypoints,
       activeIcon: Waypoints
     },
-    {
-      name: 'Dashboard',
-      path: '/dashboard',
-      icon: BarChart3,
-      activeIcon: BarChart3
-    }
   ]
 
   if (userStore.isSuperAdmin) {
@@ -134,7 +128,7 @@ const mainList = computed(() => {
   }
 
   items.push({
-    name: 'Dashboard',
+    name: '仪表盘',
     path: '/dashboard',
     icon: BarChart3,
     activeIcon: BarChart3
