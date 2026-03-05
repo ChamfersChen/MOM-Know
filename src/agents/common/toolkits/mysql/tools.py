@@ -1,7 +1,8 @@
 from typing import Annotated, Any
 
-from langchain.tools import tool
 from pydantic import BaseModel, Field
+
+from src.agents.common.toolkits.registry import tool
 from src.utils import logger
 from src.knowledge import graph_base
 
@@ -128,8 +129,13 @@ class TableListModel(BaseModel):
     pass
 
 
-# @tool(name_or_callable="mysql_list_tables", args_schema=TableListModel)
-# @tool(name_or_callable="查询表名及说明", args_schema=TableListModel)
+@tool(
+    category="mysql",
+    tags=["数据库", "查询"],
+    display_name="列出MySQL表",
+    name_or_callable="mysql_list_tables",
+    args_schema=TableListModel,
+)
 def mysql_list_tables() -> str:
     """【查询表名及说明】获取数据库中的所有表名
 
@@ -164,7 +170,13 @@ class TableDescribeModel(BaseModel):
     table_name: str = Field(description="要查询的表名", example="users")
 
 
-@tool(name_or_callable="mysql_describe_table", description="获得描述表", args_schema=TableDescribeModel)
+@tool(
+    category="mysql",
+    tags=["数据库", "结构"],
+    display_name="描述MySQL表结构",
+    name_or_callable="mysql_describe_table", description="获得描述表",
+    args_schema=TableDescribeModel,
+)
 async def mysql_describe_table(
         database_name: Annotated[str, "要查询的数据库名"],
         table_name: Annotated[str, "要查询结构的表名"]
@@ -265,7 +277,13 @@ class QueryModel(BaseModel):
     timeout: int | None = Field(default=60, description="查询超时时间（秒），默认60秒，最大600秒", ge=1, le=600)
 
 
-@tool(name_or_callable="mysql_query", description="执行 SQL 查询", args_schema=QueryModel)
+@tool(
+    category="mysql",
+    tags=["数据库", "SQL"],
+    display_name="执行MySQL查询",
+    name_or_callable="mysql_query", description="执行 SQL 查询",
+    args_schema=QueryModel,
+)
 async def mysql_query(
     database_names: Annotated[list[str], "要查询的数据库名称列表"], # noqa E501 TODO 可能存在同一个连接跨数据库表查询的问题，需要判断是否为一个连接
     sql: Annotated[str, "要执行的SQL查询语句（只能是SELECT语句, 且需要带上数据库名, 如：SELECT * FROM db1.table1）"],

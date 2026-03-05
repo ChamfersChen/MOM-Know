@@ -14,6 +14,7 @@ from server.routers.system_router import system
 from server.routers.task_router import tasks
 from server.routers.sql_database_router import sql_db
 # from server.routers.sql_knowledge_router import sql_kb
+from server.routers.tool_router import tools
 
 router = APIRouter()
 
@@ -32,3 +33,4 @@ router.include_router(sql_db)  # /api/tasks/*
 # router.include_router(sql_kb)  # /api/tasks/*
 router.include_router(mcp)  # /api/system/mcp-servers/*
 router.include_router(skills)  # /api/system/skills/*
+router.include_router(tools)  # /api/system/tools/*

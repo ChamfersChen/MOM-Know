@@ -128,14 +128,14 @@ const router = createRouter({
       ]
     },
     {
-      path: '/skills',
-      name: 'skills',
+      path: '/extensions',
+      name: 'extensions',
       component: AppLayout,
       children: [
         {
           path: '',
-          name: 'SkillsComp',
-          component: () => import('../views/SkillsView.vue'),
+          name: 'ExtensionsComp',
+          component: () => import('../views/ExtensionsView.vue'),
           meta: {
             keepAlive: false,
             requiresAuth: true,
@@ -144,6 +144,11 @@ const router = createRouter({
           }
         }
       ]
+    },
+    {
+      path: '/skills',
+      name: 'skills',
+      redirect: '/extensions'
     },
     {
       path: '/:pathMatch(.*)*',
