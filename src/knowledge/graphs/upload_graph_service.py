@@ -100,7 +100,9 @@ class UploadGraphService:
             h = {
                 "name": database_info["name"],
                 "database_name": database_info["name"],
-                "description": database_info["description"]
+                "description": database_info["description"],
+                "host": database_info['connect_info']['host'],
+                "port": database_info['connect_info']['port'],
 
             }
             db_id2h[database_info["db_id"]] = h
@@ -113,6 +115,8 @@ class UploadGraphService:
                     "database_name": database_info["name"],
                     "table_name": table_info["tablename"],
                     "table_description": table_info["description"],
+                    "host": database_info['connect_info']['host'],
+                    "port": database_info['connect_info']['port'],
                 }
                 triples.append({"h": h, "t": t, "r": "Database2Table"})
 

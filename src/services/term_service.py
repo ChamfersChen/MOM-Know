@@ -136,9 +136,9 @@ class TermService:
         return ret
 
 
-    async def get_terms_with_query(self, query: str) -> list[Terminology]:
+    async def get_terms_with_query(self, query: str, ds_host: str, ds_port: int) -> list[Terminology]:
         embedding = await self.embedder.aencode(query)
-        return await self.terminology_repository.get_terms_with_embedding(embedding[0])
+        return await self.terminology_repository.get_terms_with_embedding(embedding[0], ds_host, ds_port)
 
 
     async def delete_by_id(self, id: int) -> None:

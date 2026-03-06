@@ -10,12 +10,12 @@ from src.storage.postgres.models_terminology import Terminology
 embedding_sql = f"""
 SELECT id, pid, word, similarity
 FROM
-(SELECT id, pid, word, specific_ds, enabled,
+(SELECT id, pid, word, datasource_host, datasource_port, enabled,
 ( 1 - (embedding <=> :embedding_array) ) AS similarity
 FROM terminology AS child
 ) TEMP
 WHERE similarity > 0.5 AND enabled = true
-AND (specific_ds = false OR specific_ds IS NULL)
+AND datasource_host = :ds_host and datasource_port = :ds_port
 ORDER BY similarity DESC
 LIMIT 10;
 """
@@ -99,9 +99,13 @@ class TerminologyRepository:
             for child in children.scalars().all():
                 await session.delete(child)
 
-    async def get_terms_with_embedding(self, embedding) -> list[dict[str, Any]]:
+    async def get_terms_with_embedding(self, embedding, ds_host: str, ds_port: int) -> list[dict[str, Any]]:
         async with pg_manager.get_async_session_context() as session:
             result = await session.execute(text(embedding_sql),
-                            {'embedding_array': str(embedding)})
+                            {
+                                'embedding_array': str(embedding),
+                                'ds_host': str(ds_host),
+                                'ds_port': ds_port,
+                            })
             
             return result.mappings().all()

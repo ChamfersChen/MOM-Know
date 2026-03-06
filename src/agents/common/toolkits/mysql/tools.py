@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
@@ -14,11 +15,12 @@ from .connection import (
 )
 from .exceptions import MySQLConnectionError
 from .security import MySQLSecurityChecker
-from src.sql_database import sql_database
+from src.sql_database import sql_database, term_service
 
 # 全局连接管理器实例
 _connection_manager: MySQLConnectionManager | None = None
-
+host_set = set()
+port_set = set()
 
 def get_connection_manager() -> MySQLConnectionManager:
     """获取全局连接管理器"""
@@ -53,7 +55,14 @@ class QueryModel(BaseModel):
     query: str = Field(description="改写后的用户问题", example="")
 
 
-@tool(name_or_callable="mysql_list_tables_with_query", description="根据用户问题查询表名及说明", args_schema=QueryModel)
+# @tool(name_or_callable="mysql_list_tables_with_query", description="根据用户问题查询表名及说明", args_schema=QueryModel)
+@tool(
+    category="mysql",
+    tags=["数据库", "查询"],
+    display_name="根据用户问题查询表名及说明",
+    name_or_callable="mysql_list_tables_with_query",
+    args_schema=QueryModel,
+)
 async def mysql_list_tables_with_query(
     query: Annotated[str, "改写后的用户问题"],
 ) -> str:
@@ -61,6 +70,9 @@ async def mysql_list_tables_with_query(
 
     这个工具通过实体列表来列出当前数据库中所有的表名，帮助你了解数据库的结构。
     """
+    global host_set, port_set
+    host_set.clear()
+    port_set.clear()
     result = []
     logger.info(f">> 查询表名及说明 {query}")
     extras = mysql_list_tables_with_query.extras
@@ -72,9 +84,15 @@ async def mysql_list_tables_with_query(
         # tb_names = [n['name'] for n in query_results['nodes']]
         tb_names = []
         map_id_name = {}
+        map_id_port_ip = {}
         for n in query_results['nodes']:
             tb_names.append(n['name'])
             map_id_name[n['id']] = n['name']
+            map_id_port_ip[n['id']] = f"{n['host']}:{n['port']}"
+            host_set.add(n['host'])
+            port_set.add(n['port'])
+
+        assert len(host_set) == 1 and len(port_set) == 1, "查询结果中包含多个数据库连接信息，无法确定使用哪个连接查询表名"
         # loop = asyncio.new_event_loop()
         # asyncio.set_event_loop(loop)
         # databases = loop.run_until_complete(sql_database.get_databases())
@@ -86,15 +104,23 @@ async def mysql_list_tables_with_query(
                 db_desc = db_info['description']
                 db_name = db_info['name']
                 tables_info = db_info['tables']
+                db_host = db_info['connect_info']['host']
+                db_port = db_info['connect_info']['port']
+                if not db_host in host_set or not db_port in port_set: # noqa E501
+                    unaccessible_databases.append(f"{db_host}:{db_port}")
+                    continue
+
                 if not db_info['share_config']['is_shared'] and user_department not in db_info['share_config']['accessible_departments']: # noqa E501
-                    unaccessible_databases.append(db_name)
+                    unaccessible_databases.append(f"{db_host}:{db_port}")
                     continue
 
                 if not tables_info.values():
                     continue
+
                 for table_info in tables_info.values():
                     if f"{table_info['tablename']}" not in tb_names:
                         continue
+
                     table_name = f"`{table_info['tablename'].replace(".", "`.`")}`: {table_info['description']}"
                     table_names.append(table_name)
                 if table_names:
@@ -108,10 +134,10 @@ async def mysql_list_tables_with_query(
         for edge in t2t_edges:
             source_name = map_id_name[edge['source_id']]
             target_name = map_id_name[edge['target_id']]
-            if source_name in unaccessible_databases or target_name in unaccessible_databases:
-                continue
+
             if source_name == target_name:
                 continue
+
             database_edge_info.append(f"`{source_name}` <--> `{target_name}`")
         db_relation_info = ""
         if database_edge_info:
@@ -141,6 +167,7 @@ def mysql_list_tables() -> str:
 
     这个工具用来列出当前数据库中所有的表名，帮助你了解数据库的结构。
     """
+    global host_set, port_set
     result = []
     try:
         databases = sql_database.get_databases()
@@ -150,6 +177,10 @@ def mysql_list_tables() -> str:
                 db_desc = db_info['description']
                 db_name = db_info['connection_info']['database']
                 tables_info = db_info['selected_tables']
+                db_host = db_info['connect_info']['host']
+                db_port = db_info['connect_info']['port']
+                if not db_host in host_set or not db_port in port_set: # noqa E501
+                    continue
                 if not tables_info.values():
                     continue
                 for table_info in tables_info.values():
@@ -186,6 +217,10 @@ async def mysql_describe_table(
     这个工具用来查看表的字段信息、数据类型、是否允许NULL、默认值、键类型等。
     帮助你了解表的结构，以便编写正确的SQL查询。
     """
+    global host_set, port_set
+    host = deepcopy(host_set).pop() if len(host_set) == 1 else None
+    port = deepcopy(port_set).pop() if len(port_set) == 1 else None
+    assert host and port, "数据库连接信息为空."
     try:
         # 验证表名安全性
         if not MySQLSecurityChecker.validate_table_name(table_name):
@@ -193,6 +228,8 @@ async def mysql_describe_table(
 
         # conn_manager = get_connection_manager()
         db_id = sql_database.db_name_to_id[database_name]
+        host_port_name = f"{host}:{port}/{database_name}"
+        db_id = sql_database.db_host_port_name_to_id[host_port_name]
         db_instance = await sql_database._get_db_for_database(db_id)
         with db_instance.get_cursor(db_id) as cursor:
             # 获取表结构
@@ -298,6 +335,10 @@ async def mysql_query(
     - sql: SQL查询语句
     - timeout: 查询超时时间（防止长时间运行的查询）
     """
+    global host_set, port_set
+    host = deepcopy(host_set).pop() if len(host_set) == 1 else None
+    port = deepcopy(port_set).pop() if len(port_set) == 1 else None
+    assert host and port, "数据库连接信息为空."
     try:
         # 验证SQL安全性
         if not MySQLSecurityChecker.validate_sql(sql):
@@ -310,7 +351,9 @@ async def mysql_query(
         # connection = conn_manager.get_connection()
 
         database_name = database_names[0] # 获得同一个连接下的其中一个数据库名
-        db_id = sql_database.db_name_to_id[database_name]
+        # db_id = sql_database.db_name_to_id[database_name]
+        host_port_name = f"{host}:{port}/{database_name}"
+        db_id = sql_database.db_host_port_name_to_id[host_port_name]
         connection = await sql_database.get_connection(db_id)
 
         effective_timeout = timeout or 60

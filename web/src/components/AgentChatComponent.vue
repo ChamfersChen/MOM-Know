@@ -9,12 +9,15 @@
       :agents="agents"
       :selected-agent-id="currentAgentId"
       :is-creating-new-chat="chatUIStore.creatingNewChat"
+      :has-more-chats="hasMoreChats"
+      :is-loading-more="isLoadingMoreChats"
       @create-chat="createNewChat"
       @select-chat="selectChat"
       @delete-chat="deleteChat"
       @rename-chat="renameChat"
       @toggle-sidebar="toggleSidebar"
       @open-agent-modal="openAgentModal"
+      @load-more-chats="loadMoreChats"
       :class="{
         'sidebar-open': chatUIStore.isSidebarOpen,
         'no-transition': localUIState.isInitialRender
@@ -286,6 +289,8 @@ const chatState = reactive({
 // 组件级别的线程和消息状态
 const threads = ref([])
 const threadMessages = ref({})
+const hasMoreChats = ref(true) // 是否还有更多对话可加载
+const isLoadingMoreChats = ref(false) // 加载更多对话中
 
 // 本地 UI 状态（仅在本组件使用）
 const localUIState = reactive({
@@ -588,14 +593,41 @@ const fetchThreads = async (agentId = null) => {
 
   chatUIStore.isLoadingThreads = true
   try {
-    const fetchedThreads = await threadApi.getThreads(targetAgentId)
+    const fetchedThreads = await threadApi.getThreads(targetAgentId, 100, 0)
     threads.value = fetchedThreads || []
+    // 如果返回的数量小于limit，说明没有更多了
+    hasMoreChats.value = fetchedThreads && fetchedThreads.length >= 100
   } catch (error) {
     console.error('Failed to fetch threads:', error)
     handleChatError(error, 'fetch')
     throw error
   } finally {
     chatUIStore.isLoadingThreads = false
+  }
+}
+
+// 加载更多对话
+const loadMoreChats = async () => {
+  if (isLoadingMoreChats.value || !hasMoreChats.value) return
+
+  const targetAgentId = currentAgentId.value
+  if (!targetAgentId) return
+
+  isLoadingMoreChats.value = true
+  try {
+    const offset = threads.value.length
+    const fetchedThreads = await threadApi.getThreads(targetAgentId, 100, offset)
+    if (fetchedThreads && fetchedThreads.length > 0) {
+      threads.value = [...threads.value, ...fetchedThreads]
+      hasMoreChats.value = fetchedThreads.length >= 100
+    } else {
+      hasMoreChats.value = false
+    }
+  } catch (error) {
+    console.error('Failed to load more chats:', error)
+    handleChatError(error, 'fetch')
+  } finally {
+    isLoadingMoreChats.value = false
   }
 }
 
@@ -1234,10 +1266,6 @@ const createNewChat = async () => {
   // 如果第一个对话为空，直接切换到第一个对话而不是创建新对话
   if (await switchToFirstChatIfEmpty()) return
 
-  // 只有当当前对话是第一个对话且为空时，才阻止创建新对话
-  const currentThreadIndex = threads.value.findIndex((thread) => thread.id === currentChatId.value)
-  if (currentChatId.value && conversations.value.length === 0 && currentThreadIndex === 0) return
-
   chatUIStore.creatingNewChat = true
   try {
     const newThread = await createThread(currentAgentId.value, '新的对话')
@@ -1464,8 +1492,7 @@ const handleSendOrStop = async (payload) => {
 }
 
 // ==================== 人工审批处理 ====================
-const handleApprovalWithStream = async (approved, toolName = null, toolArgs = null) => {
-  console.log('🔄 [STREAM] Starting resume stream processing')
+const handleApprovalWithStream = async (approved) => {
   const threadId = approvalState.threadId
   if (!threadId) {
     message.error('无效的审批请求')
@@ -1485,8 +1512,7 @@ const handleApprovalWithStream = async (approved, toolName = null, toolArgs = nu
     const response = await handleApproval(
       approved,
       currentAgentId.value,
-      selectedAgentConfigId.value,
-      toolName || null, toolArgs?.value || null
+      selectedAgentConfigId.value
     )
 
     if (!response) return // 如果 handleApproval 抛出错误，这里不会执行
@@ -1504,73 +1530,15 @@ const handleApprovalWithStream = async (approved, toolName = null, toolArgs = nu
     }
 
     // 异步加载历史记录，保持当前消息显示直到历史记录加载完成
-    fetchThreadMessages({ agentId: currentAgentId.value, threadId: threadId }).finally(
-      () => {
-        resetOnGoingConv(threadId)
-        scrollController.scrollToBottom()
-      }
-    )
+    fetchThreadMessages({ agentId: currentAgentId.value, threadId: threadId }).finally(() => {
+      resetOnGoingConv(threadId)
+      scrollController.scrollToBottom()
+    })
   }
 }
 
-// const handleApprove = () => {
-//   handleApprovalWithStream(true)
-// }
-const handleApprove = (parsedOperation) => {
-  console.log('handleParsedOperation', parsedOperation); 
-  const realMessages = threadMessages.value[currentChatId.value]
-  console.log('realMessages', realMessages)
-  
-  const parsedParm = parsedOperation['params']
-  console.log('parsedParm', parsedParm)
-  const toolName = parsedOperation['name']
-  // 更新当前对话中的消息工具参数
-  if (approvalState.threadId && parsedParm && Array.isArray(parsedParm)) {
-    const threadState = getThreadState(approvalState.threadId);
-    const mergedArgs = ref(null)
-    if (threadState && threadState.onGoingConv) {
-      // 将键值对数组转换为对象格式
-      const updatedParams = {};
-      parsedParm.forEach(item => {
-        updatedParams[item.key] = item.value;
-      });
-      console.log('updatedParams', updatedParams);
-      
-      // 更新正在进行中的对话的最后一条AI消息的工具调用参数
-      if (realMessages.length > 0) {
-        const lastMessage = realMessages[realMessages.length - 1];
-        if (lastMessage.type === 'ai' && lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
-          // 更新最后一条工具调用的参数
-          lastMessage.tool_calls.forEach(toolCall => {
-            if (toolCall.args || toolCall.function?.arguments) {
-              try {
-                // 解析现有参数并合并更新
-                const existingArgs = typeof toolCall.args === 'string' 
-                  ? JSON.parse(toolCall.args) 
-                  : toolCall.args || {};
-                
-                // 合并更新的参数
-                mergedArgs.value = { ...existingArgs, ...updatedParams };
-                
-                // 更新工具调用参数
-                if (toolCall.args !== undefined) {
-                  toolCall.args = JSON.parse(JSON.stringify(mergedArgs.value));
-                }
-                if (toolCall.function?.arguments !== undefined) {
-                  toolCall.function.arguments = JSON.stringify(mergedArgs.value);
-                }
-                handleApprovalWithStream(true, toolName, mergedArgs)
-              } catch (error) {
-                console.error('更新工具参数失败:', error);
-              }
-            }
-          });
-          
-          console.log('已更新工具调用参数:', lastMessage.tool_calls);
-        }
-      }
-    }
-  }
+const handleApprove = () => {
+  handleApprovalWithStream(true)
 }
 
 const handleReject = () => {

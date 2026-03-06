@@ -13,10 +13,9 @@ from src.knowledge import graph_base
 from src import sql_database
 from src.utils import logger
 from src.storage.postgres.models_terminology import TerminologyInfo
-from src.services.term_service import TermService
+from src.sql_database import term_service
 
 sql_db = APIRouter(prefix="/sql_database", tags=["sql database"])
-term_service = TermService()
 
 class DatasourceConnectionInfo(BaseModel):
     host: str
@@ -24,6 +23,8 @@ class DatasourceConnectionInfo(BaseModel):
 
 class TermQueryInfo(BaseModel):
     query: str
+    ds_host: str
+    ds_port: int
 
 @sql_db.get("/databases")
 async def get_databases(
@@ -265,7 +266,7 @@ async def get_terms_info_with_query(
 ):
     """根据查询语句获取术语"""
     try:
-        terms = await term_service.get_terms_with_query(term_query_info.query)
+        terms = await term_service.get_terms_with_query(term_query_info.query, term_query_info.ds_host, term_query_info.ds_port)
         return {"message": "success", "data": terms, "code": 0}
     except Exception as e:
         logger.error(f"获取术语失败 {e}, {traceback.format_exc()}")

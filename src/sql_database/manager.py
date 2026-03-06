@@ -32,6 +32,7 @@ class SqlDataBaseManager:
 
         # 知识库名称与ID映射, 用于Tool调用时使用
         self.db_name_to_id: dict[str, str] = {}
+        self.db_host_port_name_to_id: dict[str, str] = {}
 
     async def initialize(self):
         """异步初始化"""
@@ -56,6 +57,10 @@ class SqlDataBaseManager:
                 db_type = row.db_type or "mysql"
                 db_types_in_use.add(db_type)
                 self.db_name_to_id[row.name] = row.db_id
+
+                host = row.connect_info['host']
+                port = row.connect_info['port']
+                self.db_host_port_name_to_id[f"{host}:{port}/{row.name}"] = str(row.db_id)
 
             logger.info(f"[InitializeDB] 发现 {len(db_types_in_use)} 种数据库类型: {db_types_in_use}")
 
@@ -295,7 +300,12 @@ class SqlDataBaseManager:
 
         for db in all_databases:
             db_id = db.get("db_id")
+            assert db_id, "数据库ID不能为空"
             self.db_name_to_id[db['name']] = db_id
+
+            port = db['connect_info']['port']
+            host = db['connect_info']['host']
+            self.db_host_port_name_to_id[f"{host}:{port}/{db['name']}"] = db_id
             if not db_id:
                 continue
 
@@ -385,7 +395,7 @@ class SqlDataBaseManager:
             **kwargs)
         db_id = db_info["db_id"]
         # 删除数据库名称与 ID 的映射
-        self.db_name_to_id[database_name] = db_id
+        self.db_host_port_to_id[f"{connect_info['host']}:{connect_info['port']}"] = db_id
 
         created_databases = set([v['database_id'] for v in db_instance.tables_meta.values()])
         if not created_databases or db_id not in created_databases:
@@ -398,11 +408,17 @@ class SqlDataBaseManager:
         """删除数据库"""
         try:
             db_instance = await self._get_db_for_database(db_id)
-            db_name = db_instance.get_database_info(db_id)["name"]
+            db_info = db_instance.get_database_info(db_id)
+            db_name = db_info['name']
+            db_host = db_info['connect_info']['host']
+            db_port = db_info['connect_info']['port']
+
             result = await db_instance.delete_database(db_id)
             # 删除数据库名称与 ID 的映射
             if db_name in self.db_name_to_id:
                 del self.db_name_to_id[db_name]
+            if f"{db_host}:{db_port}/{db_name}" in self.db_host_port_name_to_id:
+                del self.db_host_port_name_to_id[f"{db_host}:{db_port}/{db_name}"]
 
             return result
         except DBNotFoundError as e:
@@ -467,8 +483,14 @@ class SqlDataBaseManager:
         db_instance = await self._get_db_for_database(db_id)
         db_instance.update_database(db_id, name, description, share_config, related_db_ids)
 
+        db_info = db_instance.get_database_info(db_id)
+        assert db_info, f"数据库信息为空. db_id: {db_id}"
+        db_name = db_info['name']
+        db_host = db_info['connect_info']['host']
+        db_port = db_info['connect_info']['port']
         # 更新db名称到ID映射
         self.db_name_to_id[name] = db_id
+        self.db_host_port_name_to_id[f"{db_host}:{db_port}/{db_name}"] = db_id
 
         # 准备更新数据
         update_data: dict = {
