@@ -160,7 +160,6 @@ class TableListModel(BaseModel):
     tags=["数据库", "查询"],
     display_name="列出MySQL表",
     name_or_callable="mysql_list_tables",
-    args_schema=TableListModel,
 )
 def mysql_list_tables() -> str:
     """【查询表名及说明】获取数据库中的所有表名
