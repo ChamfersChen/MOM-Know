@@ -575,22 +575,50 @@ export const useDatabaseStore = defineStore('sql_database', () => {
   async function getAllTerms() {
     const response = await databaseApi.getAllTerms()
     if (response && response.data) {
-      // const transformedTerms = response.data.map(term => ({
-      //   id: term.id,
-      //   name: term.word,
-      //   description: term.description || '',
-      //   status: term.enabled ? 'active' : 'inactive',
-      //   synonyms: term.other_words || [],
-      //   statusLoading: false,
-      //   created_at: term.create_time || '',
-      //   datasource_host: term.datasource_host,
-      //   datasource_port: term.datasource_port,
-      //   specific_ds: term.specific_ds
-      // }))
       return response.data
     }
-    return []
+    message.error(response.message || '获取术语列表失败') 
   }
+
+  async function enableTerm(termId, enable) {
+    const response = await databaseApi.enableTerm(termId, enable)
+    if (response && response.code == 0) {
+      return response.data
+    }
+    message.error(response.message || '操作失败') 
+  }
+
+  async function deleteTerm(termId) {
+    const response = await databaseApi.deleteTerm(termId)
+    if (response && response.code == 0) {
+      message.success('删除成功')
+      return true
+    }
+    message.error(response.message || '操作失败') 
+    return false
+  }
+
+  async function updateTerm(termData) {
+    const response = await databaseApi.updateTerm(termData)
+    if (response && response.code == 0) {
+      message.success('更新成功')
+      return true
+    }
+    message.error(response.message || '操作失败') 
+    return false
+  }
+
+  async function addTerm(termData) {
+    const response = await databaseApi.addTerm(termData)
+    if (response && response.code == 0) {
+      message.success('添加成功')
+      return true
+    }
+    message.error(response.message || '操作失败') 
+    return false
+  }
+
+
 
   return {
     databases,
@@ -605,6 +633,10 @@ export const useDatabaseStore = defineStore('sql_database', () => {
     checkConnection,
     createDatabase,
     getAllTerms,
+    enableTerm,
+    updateTerm,
+    deleteTerm,
+    addTerm,
     getDatabaseInfo,
     updateDatabaseInfo,
     deleteDatabase,

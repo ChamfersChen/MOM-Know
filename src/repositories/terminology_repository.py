@@ -26,10 +26,16 @@ class TerminologyRepository:
             result = await session.execute(select(Terminology))
             return list(result.scalars().all())
 
-    async def get_by_id(self, pid: str) -> Terminology | None:
+    async def get_by_id(self, id: int) -> Terminology | None:
         async with pg_manager.get_async_session_context() as session:
-            result = await session.execute(select(Terminology).where(Terminology.id == pid))
+            result = await session.execute(select(Terminology).where(Terminology.id == id))
             return result.scalar_one_or_none()
+
+    async def get_children_by_pid(self, pid: int) -> list[Terminology]:
+        async with pg_manager.get_async_session_context() as session:
+            result = await session.execute(select(Terminology).where(Terminology.pid == pid))
+            return list(result.scalars().all())
+
 
     async def get_by_host_port(self, host: str, port:int) -> Terminology | None:
         async with pg_manager.get_async_session_context() as session:
@@ -65,6 +71,15 @@ class TerminologyRepository:
             
             for key, value in data.items():
                 setattr(term, key, value)
+        return term
+
+    async def enable_terminology(self, id:int, enable:bool) -> Terminology | None:
+        async with pg_manager.get_async_session_context() as session:
+            result = await session.execute(select(Terminology).where(Terminology.id == id))
+            term = result.scalar_one_or_none()
+            if term is None:
+                return None
+            setattr(term, "enabled", enable)
         return term
 
     async def delete(self, id: int) -> None:

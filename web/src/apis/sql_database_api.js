@@ -93,4 +93,36 @@ export const databaseApi = {
   getAllTerms: async () => {
     return apiAdminGet(`/api/sql_database/term`)
   },
+  /**
+   * 关闭、启用术语
+   * @param {Object} params - 数据库分组信息
+   * @returns {Promise} - 更新结果
+   */
+  enableTerm: async (termId, enable) => {
+    return apiAdminPut(`/api/sql_database/term/${termId}/enable/${enable}`)
+  },
+  /**
+   * 删除术语
+   * @param {Object} params - 数据库分组信息
+   * @returns {Promise} - 更新结果
+   */
+  deleteTerm: async (termId) => {
+    return apiAdminDelete(`/api/sql_database/term/${termId}`)
+  },
+  /**
+   * 更新术语
+   * @param {Object} params - 数据库分组信息
+   * @returns {Promise} - 更新结果
+   */
+  updateTerm: async (updateData) => {
+    return apiAdminPut(`/api/sql_database/term`, updateData)
+  },
+  /**
+   * 新增术语
+   * @param {Object} params - 数据库分组信息
+   * @returns {Promise} - 更新结果
+   */
+  addTerm: async (termData) => {
+    return apiAdminPost(`/api/sql_database/term`, termData)
+  },
 }

@@ -31,6 +31,19 @@ class TermService:
                 res[term.pid].other_words.append(term.word)
         return res
 
+    async def enable_terminology(self, id:int, enabled: bool) -> TerminologyInfo:
+        term = await self.terminology_repository.enable_terminology(id, enabled)
+        children = await self.terminology_repository.get_children_by_pid(id)
+        for child in children:
+            await self.enable_terminology(child.id, enabled)
+
+        res = TerminologyInfo(**term.__dict__)
+        
+        for child in children:
+            if child.pid is not None:
+                res.other_words.append(child.word)
+        return res
+
 
 
     async def create_terminology(self, terminology: TerminologyInfo) -> TerminologyInfo:
@@ -90,7 +103,6 @@ class TermService:
         datasource_port = terminology.datasource_port
         enabled = terminology.enabled
         other_words = terminology.other_words
-
         embedding = await self.embedder.aencode(word) # TODO : 需要根据术语名称生成embedding
         term = await self.terminology_repository.update(
             {

@@ -74,6 +74,26 @@
           <a-switch v-model:checked="formData.statusActive" />
           <span style="margin-left: 8px">{{ formData.statusActive ? '启用' : '禁用' }}</span>
         </a-form-item>
+        <a-form-item label="同义词">
+          <div class="synonyms-list">
+            <div 
+              v-for="(synonym, index) in formData.synonyms" 
+              :key="index"
+              style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;"
+            >
+              <a-input 
+                v-model:value="formData.synonyms[index]" 
+                placeholder="请输入同义词"
+              />
+              <a-button type="text" danger size="small" @click="removeFormSynonym(index)">
+                <DeleteOutlined />
+              </a-button>
+            </div>
+            <a-button type="dashed" block @click="addFormSynonym">
+              <PlusOutlined /> 添加同义词
+            </a-button>
+          </div>
+        </a-form-item>
       </a-form>
     </a-modal>
 
@@ -159,7 +179,8 @@ const formRef = ref(null)
 const formData = reactive({
   name: '',
   description: '',
-  statusActive: true
+  statusActive: true,
+  synonyms: []
 })
 
 const formRules = {
@@ -246,6 +267,7 @@ const handleAdd = () => {
   formData.name = ''
   formData.description = ''
   formData.statusActive = true
+  formData.synonyms = []
   modalVisible.value = true
 }
 
@@ -263,6 +285,9 @@ const handleStatusChange = async (record, checked) => {
   try {
     await new Promise(resolve => setTimeout(resolve, 300))
     record.enabled = checked
+    console.log(record)
+    await databaseStore.enableTerm(record.id, record.enabled)
+    // 模拟异步操作
     message.success(checked ? '已启用' : '已禁用')
   } catch (error) {
     message.error('状态更新失败')
@@ -279,12 +304,28 @@ const removeSynonym = (index) => {
   editFormData.synonyms.splice(index, 1)
 }
 
+const addFormSynonym = () => {
+  formData.synonyms.push('')
+}
+
+const removeFormSynonym = (index) => {
+  formData.synonyms.splice(index, 1)
+}
+
 const handleEditSubmit = async () => {
   try {
     await editFormRef.value.validate()
-    submitting.value = true
     
-    await new Promise(resolve => setTimeout(resolve, 500))
+    const filteredSynonyms = editFormData.synonyms.filter(s => s.trim())
+    const wordLower = editFormData.name.trim().toLowerCase()
+    const invalidSynonyms = filteredSynonyms.filter(s => s.toLowerCase() === wordLower)
+    
+    if (invalidSynonyms.length > 0) {
+      message.warning('同义词不能与术语名称相同')
+      return
+    }
+    
+    submitting.value = true
     
     const index = terms.value.findIndex(t => t.id === editingId.value)
     if (index !== -1) {
@@ -292,15 +333,16 @@ const handleEditSubmit = async () => {
         ...terms.value[index], 
         word: editFormData.name,
         description: editFormData.description,
-        other_words: editFormData.synonyms.filter(s => s.trim())
+        other_words: filteredSynonyms
       }
     }
-    message.success('更新成功')
+    await databaseStore.updateTerm(terms.value[index])
     editModalVisible.value = false
   } catch (error) {
     console.error(error)
   } finally {
     submitting.value = false
+    loadTerms()
   }
 }
 
@@ -317,9 +359,14 @@ const handleDelete = (record) => {
     cancelText: '取消',
     onOk: async () => {
       try {
-        terms.value = terms.value.filter(t => t.id !== record.id)
-        pagination.total = terms.value.length
-        message.success('删除成功')
+        // 删除术语
+        const res = await databaseStore.deleteTerm(record.id)
+        console.log('删除成功:', res)
+        if (res) {
+          terms.value = terms.value.filter(t => t.id !== record.id)
+          pagination.total = terms.value.length
+        }
+
       } catch (error) {
         message.error('删除失败')
       }
@@ -330,26 +377,36 @@ const handleDelete = (record) => {
 const handleSubmit = async () => {
   try {
     await formRef.value.validate()
+    
+    const filteredSynonyms = formData.synonyms.filter(s => s.trim())
+    const wordLower = formData.name.trim().toLowerCase()
+    const invalidSynonyms = filteredSynonyms.filter(s => s.toLowerCase() === wordLower)
+    
+    if (invalidSynonyms.length > 0) {
+      message.warning('同义词不能与术语名称相同')
+      return
+    }
+    
     submitting.value = true
     
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    terms.value.unshift({
+    const newTerm = {
       id: Date.now(),
       word: formData.name,
       description: formData.description,
       enabled: formData.statusActive,
-      create_time: new Date().toLocaleString('zh-CN'),
-      other_words: []
-    })
-    pagination.total = terms.value.length
-    message.success('添加成功')
-    
+      create_time: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      other_words: filteredSynonyms,
+      datasource_host: host.value,
+      datasource_port: Number(port.value),
+    }
+    pagination.total = terms.value.length + 1
+    await databaseStore.addTerm(newTerm) // 新增术语接口
     modalVisible.value = false
   } catch (error) {
     console.error(error)
   } finally {
     submitting.value = false
+    loadTerms()
   }
 }
 

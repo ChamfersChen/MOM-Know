@@ -228,36 +228,69 @@ async def create_term_info(
     term_model: TerminologyInfo = Body(...),
 ):
     """添加术语"""
-    terms = await term_service.create_terminology(term_model)
-    return {"message": "添加成功", "data": terms}
+    try:
+        terms = await term_service.create_terminology(term_model)
+        return {"message": "添加成功", "data": terms, "code": 0}
+    except Exception as e:
+        logger.error(f"添加术语失败 {e}, {traceback.format_exc()}")
+        raise HTTPException(status_code=400, detail=f"添加术语失败: {e}")
 
 @sql_db.put("/term")
 async def update_term_info(
     term_model: TerminologyInfo = Body(...),
 ):
     """更新术语"""
-    terms = await term_service.update_terminology(term_model)
-    return {"message": "更新成功", "data": terms}
+    try:
+        terms = await term_service.update_terminology(term_model)
+        return {"message": "更新成功", "data": terms, "code": 0}
+    except Exception as e:
+        logger.error(f"更新术语失败 {e}, {traceback.format_exc()}")
+        raise HTTPException(status_code=400, detail=f"更新术语失败: {e}")
 
 @sql_db.delete("/term/{id}")
 async def delete_database_info(
     id: str,
 ):
     """添加术语"""
-    await term_service.delete_by_id(int(id))
-    return {"message": "删除成功"}
+    try:
+        await term_service.delete_by_id(int(id))
+        return {"message": "删除成功", "code": 0}
+    except Exception as e:
+        logger.error(f"删除术语失败 {e}, {traceback.format_exc()}")
+        raise HTTPException(status_code=400, detail=f"删除术语失败: {e}")
 
 @sql_db.get("/term/query")
 async def get_terms_info_with_query(
     term_query_info: TermQueryInfo = Body(...),
 ):
     """根据查询语句获取术语"""
-    terms = await term_service.get_terms_with_query(term_query_info.query)
-    return {"message": "success", "data": terms}
+    try:
+        terms = await term_service.get_terms_with_query(term_query_info.query)
+        return {"message": "success", "data": terms, "code": 0}
+    except Exception as e:
+        logger.error(f"获取术语失败 {e}, {traceback.format_exc()}")
+        raise HTTPException(status_code=400, detail=f"获取术语失败: {e}")
 
 @sql_db.get("/term")
 async def get_terms_info(
 ):
     """根据查询语句获取术语"""
-    all_terms = await term_service.get_all_terminology()
-    return {"message": "success", "data": list(all_terms.values())}
+    try:
+        all_terms = await term_service.get_all_terminology()
+        return {"message": "success", "data": list(all_terms.values()), "code": 0}
+    except Exception as e:
+        logger.error(f"获取术语失败 {e}, {traceback.format_exc()}")
+        raise HTTPException(status_code=400, detail=f"获取术语失败: {e}")
+
+@sql_db.put("/term/{term_id}/enable/{enable}")
+async def enable_term(
+    term_id: int,
+    enable: bool
+):
+    """根据查询语句获取术语"""
+    try:
+        term = await term_service.enable_terminology(term_id, enable)
+        return {"message": "success", "data": term, "code": 0}
+    except Exception as e:
+        logger.error(f"启用术语失败 {e}, {traceback.format_exc()}")
+        raise HTTPException(status_code=400, detail=f"启用术语失败: {e}")
