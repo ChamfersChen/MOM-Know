@@ -22,6 +22,31 @@ _connection_manager: MySQLConnectionManager | None = None
 host_set = set()
 port_set = set()
 
+def convert_structure(data):
+    result = []
+
+    # 找父节点
+    parents = [item for item in data if item["pid"] is None]
+
+    for parent in parents:
+        parent_id = parent["id"]
+
+        # 找子节点
+        children = [
+            item["word"]
+            for item in data
+            if item["pid"] == parent_id
+        ]
+
+        result.append({
+            "id": parent_id,
+            "name": parent["word"],
+            "description": parent["description"],
+            "children": children
+        })
+
+    return result
+
 def get_connection_manager() -> MySQLConnectionManager:
     """获取全局连接管理器"""
     global _connection_manager
@@ -50,18 +75,17 @@ def get_connection_manager() -> MySQLConnectionManager:
     return _connection_manager
 
 
-class QueryModel(BaseModel):
+class ListDbModel(BaseModel):
 
     query: str = Field(description="改写后的用户问题", example="")
 
 
-# @tool(name_or_callable="mysql_list_tables_with_query", description="根据用户问题查询表名及说明", args_schema=QueryModel)
 @tool(
     category="mysql",
     tags=["数据库", "查询"],
-    display_name="根据用户问题查询表名及说明",
+    display_name="列出MySQL表",
     name_or_callable="mysql_list_tables_with_query",
-    args_schema=QueryModel,
+    args_schema=ListDbModel,
 )
 async def mysql_list_tables_with_query(
     query: Annotated[str, "改写后的用户问题"],
@@ -141,10 +165,24 @@ async def mysql_list_tables_with_query(
             database_edge_info.append(f"`{source_name}` <--> `{target_name}`")
         db_relation_info = ""
         if database_edge_info:
-            db_relation_info = f"数据库之间存在以下关系: \n{'\n'.join(database_edge_info)}"
+            db_relation_info = f"\n===\n数据库之间存在以下关系: \n{'\n'.join(database_edge_info)}"
 
-
-        return f"{db_entity_info}\n===\n{db_relation_info}" if len(result) else "您所在的部门没有可以访问的数据库，请联系管理员，添加数据库。" # noqa E501
+        # 处理术语
+        db_term_info = ""
+        host, port = deepcopy(host_set).pop(), deepcopy(port_set).pop()
+        terms = await term_service.get_terms_with_query(query, ds_host=host, ds_port=port)
+        terms_info = convert_structure(terms)
+        for term_info in terms_info:
+            term_name = term_info['name']
+            term_desc = term_info['description']
+            term_children = term_info['children']
+            if term_children:
+                db_term_info += f"\n- `{term_name}`: {term_desc}, 包含以下同义词: {', '.join(term_children)}"
+            else:
+                db_term_info += f"\n- `{term_name}`: {term_desc}"
+        if db_term_info:
+            db_term_info = f"\n===\n相关术语信息:{db_term_info}"
+        return f"{db_entity_info}{db_relation_info}{db_term_info}" if len(result) else "您所在的部门没有可以访问的数据库，请联系管理员，添加数据库。" # noqa E501
     except Exception as e:
         error_msg = f"获取表名失败: {str(e)}"
         return error_msg
@@ -155,12 +193,12 @@ class TableListModel(BaseModel):
     pass
 
 
-@tool(
-    category="mysql",
-    tags=["数据库", "查询"],
-    display_name="列出MySQL表",
-    name_or_callable="mysql_list_tables",
-)
+# @tool(
+#     category="mysql",
+#     tags=["数据库", "查询"],
+#     display_name="列出MySQL表",
+#     name_or_callable="mysql_list_tables",
+# )
 def mysql_list_tables() -> str:
     """【查询表名及说明】获取数据库中的所有表名
 

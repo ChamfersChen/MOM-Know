@@ -8,13 +8,13 @@ from src.storage.postgres.manager import pg_manager
 from src.storage.postgres.models_terminology import Terminology
 
 embedding_sql = f"""
-SELECT id, pid, word, similarity
+SELECT id, pid, word, similarity, description
 FROM
-(SELECT id, pid, word, datasource_host, datasource_port, enabled,
+(SELECT id, pid, word, datasource_host, datasource_port, enabled, description, 
 ( 1 - (embedding <=> :embedding_array) ) AS similarity
 FROM terminology AS child
 ) TEMP
-WHERE similarity > 0.5 AND enabled = true
+WHERE similarity > 0.1 AND enabled = true
 AND datasource_host = :ds_host and datasource_port = :ds_port
 ORDER BY similarity DESC
 LIMIT 10;

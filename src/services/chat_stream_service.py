@@ -430,7 +430,6 @@ async def stream_agent_chat(
         async for chunk in check_and_handle_interrupts(agent, langgraph_config, make_chunk, meta, thread_id):
             yield chunk
 
-        meta["time_cost"] = asyncio.get_event_loop().time() - start_time
         try:
             graph = await agent.get_graph()
             state = await graph.aget_state(langgraph_config)
@@ -448,8 +447,6 @@ async def stream_agent_chat(
             yield chunk
 
         meta["time_cost"] = asyncio.get_event_loop().time() - start_time
-
-        yield make_chunk(status="finished", meta=meta)
 
         await save_messages_from_langgraph_state(
             agent_instance=agent,
