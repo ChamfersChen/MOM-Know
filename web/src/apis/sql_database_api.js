@@ -125,4 +125,20 @@ export const databaseApi = {
   addTerm: async (termData) => {
     return apiAdminPost(`/api/sql_database/term`, termData)
   },
+
+  getAllExamples: async () => {
+    return apiAdminGet(`/api/sql_database/example`)
+  },
+  enableExample: async (exampleId, enable) => {
+    return apiAdminPut(`/api/sql_database/example/${exampleId}/enable/${enable}`)
+  },
+  deleteExample: async (exampleId) => {
+    return apiAdminDelete(`/api/sql_database/example/${exampleId}`)
+  },
+  updateExample: async (updateData) => {
+    return apiAdminPut(`/api/sql_database/example`, updateData)
+  },
+  addExample: async (exampleData) => {
+    return apiAdminPost(`/api/sql_database/example`, exampleData)
+  },
 }

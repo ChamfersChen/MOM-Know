@@ -618,6 +618,52 @@ export const useDatabaseStore = defineStore('sql_database', () => {
     return false
   }
 
+  async function getAllExamples() {
+    const response = await databaseApi.getAllExamples()
+    if (response && response.data) {
+      return response.data
+    }
+    message.error(response.message || '获取示例列表失败') 
+  }
+
+  async function enableExample(exampleId, enable) {
+    const response = await databaseApi.enableExample(exampleId, enable)
+    if (response && response.code == 0) {
+      return response.data
+    }
+    message.error(response.message || '操作失败') 
+  }
+
+  async function deleteExample(exampleId) {
+    const response = await databaseApi.deleteExample(exampleId)
+    if (response && response.code == 0) {
+      message.success('删除成功')
+      return true
+    }
+    message.error(response.message || '操作失败') 
+    return false
+  }
+
+  async function updateExample(exampleData) {
+    const response = await databaseApi.updateExample(exampleData)
+    if (response && response.code == 0) {
+      message.success('更新成功')
+      return true
+    }
+    message.error(response.message || '操作失败') 
+    return false
+  }
+
+  async function addExample(exampleData) {
+    const response = await databaseApi.addExample(exampleData)
+    if (response && response.code == 0) {
+      message.success('添加成功')
+      return true
+    }
+    message.error(response.message || '操作失败') 
+    return false
+  }
+
 
 
   return {
@@ -655,6 +701,12 @@ export const useDatabaseStore = defineStore('sql_database', () => {
     startAutoRefresh,
     stopAutoRefresh,
     toggleAutoRefresh,
-    selectAllFailedFiles
+    selectAllFailedFiles,
+
+    getAllExamples,
+    enableExample,
+    deleteExample,
+    updateExample,
+    addExample
   }
 })

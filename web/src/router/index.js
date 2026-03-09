@@ -107,6 +107,12 @@ const router = createRouter({
           meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
         },
         {
+          path: 'sql-example',
+          name: 'SqlExampleComp',
+          component: () => import('../views/SqlExampleView.vue'),
+          meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
+        },
+        {
           path: ':database_id',
           name: 'SqlDatabaseInfoComp',
           component: () => import('../views/SqlDataBaseInfoView.vue'),
