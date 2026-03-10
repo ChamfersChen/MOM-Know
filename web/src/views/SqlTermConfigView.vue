@@ -251,7 +251,7 @@ const goBack = () => {
 const loadTerms = async () => {
   loading.value = true
   try {
-    const data = await databaseStore.getAllTerms()
+    const data = await databaseStore.getTermsByHostPort(host.value, Number(port.value))
     terms.value = data
     pagination.total = data.length
   } catch (error) {

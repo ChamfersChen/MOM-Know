@@ -31,6 +31,18 @@ class TermService:
                 res[term.pid].other_words.append(term.word)
         return res
 
+    async def get_terminologies_by_host_port(self, host: str, port: int) -> dict[int, TerminologyInfo]:
+        all_terms = await self.terminology_repository.get_by_host_port(host=host, port=port)
+        res: dict[int, TerminologyInfo] = {}
+        for term in all_terms:
+            if term.pid is None:
+                res[term.id] = TerminologyInfo(**term.__dict__)
+        
+        for term in all_terms:
+            if term.pid is not None:
+                res[term.pid].other_words.append(term.word)
+        return res
+
     async def enable_terminology(self, id:int, enabled: bool) -> TerminologyInfo:
         term = await self.terminology_repository.enable_terminology(id, enabled)
         children = await self.terminology_repository.get_children_by_pid(id)
@@ -53,6 +65,7 @@ class TermService:
         datasource_host = terminology.datasource_host
         datasource_port = terminology.datasource_port
         enabled = terminology.enabled
+        create_time = terminology.create_time
         embedding = await self.embedder.aencode(word) # TODO : 需要根据术语名称生成embedding
         term = await self.terminology_repository.create(
             {
@@ -63,6 +76,7 @@ class TermService:
                 "datasource_host":datasource_host,
                 "datasource_port":datasource_port,
                 "enabled":enabled,
+                "create_time":create_time,
             }
         )
 
@@ -79,6 +93,7 @@ class TermService:
                     "datasource_host":datasource_host,
                     "datasource_port":datasource_port,
                     "enabled":enabled,
+                    "create_time":create_time,
                 }
             )
         

@@ -37,11 +37,11 @@ class TerminologyRepository:
             return list(result.scalars().all())
 
 
-    async def get_by_host_port(self, host: str, port:int) -> Terminology | None:
+    async def get_by_host_port(self, host: str, port:int) -> list[Terminology]:
         async with pg_manager.get_async_session_context() as session:
             result = await session.execute(select(Terminology).where(Terminology.datasource_host==host, 
                                                                      Terminology.datasource_port==port))
-            return result.scalar_one_or_none()
+            return list(result.scalars().all())
 
     async def check_exists(self, word: str, host: str, port: int) -> Terminology | None:
         async with pg_manager.get_async_session_context() as session:

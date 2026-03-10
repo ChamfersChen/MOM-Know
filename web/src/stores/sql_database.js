@@ -580,6 +580,14 @@ export const useDatabaseStore = defineStore('sql_database', () => {
     message.error(response.message || '获取术语列表失败') 
   }
 
+  async function getTermsByHostPort(host, port) {
+    const response = await databaseApi.getTermsByHostPort(host, port)
+    if (response && response.data) {
+      return response.data
+    }
+    message.error(response.message || '获取术语列表失败') 
+  }
+
   async function enableTerm(termId, enable) {
     const response = await databaseApi.enableTerm(termId, enable)
     if (response && response.code == 0) {
@@ -618,8 +626,20 @@ export const useDatabaseStore = defineStore('sql_database', () => {
     return false
   }
 
+  /**
+   * 获取所有sql例子
+   * @returns {Promise} - 获取结果
+   */
   async function getAllExamples() {
     const response = await databaseApi.getAllExamples()
+    if (response && response.data) {
+      return response.data
+    }
+    message.error(response.message || '获取示例列表失败') 
+  }
+
+  async function getSqlExamplesByHostPort(host, port) {
+    const response = await databaseApi.getSqlExamplesByHostPort(host, port)
     if (response && response.data) {
       return response.data
     }
@@ -679,12 +699,14 @@ export const useDatabaseStore = defineStore('sql_database', () => {
     checkConnection,
     createDatabase,
     getAllTerms,
+    getTermsByHostPort,
     enableTerm,
     updateTerm,
     deleteTerm,
     addTerm,
     getDatabaseInfo,
     updateDatabaseInfo,
+    getSqlExamplesByHostPort,
     deleteDatabase,
     deleteFile,
     handleDeleteFile,

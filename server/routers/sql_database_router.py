@@ -13,7 +13,8 @@ from src.knowledge import graph_base
 from src import sql_database
 from src.utils import logger
 from src.storage.postgres.models_terminology import TerminologyInfo
-from src.sql_database import term_service
+from src.storage.postgres.models_sql_examples import SqlExampleInfo
+from src.sql_database import term_service, sql_example_service
 
 sql_db = APIRouter(prefix="/sql_database", tags=["sql database"])
 
@@ -223,6 +224,9 @@ async def update_database_info(
         raise HTTPException(status_code=400, detail=f"更新数据库失败: {e}")
 
 
+class HostPostInfo(BaseModel):
+    host: str
+    port: int
 # 术语接口
 @sql_db.post("/term")
 async def create_term_info(
@@ -272,12 +276,25 @@ async def get_terms_info_with_query(
         logger.error(f"获取术语失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"获取术语失败: {e}")
 
-@sql_db.get("/term")
+@sql_db.get("/terms")
 async def get_terms_info(
 ):
     """根据查询语句获取术语"""
     try:
         all_terms = await term_service.get_all_terminology()
+        return {"message": "success", "data": list(all_terms.values()), "code": 0}
+    except Exception as e:
+        logger.error(f"获取术语失败 {e}, {traceback.format_exc()}")
+        raise HTTPException(status_code=400, detail=f"获取术语失败: {e}")
+
+@sql_db.get("/term/{host}/{port}")
+async def get_terms_with_host_port_info(
+    host: str,
+    port: int
+):
+    """根据查询语句获取术语"""
+    try:
+        all_terms = await term_service.get_terminologies_by_host_port(host=host, port=port)
         return {"message": "success", "data": list(all_terms.values()), "code": 0}
     except Exception as e:
         logger.error(f"获取术语失败 {e}, {traceback.format_exc()}")
@@ -295,3 +312,91 @@ async def enable_term(
     except Exception as e:
         logger.error(f"启用术语失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"启用术语失败: {e}")
+
+# sql示例接口
+@sql_db.get("/sqls")
+async def get_sqls(
+):
+    """根据查询语句获取术语"""
+    try:
+        all_sqls = await sql_example_service.get_all_sql_examples()
+        return {"message": "success", "data": all_sqls, "code": 0}
+    except Exception as e:
+        logger.error(f"获取术语失败 {e}, {traceback.format_exc()}")
+        raise HTTPException(status_code=400, detail=f"获取术语失败: {e}")
+
+@sql_db.get("/sqls/{host}/{port}")
+async def get_sqls_by_host_port(
+    host: str,
+    port: int
+):
+    """根据查询语句获取术语"""
+    try:
+        all_sqls = await sql_example_service.get_sql_example_by_host_port(host=host, port=port)
+        return {"message": "success", "data": all_sqls, "code": 0}
+    except Exception as e:
+        logger.error(f"获取术语失败 {e}, {traceback.format_exc()}")
+        raise HTTPException(status_code=400, detail=f"获取术语失败: {e}")
+
+@sql_db.post("/sql")
+async def create_sql(
+    sql_model: SqlExampleInfo = Body(...),
+):
+    """添加SQL示例"""
+    try:
+        sqls = await sql_example_service.create_sql_example(sql_model)
+        return {"message": "添加成功", "data": sqls, "code": 0}
+    except Exception as e:
+        logger.error(f"添加SQL示例失败 {e}, {traceback.format_exc()}")
+        raise HTTPException(status_code=400, detail=f"添加SQL示例失败: {e}")
+
+@sql_db.put("/sql/{sql_id}/enable/{enable}")
+async def enable_sql(
+    sql_id: int,
+    enable: bool
+):
+    """根据查询语句获取术语"""
+    try:
+        sql = await sql_example_service.enable_sql_example(sql_id, enable)
+        return {"message": "success", "data": sql, "code": 0}
+    except Exception as e:
+        logger.error(f"启用SQL示例失败 {e}, {traceback.format_exc()}")
+        raise HTTPException(status_code=400, detail=f"启用SQL示例失败: {e}")
+
+@sql_db.put("/sql")
+async def update_sql_info(
+    sql_model: SqlExampleInfo = Body(...),
+):
+    """更新SQL示例"""
+    try:
+        sql = await sql_example_service.update_sql_example(sql_model)
+        return {"message": "更新成功", "data": sql, "code": 0}
+    except Exception as e:
+        logger.error(f"更新SQL示例失败 {e}, {traceback.format_exc()}")
+        raise HTTPException(status_code=400, detail=f"更新SQL示例失败: {e}")
+
+@sql_db.delete("/sql/{id}")
+async def delete_sql_example(
+    id: int,
+):
+    """删除SQL示例"""
+    try:
+        await sql_example_service.delete_by_id(int(id))
+        return {"message": "删除成功", "code": 0}
+    except Exception as e:
+        logger.error(f"删除SQL示例失败 {e}, {traceback.format_exc()}")
+        raise HTTPException(status_code=400, detail=f"删除SQL示例失败: {e}")
+
+@sql_db.post("/sql")
+async def create_sql_example(
+    sql_model: SqlExampleInfo = Body(...),
+):
+    """添加SQL示例"""
+    import ipdb; ipdb.set_trace()
+    print(sql_model)
+    try:
+        sqls = await sql_example_service.create_sql_example(sql_model)
+        return {"message": "添加成功", "data": sqls, "code": 0}
+    except Exception as e:
+        logger.error(f"添加SQL示例失败 {e}, {traceback.format_exc()}")
+        raise HTTPException(status_code=400, detail=f"添加SQL示例失败: {e}")

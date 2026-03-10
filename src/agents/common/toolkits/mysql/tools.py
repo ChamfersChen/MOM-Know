@@ -1,4 +1,6 @@
 from copy import deepcopy
+from datetime import datetime
+import traceback
 from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
@@ -15,7 +17,8 @@ from .connection import (
 )
 from .exceptions import MySQLConnectionError
 from .security import MySQLSecurityChecker
-from src.sql_database import sql_database, term_service
+from src.sql_database import sql_database, term_service, sql_example_service
+from src.storage.postgres.models_sql_examples import SqlExampleInfo
 
 # 全局连接管理器实例
 _connection_manager: MySQLConnectionManager | None = None
@@ -182,7 +185,12 @@ async def mysql_list_tables_with_query(
                 db_term_info += f"\n- `{term_name}`: {term_desc}"
         if db_term_info:
             db_term_info = f"\n===\n相关术语信息:{db_term_info}"
-        return f"{db_entity_info}{db_relation_info}{db_term_info}" if len(result) else "您所在的部门没有可以访问的数据库，请联系管理员，添加数据库。" # noqa E501
+        
+        # 处理SQL示例
+        sqls = await sql_example_service.get_with_query(query, ds_host=host, ds_port=port)
+        sql_example_info = "---".join([f"\n- SQL示例: `{sql.sql}`，描述: {sql.description}" for sql in sqls])
+        sql_example_info = f"\n===\n相关SQL示例:{sql_example_info}" if sql_example_info else ""
+        return f"{db_entity_info}{db_relation_info}{db_term_info}{sql_example_info}" if len(result) else "您所在的部门没有可以访问的数据库，请联系管理员，添加数据库。" # noqa E501
     except Exception as e:
         error_msg = f"获取表名失败: {str(e)}"
         return error_msg
@@ -501,6 +509,38 @@ def _inject_db_description(tools: list[Any]) -> None:
             _tool.description = f"{_tool.description}\n\n当前数据库说明: {db_desc}"
 
     _db_description_injected = True
+
+class StoreSQLResult(BaseModel):
+    query: str = Field(..., description="用户问题")
+    sql: str = Field(..., description="最终能够回答用户问题的SQL语句")
+
+@tool(
+    category="mysql",
+    tags=["数据库", "SQL"],
+    display_name="自动存储Query与SQL结果",
+    name_or_callable="store_query_result", description="自动存储Query与SQL结果",
+    args_schema=StoreSQLResult,
+)
+async def store_query_result(
+    query: Annotated[str, "用户问题描述"], # noqa E501 TODO 可能存在同一个连接跨数据库表查询的问题，需要判断是否为一个连接
+    sql: Annotated[str, "最终能够回答用户问题的SQL语句"],
+) -> str:
+    try:
+        await sql_example_service.create_sql_example(
+            SqlExampleInfo(
+                sql=sql,
+                description=query,
+                create_time=datetime.now(), # .strftime("%Y-%m-%d %H:%M:%S"),
+                datasource_host=deepcopy(host_set).pop() if len(host_set) == 1 else None,
+                datasource_port=deepcopy(port_set).pop() if len(port_set) == 1 else None,
+                enabled=True,
+            )
+        )
+        return "SQL示例存储成功"
+    except Exception as e:
+        logger.error(f"存储SQL示例失败: {e}, {traceback.format_exc()}")
+        return f"存储SQL示例失败: {str(e)}"
+
 
 
 def get_mysql_tools() -> list[Any]:

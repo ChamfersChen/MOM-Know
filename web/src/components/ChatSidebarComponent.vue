@@ -43,34 +43,34 @@
             </div>
             <div class="actions-mask"></div>
             <div class="conversation-actions">
-              <a-dropdown :trigger="['click']" @click.stop>
+              <a-dropdown :trigger="['click']">
                 <template #overlay>
                   <a-menu>
                     <a-menu-item
                       key="pin"
-                      @click.stop="togglePin(chat.id)"
+                      @click="togglePin(chat.id)"
                       :icon="h(chat.is_pinned ? PinOff : Pin, { size: 14 })"
                     >
                       {{ chat.is_pinned ? '取消置顶' : '置顶' }}
                     </a-menu-item>
                     <a-menu-item
                       key="rename"
-                      @click.stop="renameChat(chat.id)"
+                      @click="renameChat(chat.id)"
                       :icon="h(Pencil, { size: 14 })"
                     >
                       重命名
                     </a-menu-item>
                     <a-menu-item
                       key="delete"
-                      @click.stop="deleteChat(chat.id)"
+                      @click="deleteChat(chat.id)"
                       :icon="h(Trash2, { size: 14 })"
                     >
                       删除
                     </a-menu-item>
                   </a-menu>
                 </template>
-                <div class="action-btn-wrapper">
-                  <a-button type="text" class="more-btn" @click.stop>
+                <div class="action-btn-wrapper" @click.stop>
+                  <a-button type="text" class="more-btn">
                     <MoreVertical :size="16" />
                   </a-button>
                   <Pin v-if="chat.is_pinned" :size="14" class="pinned-indicator" />

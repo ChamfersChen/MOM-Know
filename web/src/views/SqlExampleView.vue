@@ -229,18 +229,18 @@ const goBack = () => {
 const loadExamples = async () => {
   loading.value = true
   try {
-    const data = [
-      {
-        "id": 1,
-        "create_time": null,
-        "description": "查找所有系统用户",
-        "sql": "select * from `mom`.`sys_user`",
-        "datasource_host": "127.0.0.1",
-        "datasource_port": 3306,
-        "enabled": false
-      }
-    ]
-    // await databaseStore.getAllExamples()
+    // const data = [
+    //   {
+    //     "id": 1,
+    //     "create_time": null,
+    //     "description": "查找所有系统用户",
+    //     "sql": "select * from `mom`.`sys_user`",
+    //     "datasource_host": "127.0.0.1",
+    //     "datasource_port": 3306,
+    //     "enabled": false
+    //   }
+    // ]
+    const data = await databaseStore.getSqlExamplesByHostPort(host.value, Number(port.value))
     examples.value = data
     pagination.total = data.length
   } catch (error) {
@@ -343,6 +343,7 @@ const handleSubmit = async () => {
       datasource_host: host.value,
       datasource_port: Number(port.value),
     }
+    console.log('newExample', newExample)
     await databaseStore.addExample(newExample)
     modalVisible.value = false
   } catch (error) {

@@ -76,7 +76,7 @@ class ConnectorBase(ABC):
             }
             for db in databases
         }
-        logger.debug(f"databases meta: {self.databases_meta}")
+        # logger.debug(f"databases meta: {self.databases_meta}")
         self.tables_meta = {}
         for db in databases:
             for record in await table_repo.list_by_db_id(db.db_id):

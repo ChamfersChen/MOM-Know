@@ -93,6 +93,9 @@ export const databaseApi = {
   getAllTerms: async () => {
     return apiAdminGet(`/api/sql_database/term`)
   },
+  getTermsByHostPort: async (host, port) => {
+    return apiAdminGet(`/api/sql_database/term/${host}/${port}`)
+  },
   /**
    * 关闭、启用术语
    * @param {Object} params - 数据库分组信息
@@ -125,20 +128,27 @@ export const databaseApi = {
   addTerm: async (termData) => {
     return apiAdminPost(`/api/sql_database/term`, termData)
   },
-
+  /**
+   * 获取所有sql例子
+   * @returns {Promise} - 获取结果
+   */
   getAllExamples: async () => {
-    return apiAdminGet(`/api/sql_database/example`)
+    return apiAdminGet(`/api/sql_database/sqls`)
+  },
+
+  getSqlExamplesByHostPort: async (host, port) => {
+    return apiAdminGet(`/api/sql_database/sqls/${host}/${port}`)
   },
   enableExample: async (exampleId, enable) => {
-    return apiAdminPut(`/api/sql_database/example/${exampleId}/enable/${enable}`)
+    return apiAdminPut(`/api/sql_database/sql/${exampleId}/enable/${enable}`)
   },
   deleteExample: async (exampleId) => {
-    return apiAdminDelete(`/api/sql_database/example/${exampleId}`)
+    return apiAdminDelete(`/api/sql_database/sql/${exampleId}`)
   },
   updateExample: async (updateData) => {
-    return apiAdminPut(`/api/sql_database/example`, updateData)
+    return apiAdminPut(`/api/sql_database/sql`, updateData)
   },
   addExample: async (exampleData) => {
-    return apiAdminPost(`/api/sql_database/example`, exampleData)
+    return apiAdminPost(`/api/sql_database/sql`, exampleData)
   },
 }

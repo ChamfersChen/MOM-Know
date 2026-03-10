@@ -1,9 +1,11 @@
 import os
+
 from src.config import config
 from src.sql_database.factory import DBConnectorBaseFactory
 from src.sql_database.implementations.mysql import MySQLConnector
 from src.sql_database.manager import SqlDataBaseManager
 from src.services.term_service import TermService
+from src.services.sql_example_service import SqlExampleService
 
 # 注册知识库类型
 # KnowledgeBaseFactory.register(
@@ -18,5 +20,6 @@ DBConnectorBaseFactory.register("mysql", MySQLConnector, {"description": "MySQL 
 work_dir = os.path.join(config.save_dir, "sql_database_data")
 sql_database = SqlDataBaseManager(work_dir)
 term_service = TermService()
+sql_example_service = SqlExampleService()
 
 __all__ = ["sql_database"]
