@@ -6,30 +6,14 @@
           <h4>{{ question }}</h4>
         </div>
 
-        <!-- <div class="approval-operation">
+        <div v-if="operation" class="approval-operation">
           <span class="label">操作：</span>
           <span class="operation-text">{{ operation }}</span>
-        </div> -->
-  
-        <div class="approval-operation-table">
-          <div v-if="typeof handleOperation === 'string'"> 
-              <span class="param-key">{{ handleOperation }}</span>
-          </div>
-          <div v-else>
-            <div v-for="(param, index) in handleOperation.params" :key="index" class="param-row">
-              <span class="param-key">{{ param.key }}</span>
-              <input class="param-value" v-model="param.value" type="text" />
-            </div>
-          </div>
         </div>
       </div>
       <div class="approval-actions">
-        <button class="btn btn-reject" @click="handleReject" :disabled="isProcessing">
-          ✕ 拒绝
-        </button>
-        <button class="btn btn-approve" @click="handleApprove" :disabled="isProcessing">
-          ✓ 批准
-        </button>
+        <button class="btn btn-reject" @click="handleCancel" :disabled="isProcessing">取消</button>
+        <button class="btn btn-approve" @click="handleSubmit" :disabled="isSubmitDisabled">提交</button>
       </div>
 
       <div v-if="isProcessing" class="approval-processing">
@@ -41,70 +25,105 @@
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
-  visible: {
-    type: Boolean,
-    default: false
-  },
-  question: {
-    type: String,
-    default: '是否批准此操作？'
-  },
-  operation: {
-    type: [String, Object],
-    default: ''
-  }
+  visible: { type: Boolean, default: false },
+  question: { type: String, default: '请选择一个选项' },
+  operation: { type: String, default: '' },
+  options: { type: Array, default: () => [] },
+  multiSelect: { type: Boolean, default: false },
+  allowOther: { type: Boolean, default: true }
 })
 
-const emit = defineEmits(['approve', 'reject'])
+const emit = defineEmits(['submit', 'cancel'])
 
 const isProcessing = ref(false)
+const selectedValues = ref([])
+const otherText = ref('')
 
-// 监听弹窗关闭，重置处理状态
+const resetForm = () => {
+  isProcessing.value = false
+  selectedValues.value = []
+  otherText.value = ''
+}
+
 watch(
   () => props.visible,
   (newVal) => {
     if (!newVal) {
-      isProcessing.value = false
+      resetForm()
     }
   }
 )
 
-const handleOperation = computed(() => {
-  try {
-    // 处理 Interrupt(value={...}) 格式的字符串
-    let operationData = props.operation;
-    let operationName = operationData['name']
-    let operationParams = operationData['args']
-    // 转换为键值对数组
-    return {
-      name: operationName,
-      params: Object.entries(operationParams).map(([key, value]) => ({ 
-            key, 
-            value 
-      }))
-    };
-    
-  } catch (e) {
-    // 如果解析失败，返回原始值
-    console.error('Error parsing operation:', e);
-    return props.operation;
-  }
-});
+watch(
+  () => props.options,
+  (next) => {
+    if (!Array.isArray(next) || next.length === 0) {
+      selectedValues.value = []
+      return
+    }
+    if (props.multiSelect) {
+      selectedValues.value = selectedValues.value.filter((value) =>
+        next.some((item) => item?.value === value)
+      )
+      return
+    }
+    const current = selectedValues.value[0]
+    if (current && next.some((item) => item?.value === current)) return
+    selectedValues.value = [next[0].value]
+  },
+  { immediate: true, deep: true }
+)
 
+watch(
+  () => props.multiSelect,
+  (isMulti) => {
+    if (isMulti) return
+    if (selectedValues.value.length > 1) {
+      selectedValues.value = selectedValues.value.slice(0, 1)
+    }
+  }
+)
 
 const handleApprove = () => {
   if (isProcessing.value) return
-  isProcessing.value = true
-  emit('approve', handleOperation.value)
+  selectedValues.value = [value]
 }
 
-const handleReject = () => {
-  if (isProcessing.value) return
+const isSubmitDisabled = computed(() => {
+  if (isProcessing.value) return true
+  const hasSelected = selectedValues.value.length > 0
+  const hasOther = props.allowOther && Boolean(otherText.value)
+  return !hasSelected && !hasOther
+})
+
+const buildAnswer = () => {
+  const selected = selectedValues.value
+  const other = otherText.value
+  if (props.allowOther && other) {
+    return {
+      type: 'other',
+      text: other,
+      selected: selected
+    }
+  }
+  if (props.multiSelect) {
+    return selected
+  }
+  return selected[0]
+}
+
+const handleSubmit = () => {
+  if (isSubmitDisabled.value) return
   isProcessing.value = true
-  emit('reject')
+  emit('submit', buildAnswer(), handleOperation.value)
+}
+
+const handleCancel = () => {
+  if (isProcessing.value) return
+  emit('cancel')
 }
 </script>
 
@@ -197,6 +216,7 @@ const handleReject = () => {
   line-height: 1.5;
   display: flex;
   gap: 6px;
+  margin-bottom: 10px;
 }
 
 .approval-operation .label {
@@ -208,6 +228,42 @@ const handleReject = () => {
 .approval-operation .operation-text {
   color: var(--gray-800);
   word-break: break-word;
+}
+
+.question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.option-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--gray-800);
+  font-size: 14px;
+}
+
+.option-item .recommended {
+  color: var(--main-color);
+  font-weight: 600;
+}
+
+.other-input {
+  margin-top: 10px;
+}
+
+.other-input input {
+  width: 100%;
+  border: 1px solid var(--gray-300);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  outline: none;
+}
+
+.other-input input:focus {
+  border-color: var(--main-color);
 }
 
 .approval-actions {
@@ -225,10 +281,6 @@ const handleReject = () => {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
 }
 
 .btn:disabled {
@@ -252,7 +304,6 @@ const handleReject = () => {
 
 .btn-approve:hover:not(:disabled) {
   background: var(--main-700);
-  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.25);
 }
 
 .approval-processing {
@@ -282,7 +333,6 @@ const handleReject = () => {
   }
 }
 
-/* 滑入滑出动画 */
 .slide-up-enter-active,
 .slide-up-leave-active {
   transition: all 0.25s ease;

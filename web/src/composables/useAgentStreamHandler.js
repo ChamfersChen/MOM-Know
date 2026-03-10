@@ -113,6 +113,7 @@ export function useAgentStreamHandler({
         }
         return true
 
+      case 'ask_user_question_required':
       case 'human_approval_required':
         console.log(`${debugPrefix}[approval_required]`, {
           threadId,

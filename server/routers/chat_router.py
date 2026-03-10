@@ -2,6 +2,7 @@ import traceback
 import uuid
 import json
 import os
+from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
@@ -690,7 +691,8 @@ async def update_chat_models(model_provider: str, model_names: list[str], curren
 async def resume_agent_chat(
     agent_id: str,
     thread_id: str = Body(...),
-    approved: bool = Body(...),
+    approved: bool | None = Body(None),
+    answer: dict | list | str | None = Body(None),
     tool_name: str | None = Body(None),  # New optional form data parameter
     tool_args: dict | None = Body(None),  # New optional form data parameter
     config: dict = Body({}),
@@ -698,13 +700,50 @@ async def resume_agent_chat(
     db: AsyncSession = Depends(get_db),
 ):
     """恢复被人工审批中断的对话（需要登录）"""
-    logger.info(f"Resuming agent_id: {agent_id}, thread_id: {thread_id}, approved: {approved}")
+    def normalize_resume_input(raw_answer: Any, raw_approved: bool | None) -> Any:
+        if raw_answer is not None:
+            if isinstance(raw_answer, str):
+                normalized = raw_answer.strip()
+                if not normalized:
+                    raise HTTPException(status_code=422, detail="answer 不能为空")
+                return normalized
+
+            if isinstance(raw_answer, list):
+                if len(raw_answer) == 0:
+                    raise HTTPException(status_code=422, detail="answer 不能为空")
+                return raw_answer
+
+            if isinstance(raw_answer, dict):
+                if raw_answer.get("type") == "other":
+                    text = raw_answer.get("text")
+                    if not isinstance(text, str) or not text.strip():
+                        raise HTTPException(status_code=422, detail="other 文本不能为空")
+                return raw_answer
+
+            raise HTTPException(status_code=422, detail="answer 类型不支持")
+
+        if raw_approved is not None:
+            return "approve" if raw_approved else "reject"
+
+        raise HTTPException(status_code=422, detail="approved 或 answer 至少提供一个")
+
+    resume_input = normalize_resume_input(answer, approved)
+
+    logger.info(
+        "Resuming agent_id: %s, thread_id: %s, approved: %s, answer_type: %s",
+        agent_id,
+        thread_id,
+        approved,
+        type(answer).__name__ if answer is not None else "None",
+    )
 
     meta = {
         "agent_id": agent_id,
         "thread_id": thread_id,
         "user_id": current_user.id,
         "approved": approved,
+        "answer": answer,
+        "resume_input": resume_input,
     }
     if "request_id" not in meta or not meta.get("request_id"):
         meta["request_id"] = str(uuid.uuid4())
@@ -712,7 +751,7 @@ async def resume_agent_chat(
         stream_agent_resume(
             agent_id=agent_id,
             thread_id=thread_id,
-            approved=approved,
+            resume_input=resume_input,
             tool_name=tool_name,
             tool_args=tool_args,
             meta=meta,
@@ -884,6 +923,7 @@ class ThreadResponse(BaseModel):
     user_id: str
     agent_id: str
     title: str | None = None
+    is_pinned: bool = False
     created_at: str
     updated_at: str
 
@@ -951,6 +991,7 @@ async def delete_thread(
 
 class ThreadUpdate(BaseModel):
     title: str | None = None
+    is_pinned: bool | None = None
 
 
 @chat.put("/thread/{thread_id}", response_model=ThreadResponse)
@@ -964,6 +1005,7 @@ async def update_thread(
     return await update_thread_view(
         thread_id=thread_id,
         title=thread_update.title,
+        is_pinned=thread_update.is_pinned,
         db=db,
         current_user_id=str(current_user.id),
     )

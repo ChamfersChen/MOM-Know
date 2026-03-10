@@ -36,32 +36,45 @@
             class="conversation-item"
             :class="{ active: currentChatId === chat.id }"
             @click="selectChat(chat)"
+            @click.middle="handleMiddleClickDelete(chat.id)"
           >
-            <div class="conversation-title">{{ chat.title || '新的对话' }}</div>
+            <div class="conversation-title">
+              <span>{{ chat.title || '新的对话' }}</span>
+            </div>
             <div class="actions-mask"></div>
             <div class="conversation-actions">
               <a-dropdown :trigger="['click']" @click.stop>
                 <template #overlay>
                   <a-menu>
                     <a-menu-item
+                      key="pin"
+                      @click.stop="togglePin(chat.id)"
+                      :icon="h(chat.is_pinned ? PinOff : Pin, { size: 14 })"
+                    >
+                      {{ chat.is_pinned ? '取消置顶' : '置顶' }}
+                    </a-menu-item>
+                    <a-menu-item
                       key="rename"
                       @click.stop="renameChat(chat.id)"
-                      :icon="h(EditOutlined)"
+                      :icon="h(Pencil, { size: 14 })"
                     >
                       重命名
                     </a-menu-item>
                     <a-menu-item
                       key="delete"
                       @click.stop="deleteChat(chat.id)"
-                      :icon="h(DeleteOutlined)"
+                      :icon="h(Trash2, { size: 14 })"
                     >
                       删除
                     </a-menu-item>
                   </a-menu>
                 </template>
-                <a-button type="text" class="more-btn" @click.stop>
-                  <MoreOutlined />
-                </a-button>
+                <div class="action-btn-wrapper">
+                  <a-button type="text" class="more-btn" @click.stop>
+                    <MoreVertical :size="16" />
+                  </a-button>
+                  <Pin v-if="chat.is_pinned" :size="14" class="pinned-indicator" />
+                </div>
               </a-dropdown>
             </div>
           </div>
@@ -84,9 +97,17 @@
 
 <script setup>
 import { computed, h, ref } from 'vue'
-import { DeleteOutlined, EditOutlined, MoreOutlined } from '@ant-design/icons-vue'
 import { message, Modal } from 'ant-design-vue'
-import { PanelLeftClose, MessageSquarePlus, LoaderCircle } from 'lucide-vue-next'
+import {
+  PanelLeftClose,
+  MessageSquarePlus,
+  LoaderCircle,
+  Pin,
+  PinOff,
+  Pencil,
+  Trash2,
+  MoreVertical
+} from 'lucide-vue-next'
 import dayjs, { parseToShanghai } from '@/utils/time'
 import { useChatUIStore } from '@/stores/chatUI'
 import { useInfoStore } from '@/stores/info'
@@ -142,14 +163,19 @@ const emit = defineEmits([
   'select-chat',
   'delete-chat',
   'rename-chat',
+  'toggle-pin',
   'toggle-sidebar',
   'open-agent-modal',
   'load-more-chats'
 ])
 
-// 按时间倒序排列的对话列表
+// 按置顶和时间倒序排列的对话列表
 const sortedChats = computed(() => {
   return [...props.chatsList].sort((a, b) => {
+    // 置顶的排在前面
+    if (a.is_pinned !== b.is_pinned) {
+      return a.is_pinned ? -1 : 1
+    }
     const dateA = parseToShanghai(b.created_at)
     const dateB = parseToShanghai(a.created_at)
     if (!dateA || !dateB) return 0
@@ -166,6 +192,10 @@ const selectChat = (chat) => {
 }
 
 const deleteChat = (chatId) => {
+  emit('delete-chat', chatId)
+}
+
+const handleMiddleClickDelete = (chatId) => {
   emit('delete-chat', chatId)
 }
 
@@ -214,6 +244,10 @@ const toggleCollapse = () => {
 
 const handleLoadMore = () => {
   emit('load-more-chats')
+}
+
+const togglePin = (chatId) => {
+  emit('toggle-pin', chatId)
 }
 </script>
 
@@ -364,6 +398,9 @@ const handleLoadMore = () => {
         overflow: hidden;
         text-overflow: ellipsis;
         transition: color 0.2s ease;
+        display: flex;
+        align-items: center;
+        gap: 4px;
       }
 
       .actions-mask {
@@ -388,14 +425,49 @@ const handleLoadMore = () => {
         opacity: 0;
         transition: opacity 0.3s ease;
 
+        .action-btn-wrapper {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 24px;
+          height: 24px;
+          position: relative;
+        }
+
+        .pinned-indicator {
+          color: var(--main-color);
+          opacity: 0.8;
+          pointer-events: none;
+        }
+
         .more-btn {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
           color: var(--gray-600);
           background-color: transparent !important;
+          display: none;
+          justify-content: center;
+          align-items: center;
           padding: 0;
+          z-index: 1;
+
           &:hover {
             color: var(--main-500);
-            background-color: transparent !important;
           }
+        }
+      }
+
+      // 默认显示置顶图标
+      &:has(.pinned-indicator) {
+        .conversation-actions,
+        .actions-mask {
+          opacity: 1;
+        }
+        .actions-mask {
+          background: linear-gradient(to right, transparent, var(--bg-sider) 30px);
         }
       }
 
@@ -404,11 +476,19 @@ const handleLoadMore = () => {
 
         .actions-mask {
           background: linear-gradient(to right, transparent, var(--gray-25) 20px);
+          opacity: 1;
         }
 
-        .actions-mask,
         .conversation-actions {
           opacity: 1;
+
+          .more-btn {
+            display: flex;
+          }
+
+          .pinned-indicator {
+            display: none;
+          }
         }
       }
 
@@ -419,8 +499,16 @@ const handleLoadMore = () => {
           color: var(--main-600);
           font-weight: 500;
         }
+
         .actions-mask {
           background: linear-gradient(to right, transparent, var(--gray-50) 20px);
+          opacity: 1;
+        }
+
+        &:has(.pinned-indicator) {
+          .actions-mask {
+            background: linear-gradient(to right, transparent, var(--gray-50) 30px);
+          }
         }
       }
     }
