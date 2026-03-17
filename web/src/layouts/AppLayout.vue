@@ -49,12 +49,21 @@ const handleDebugModalClose = () => {
   showDebugModal.value = false
 }
 
-const getRemoteConfig = () => {
-  configStore.refreshConfig()
+const getRemoteConfig = async () => {
+  if (!userStore.isAdmin) return
+  try {
+    await configStore.refreshConfig()
+  } catch (error) {
+    console.warn('加载系统配置失败:', error)
+  }
 }
 
-const getRemoteDatabase = () => {
-  databaseStore.loadDatabases()
+const getRemoteDatabase = async () => {
+  try {
+    await databaseStore.loadDatabases()
+  } catch (error) {
+    console.warn('加载知识库列表失败:', error)
+  }
 }
 
 // Fetch GitHub stars count
@@ -75,12 +84,14 @@ const fetchGithubStars = async () => {
 onMounted(async () => {
   // 加载信息配置
   await infoStore.loadInfoConfig()
-  // 加载其他配置
-  getRemoteConfig()
-  getRemoteDatabase()
-  fetchGithubStars() // Fetch GitHub stars on mount
-  // 预加载任务数据，确保任务中心打开时有内容
-  taskerStore.loadTasks()
+  // 加载知识库数据（普通用户加载可访问知识库）
+  await getRemoteDatabase()
+  // 仅管理员加载系统配置和任务中心数据
+  if (userStore.isAdmin) {
+    await getRemoteConfig()
+    taskerStore.loadTasks()
+    fetchGithubStars() // Fetch GitHub stars on mount
+  }
 })
 
 // 打印当前页面的路由信息，使用 vue3 的 setup composition API
@@ -97,35 +108,33 @@ const mainList = computed(() => {
       path: '/agent',
       icon: Bot,
       activeIcon: Bot
-    },
-    {
-      name: '知识库',
-      path: '/database',
-      icon: LibraryBig,
-      activeIcon: LibraryBig
-    },
-    {
-      name: '数据源',
-      path: '/sqldatabase',
-      icon: Database,
-      activeIcon: Database,
-    }, 
-    {
-      name: '图谱',
-      path: '/graph',
-      icon: Waypoints,
-      activeIcon: Waypoints
-    },
+    }
   ]
 
-  if (userStore.isSuperAdmin) {
-    items.push({
-      name: '扩展管理',
-      path: '/extensions',
-      icon: Blocks,
-      activeIcon: Blocks
-    })
-  }
+  if (userStore.isAdmin) {
+    items.push(
+      {
+        name: '图谱',
+        path: '/graph',
+        icon: Waypoints,
+        activeIcon: Waypoints
+      },
+      {
+        name: '知识库',
+        path: '/database',
+        icon: LibraryBig,
+        activeIcon: LibraryBig
+      }
+    )
+
+    if (userStore.isSuperAdmin) {
+      items.push({
+        name: '扩展管理',
+        path: '/extensions',
+        icon: Blocks,
+        activeIcon: Blocks
+      })
+    }
 
   items.push({
     name: '仪表盘',
@@ -145,7 +154,7 @@ provide('settingsModal', {
 
 <template>
   <div class="app-layout" :class="{ 'use-top-bar': layoutSettings.useTopBar }">
-    <div class="header" :class="{ 'top-bar': layoutSettings.useTopBar }">
+    <div v-if="userStore.isAdmin" class="header" :class="{ 'top-bar': layoutSettings.useTopBar }">
       <div class="logo circle">
         <router-link to="/">
           <img :src="infoStore.organization.avatar" />
@@ -171,6 +180,7 @@ provide('settingsModal', {
           </a-tooltip>
         </RouterLink>
         <div
+          v-if="userStore.isAdmin"
           class="nav-item task-center"
           :class="{ active: isDrawerOpen }"
           @click="taskerStore.openDrawer()"
@@ -225,7 +235,7 @@ provide('settingsModal', {
     >
       <DebugComponent />
     </a-modal>
-    <TaskCenterDrawer />
+    <TaskCenterDrawer v-if="userStore.isAdmin" />
     <SettingsModal v-model:visible="showSettingsModal" @close="() => (showSettingsModal = false)" />
   </div>
 </template>

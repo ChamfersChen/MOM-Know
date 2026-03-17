@@ -1,9 +1,5 @@
 <template>
-  <div
-    class="input-box"
-    :class="[customClasses, { 'single-line': isSingleLine }]"
-    @click="focusInput"
-  >
+  <div class="input-box" :class="customClasses" @click="focusInput">
     <div class="top-slot">
       <slot name="top"></slot>
     </div>
@@ -93,6 +89,19 @@
           </div>
         </div>
 
+        <!-- Skills 列表 -->
+        <div v-if="mentionItems.skills.length > 0" class="mention-group">
+          <div class="mention-group-title">Skills</div>
+          <div
+            v-for="(item, index) in mentionItems.skills"
+            :key="'skill-' + item.value"
+            :class="['mention-item', { active: isItemSelected('skill', index) }]"
+            @click="insertMention(item)"
+          >
+            {{ item.label }}
+          </div>
+        </div>
+
         <!-- 无结果 -->
         <div v-if="!hasAnyItems" class="mention-empty">暂无可引用的项</div>
       </div>
@@ -158,17 +167,7 @@
 </template>
 
 <script setup>
-import {
-  ref,
-  computed,
-  onMounted,
-  nextTick,
-  watch,
-  onBeforeUnmount,
-  useSlots,
-  onUnmounted
-} from 'vue'
-import { message } from 'ant-design-vue'
+import { ref, computed, onMounted, nextTick, watch, onBeforeUnmount, useSlots } from 'vue'
 import {
   SendOutlined,
   ArrowUpOutlined,
@@ -193,18 +192,7 @@ const closeMentionPopup = (e) => {
 
 const inputRef = ref(null)
 const optionsExpanded = ref(false)
-const singleLineHeight = ref(0)
-const waveformCanvas = ref(null)
-
-const isRecording = ref(false)
-const isTranscribing = ref(false)
-const mediaRecorder = ref(null)
-const audioChunks = ref([])
-const audioContext = ref(null)
-const analyser = ref(null)
-const animationId = ref(null)
-const recordedAudioBlob = ref(null)
-
+// 用于防抖的定时器
 const debounceTimer = ref(null)
 const props = defineProps({
   modelValue: {
@@ -239,10 +227,6 @@ const props = defineProps({
     type: Object,
     default: () => ({})
   },
-  forceMultiLine: {
-    type: Boolean,
-    default: false
-  },
   mention: {
     type: Object,
     default: () => null
@@ -255,13 +239,26 @@ const slots = useSlots()
 // @ 提及功能是否启用
 const mentionEnabled = computed(() => {
   if (!props.mention) return false
-  const { files, knowledgeBases, mcps } = props.mention
+  const { files, knowledgeBases, mcps, skills } = props.mention
   return (
     (Array.isArray(files) && files.length > 0) ||
     (Array.isArray(knowledgeBases) && knowledgeBases.length > 0) ||
-    (Array.isArray(mcps) && mcps.length > 0)
+    (Array.isArray(mcps) && mcps.length > 0) ||
+    (Array.isArray(skills) && skills.length > 0)
   )
 })
+
+const mentionTypePrefixMap = {
+  file: 'file',
+  knowledge: 'knowledge',
+  mcp: 'mcp',
+  skill: 'skill'
+}
+
+const formatMentionToken = (type, value) => {
+  const prefix = mentionTypePrefixMap[type] || type
+  return `@${prefix}:${value}`
+}
 
 // 检测是否在 @ 触发位置
 const checkMentionTrigger = (textarea) => {
@@ -296,38 +293,84 @@ const checkMentionTrigger = (textarea) => {
 // 更新提及候选项
 const updateMentionItems = (query = '') => {
   if (!props.mention) {
-    mentionItems.value = { files: [], knowledgeBases: [], mcps: [] }
+    mentionItems.value = { files: [], knowledgeBases: [], mcps: [], skills: [] }
     return
   }
 
   const lowerQuery = query.toLowerCase()
-  const { files = [], knowledgeBases = [], mcps = [] } = props.mention
+  const { files = [], knowledgeBases = [], mcps = [], skills = [] } = props.mention
 
-  const filter = (list) =>
+  const filterItems = (list) =>
     list.filter((item) => {
-      const label = item.path || item.name || ''
-      return label.toLowerCase().includes(lowerQuery)
+      const searchTexts = [
+        item.label,
+        item.value,
+        item.description,
+        item.tokenLabel,
+        item.type,
+        mentionTypePrefixMap[item.type]
+      ]
+      return searchTexts.some((text) =>
+        String(text || '')
+          .toLowerCase()
+          .includes(lowerQuery)
+      )
     })
 
-  mentionItems.value = {
-    files: filter(files).map((f) => ({
-      value: f.path,
-      label: f.path.split('/').pop() || f.path,
+  const fileItems = files.map((f) => {
+    const path = f.path || ''
+    const fileName = path.split('/').pop() || path
+    return {
+      value: path,
+      label: fileName,
       type: 'file',
-      description: f.path
-    })),
-    knowledgeBases: filter(knowledgeBases).map((kb) => ({
-      value: kb.name,
-      label: kb.name,
+      insertValue: path || fileName,
+      tokenLabel: formatMentionToken('file', fileName),
+      description: path
+    }
+  })
+
+  const knowledgeItems = knowledgeBases.map((kb) => {
+    const kbName = kb.name || ''
+    return {
+      value: kbName,
+      label: kbName,
       type: 'knowledge',
+      insertValue: kbName,
+      tokenLabel: formatMentionToken('knowledge', kbName),
       description: kb.db_id
-    })),
-    mcps: filter(mcps).map((m) => ({
-      value: m.name,
-      label: m.name,
+    }
+  })
+
+  const mcpItems = mcps.map((m) => {
+    const mcpName = m.name || ''
+    return {
+      value: mcpName,
+      label: mcpName,
       type: 'mcp',
+      insertValue: mcpName,
+      tokenLabel: formatMentionToken('mcp', mcpName),
       description: m.description || ''
-    }))
+    }
+  })
+
+  const skillItems = skills.map((skill) => {
+    const skillValue = skill.slug || skill.name || skill.id || ''
+    return {
+      value: skillValue,
+      label: skillValue,
+      type: 'skill',
+      insertValue: skillValue,
+      tokenLabel: formatMentionToken('skill', skillValue),
+      description: skill.description || ''
+    }
+  })
+
+  mentionItems.value = {
+    files: filterItems(fileItems),
+    knowledgeBases: filterItems(knowledgeItems),
+    mcps: filterItems(mcpItems),
+    skills: filterItems(skillItems)
   }
 }
 
@@ -337,20 +380,28 @@ const isItemSelected = (type, index) => {
 
   const filesLen = mentionItems.value.files.length
   const kbLen = mentionItems.value.knowledgeBases.length
+  const mcpLen = mentionItems.value.mcps.length
 
   if (type === 'file') {
     return mentionSelectedIndex.value === index
   } else if (type === 'knowledge') {
     return mentionSelectedIndex.value === filesLen + index
-  } else {
+  } else if (type === 'mcp') {
     return mentionSelectedIndex.value === filesLen + kbLen + index
+  } else {
+    return mentionSelectedIndex.value === filesLen + kbLen + mcpLen + index
   }
 }
 
 // 是否有任何候选项
 const hasAnyItems = computed(() => {
   const items = mentionItems.value
-  return items.files.length > 0 || items.knowledgeBases.length > 0 || items.mcps.length > 0
+  return (
+    items.files.length > 0 ||
+    items.knowledgeBases.length > 0 ||
+    items.mcps.length > 0 ||
+    items.skills.length > 0
+  )
 })
 
 // 获取弹出框位置
@@ -374,9 +425,11 @@ const insertMention = (item) => {
   const textarea = inputRef.value
   const cursorPos = textarea.selectionStart
   const textBeforeCursor = inputValue.value.slice(0, cursorPos)
+  const mentionValue = item.insertValue || item.value
+  const mentionText = formatMentionToken(item.type, mentionValue)
 
   // 移除 @ 及后面的查询内容，插入完整的提及项
-  const newTextBefore = textBeforeCursor.replace(/@(\S*)$/, `@${item.value} `)
+  const newTextBefore = textBeforeCursor.replace(/@(\S*)$/, `${mentionText} `)
   const textAfterCursor = inputValue.value.slice(cursorPos)
 
   const newValue = newTextBefore + textAfterCursor
@@ -424,7 +477,8 @@ const handleMentionNavigation = (e) => {
   const allItems = [
     ...mentionItems.value.files,
     ...mentionItems.value.knowledgeBases,
-    ...mentionItems.value.mcps
+    ...mentionItems.value.mcps,
+    ...mentionItems.value.skills
   ]
 
   const total = allItems.length
@@ -448,13 +502,6 @@ const handleMentionNavigation = (e) => {
     mentionPopupVisible.value = false
   }
 }
-
-// Update isSingleLine logic to respect forceMultiLine
-const isSingleLineMode = ref(true)
-const isSingleLine = computed(() => {
-  if (props.forceMultiLine) return false
-  return isSingleLineMode.value
-})
 
 const hasOptionsLeft = computed(() => {
   const slot = slots['options-left']
@@ -551,62 +598,20 @@ const handleSendOrStop = () => {
   emit('send')
 }
 
-// 用于存储固定的单行宽度基准
-const singleLineWidth = ref(0)
-
 // @ 提及功能状态
 const mentionPopupVisible = ref(false)
 const mentionQuery = ref('')
-const mentionItems = ref({ files: [], knowledgeBases: [], mcps: [] })
+const mentionItems = ref({ files: [], knowledgeBases: [], mcps: [], skills: [] })
 const mentionSelectedIndex = ref(0)
 
-// 检查行数
-const checkLineCount = () => {
-  if (!inputRef.value || singleLineHeight.value === 0) {
+const adjustTextareaHeight = () => {
+  if (!inputRef.value) {
     return
   }
+
   const textarea = inputRef.value
-  const content = inputValue.value
-
-  // 主要判断依据：内容是否包含换行符
-  const hasNewlines = content.includes('\n')
-
-  // 辅助判断：内容是否超出单行宽度（使用固定的单行宽度基准）
-  let contentExceedsWidth = false
-  if (!hasNewlines && content.trim() && singleLineWidth.value > 0) {
-    // 使用固定的单行宽度作为测量基准，避免因模式切换导致的宽度变化
-    const measureDiv = document.createElement('div')
-    measureDiv.style.cssText = `
-      position: absolute;
-      visibility: hidden;
-      white-space: nowrap;
-      font-family: ${getComputedStyle(textarea).fontFamily};
-      font-size: ${getComputedStyle(textarea).fontSize};
-      line-height: ${getComputedStyle(textarea).lineHeight};
-      padding: 0;
-      border: none;
-      width: ${singleLineWidth.value}px;
-    `
-    measureDiv.textContent = content
-    document.body.appendChild(measureDiv)
-
-    // 检查内容是否会换行（基于固定的单行宽度）
-    contentExceedsWidth = measureDiv.scrollWidth > measureDiv.clientWidth
-    document.body.removeChild(measureDiv)
-  }
-
-  const shouldBeMultiLine = hasNewlines || contentExceedsWidth
-  isSingleLineMode.value = !shouldBeMultiLine
-
-  // 根据模式调整高度
-  if (shouldBeMultiLine || props.forceMultiLine) {
-    // 多行模式：让textarea自适应内容高度
-    textarea.style.height = 'auto'
-    textarea.style.height = `${Math.max(textarea.scrollHeight, singleLineHeight.value)}px`
-  } else {
-    // 单行模式：清除内联样式，让CSS控制高度
-    textarea.style.height = ''
-  }
+  textarea.style.height = 'auto'
+  textarea.style.height = `${textarea.scrollHeight}px`
 }
 
 // 聚焦输入框
@@ -616,214 +621,26 @@ const focusInput = () => {
   }
 }
 
-const startRecording = async () => {
-  try {
-    if (!navigator.mediaDevices) {
-      message.error('您的浏览器不支持录音功能，请使用 Chrome、Firefox 或 Edge 浏览器')
-      return
-    }
-
-    if (!navigator.mediaDevices.getUserMedia) {
-      message.error('您的浏览器版本不支持录音功能，请更新浏览器到最新版本')
-      return
-    }
-
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    
-    audioContext.value = new (window.AudioContext || window.webkitAudioContext)()
-    const source = audioContext.value.createMediaStreamSource(stream)
-    analyser.value = audioContext.value.createAnalyser()
-    analyser.value.fftSize = 256
-    source.connect(analyser.value)
-
-    mediaRecorder.value = new MediaRecorder(stream)
-    audioChunks.value = []
-
-    mediaRecorder.value.ondataavailable = (event) => {
-      audioChunks.value.push(event.data)
-    }
-
-    mediaRecorder.value.onstop = () => {
-      recordedAudioBlob.value = new Blob(audioChunks.value, { type: 'audio/wav' })
-      stream.getTracks().forEach(track => track.stop())
-    }
-
-    mediaRecorder.value.start()
-    isRecording.value = true
-
-    await nextTick()
-    drawWaveform()
-  } catch (error) {
-    console.error('录音失败:', error)
-    if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-      message.error('请允许麦克风权限以使用录音功能')
-    } else if (error.name === 'NotFoundError') {
-      message.error('未检测到麦克风设备，请检查您的设备')
-    } else {
-      message.error('录音功能启动失败: ' + (error.message || '未知错误'))
-    }
-  }
-}
-
-const drawWaveform = () => {
-  if (!isRecording.value || !waveformCanvas.value || !analyser.value) return
-
-  const canvas = waveformCanvas.value
-  const ctx = canvas.getContext('2d')
-  const bufferLength = analyser.value.frequencyBinCount
-  const dataArray = new Uint8Array(bufferLength)
-
-  const resizeCanvas = () => {
-    const rect = canvas.getBoundingClientRect()
-    if (rect.width === 0 || rect.height === 0) return
-    canvas.width = rect.width * window.devicePixelRatio
-    canvas.height = rect.height * window.devicePixelRatio
-    ctx.scale(window.devicePixelRatio, window.devicePixelRatio)
-  }
-
-  const draw = () => {
-    if (!isRecording.value) return
-
-    animationId.value = requestAnimationFrame(draw)
-    analyser.value.getByteFrequencyData(dataArray)
-
-    const rect = canvas.getBoundingClientRect()
-    const width = rect.width
-    const height = rect.height
-
-    if (width === 0 || height === 0) {
-      resizeCanvas()
-      return
-    }
-
-    ctx.clearRect(0, 0, width, height)
-    const barWidth = (width / bufferLength) * 2.5
-    let barHeight
-    let x = 0
-
-    for (let i = 0; i < bufferLength; i++) {
-      barHeight = Math.max(2, (dataArray[i] / 255) * height)
-
-      const gradient = ctx.createLinearGradient(0, height - barHeight, 0, height)
-      gradient.addColorStop(0, getComputedStyle(document.documentElement).getPropertyValue('--main-500').trim() || '#3b82f6')
-      gradient.addColorStop(1, getComputedStyle(document.documentElement).getPropertyValue('--main-300').trim() || '#3b82f6')
-
-      ctx.fillStyle = gradient
-      ctx.fillRect(x, height - barHeight, barWidth, barHeight)
-
-      x += barWidth + 1
-    }
-  }
-
-  nextTick(() => {
-    resizeCanvas()
-    draw()
-  })
-}
-
-const cancelRecording = () => {
-  if (mediaRecorder.value && mediaRecorder.value.state !== 'inactive') {
-    mediaRecorder.value.stop()
-  }
-  
-  if (animationId.value) {
-    cancelAnimationFrame(animationId.value)
-  }
-
-  if (audioContext.value) {
-    audioContext.value.close()
-  }
-
-  isRecording.value = false
-  audioChunks.value = []
-  recordedAudioBlob.value = null
-}
-
-const confirmRecording = async () => {
-  if (mediaRecorder.value && mediaRecorder.value.state !== 'inactive') {
-    await new Promise((resolve) => {
-      const originalOnStop = mediaRecorder.value.onstop
-      mediaRecorder.value.onstop = () => {
-        recordedAudioBlob.value = new Blob(audioChunks.value, { type: 'audio/wav' })
-        if (originalOnStop) originalOnStop()
-        resolve()
-      }
-      mediaRecorder.value.stop()
-    })
-  }
-
-  if (animationId.value) {
-    cancelAnimationFrame(animationId.value)
-  }
-
-  if (audioContext.value) {
-    audioContext.value.close()
-  }
-
-  console.log('recordedAudioBlob.value', recordedAudioBlob.value)
-  if (recordedAudioBlob.value) {
-    isTranscribing.value = true
-    try {
-      const response = await multimodalApi.uploadAudio(recordedAudioBlob.value)
-      console.log('response', response)
-      
-      if (response.data && response.data.text) {
-        emit('update:modelValue', response.data.text)
-      }
-    } catch (error) {
-      console.error('音频识别失败:', error)
-    } finally {
-      isTranscribing.value = false
-      isRecording.value = false
-    }
-  } else {
-    isRecording.value = false
-  }
-
-  audioChunks.value = []
-  recordedAudioBlob.value = null
-}
-
 // 监听输入值变化
 watch(inputValue, () => {
-  nextTick(() => {
-    checkLineCount()
-  })
+  if (debounceTimer.value) {
+    clearTimeout(debounceTimer.value)
+  }
+  debounceTimer.value = setTimeout(() => {
+    nextTick(() => {
+      adjustTextareaHeight()
+    })
+  }, 100)
 })
 
-// 监听输入框尺寸变化
-/* const observeTextareaResize = () => {
-  if (inputRef.value) {
-    const textarea = inputRef.value;
-    if (textarea) {
-      // 创建 ResizeObserver 来监听文本域尺寸变化
-      const resizeObserver = new ResizeObserver(() => {
-        checkLineCount();
-      });
-      resizeObserver.observe(textarea);
-
-      // 在组件卸载时断开观察器
-      onBeforeUnmount(() => {
-        resizeObserver.disconnect();
-      });
-    }
-  }
-}; */
-
-// Wait for component to mount before setting up onStartTyping
 onMounted(() => {
-  // console.log('Component mounted');
   document.addEventListener('click', closeMentionPopup)
   nextTick(() => {
     if (inputRef.value) {
-      // 记录单行模式下的高度和宽度基准
-      singleLineHeight.value = inputRef.value.clientHeight
-      singleLineWidth.value = inputRef.value.clientWidth
-      checkLineCount()
+      adjustTextareaHeight()
       inputRef.value.focus()
     }
   })
-  // observeTextareaResize();
 })
 
 // 组件卸载时清除定时器和事件监听器
@@ -907,50 +724,6 @@ defineExpose({
   //   background: var(--gray-0);
   //   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   // }
-
-  &.single-line {
-    padding: 0.75rem 0.75rem;
-    grid-template-columns: auto 1fr auto;
-    grid-template-rows: auto 1fr auto;
-    grid-template-areas:
-      'top top top'
-      'options input send'
-      'bottom bottom bottom';
-    align-items: center;
-    gap: 0px;
-
-    .user-input {
-      min-height: 24px;
-      height: 24px;
-      align-self: center;
-      white-space: nowrap;
-      overflow: hidden;
-      margin-bottom: 0rem;
-
-      &.recording-hidden {
-        display: none;
-      }
-    }
-
-    .expand-options,
-    .send-button-container {
-      align-self: center;
-    }
-
-    .expand-options {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .top-slot {
-      grid-area: top;
-    }
-
-    .bottom-slot {
-      grid-area: bottom;
-    }
-  }
 }
 
 .expand-options {
