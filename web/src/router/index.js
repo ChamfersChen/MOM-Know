@@ -27,12 +27,6 @@ const router = createRouter({
       meta: { requiresAuth: false }
     },
     {
-      path: '/login_agents_show',
-      name: 'login_agents_show',
-      component: () => import('../views/LoginAgentsShowView.vue'),
-      meta: { requiresAuth: false }
-    },
-    {
       path: '/agent',
       name: 'AgentMain',
       component: AppLayout,
@@ -41,21 +35,15 @@ const router = createRouter({
           path: '',
           name: 'AgentComp',
           component: () => import('../views/AgentView.vue'),
-          meta: { keepAlive: true, requiresAuth: true, requiresAdmin: true }
+          meta: { keepAlive: true, requiresAuth: true }
+        },
+        {
+          path: ':agent_id',
+          name: 'AgentCompWithId',
+          component: () => import('../views/AgentView.vue'),
+          meta: { keepAlive: true, requiresAuth: true }
         }
       ]
-    },
-    {
-      path: '/agentsShow',
-      name: 'AgentsShow',
-      component: () => import('../views/AgentsShowView.vue'),
-      meta: { requiresAuth: true }
-    },
-    {
-      path: '/agent/:agent_id',
-      name: 'AgentSinglePage',
-      component: () => import('../views/AgentSingleView.vue'),
-      meta: { requiresAuth: true }
     },
     {
       path: '/graph',

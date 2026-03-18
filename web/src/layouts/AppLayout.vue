@@ -1,10 +1,8 @@
 <script setup>
 import { ref, reactive, onMounted, computed, provide } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import {
-  GithubOutlined,
-} from '@ant-design/icons-vue'
-import { Bot, Waypoints, LibraryBig, BarChart3, CircleCheck, Database, Blocks } from 'lucide-vue-next'
+import { GithubOutlined } from '@ant-design/icons-vue'
+import { Bot, Waypoints, LibraryBig, BarChart3, CircleCheck, Blocks, Database } from 'lucide-vue-next'
 
 import { useConfigStore } from '@/stores/config'
 import { useDatabaseStore } from '@/stores/database'
@@ -124,6 +122,12 @@ const mainList = computed(() => {
         path: '/database',
         icon: LibraryBig,
         activeIcon: LibraryBig
+      },
+      {
+        name: 'SQL数据库',
+        path: '/sqldatabase',
+        icon: Database,
+        activeIcon: Database 
       }
     )
 
@@ -136,12 +140,13 @@ const mainList = computed(() => {
       })
     }
 
-  items.push({
-    name: '仪表盘',
-    path: '/dashboard',
-    icon: BarChart3,
-    activeIcon: BarChart3
-  })
+    items.push({
+      name: 'Dashboard',
+      path: '/dashboard',
+      icon: BarChart3,
+      activeIcon: BarChart3
+    })
+  }
 
   return items
 })
@@ -199,7 +204,7 @@ provide('settingsModal', {
         </div>
       </div>
       <div class="fill"></div>
-      <!-- <div class="github nav-item">
+      <div class="github nav-item">
         <a-tooltip placement="right">
           <template #title>欢迎 Star</template>
           <a href="https://github.com/xerrors/Yuxi-Know" target="_blank" class="github-link">
@@ -209,7 +214,7 @@ provide('settingsModal', {
             </span>
           </a>
         </a-tooltip>
-      </div> -->
+      </div>
       <!-- 用户信息组件 -->
       <div class="nav-item user-info">
         <UserInfoComponent />
