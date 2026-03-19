@@ -10,7 +10,7 @@ from src.models.embed import OtherEmbedding
 class TermService:
     def __init__(self):
         self.terminology_repository = TerminologyRepository()
-        config_dict = config.embed_model_names['siliconflow/BAAI/local-bge-m3'].model_dump()
+        config_dict = config.embed_model_names['siliconflow/BAAI/bge-m3'].model_dump()
         config_dict["api_key"] = os.getenv(config_dict["api_key"]) or config_dict["api_key"]
         self.embedder = OtherEmbedding(
                 model=config_dict.get("name"),
