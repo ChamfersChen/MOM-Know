@@ -322,8 +322,31 @@ async def _resolve_agent_config(
 
     return config_item, agent_config_id
 
-
 async def check_and_handle_interrupts(
+    agent,
+    langgraph_config: dict,
+    make_chunk,
+    meta: dict,
+    thread_id: str,
+) -> AsyncIterator[bytes]:
+    try:
+        graph = await agent.get_graph()
+        state = await graph.aget_state(langgraph_config)
+
+        if not state or not state.values:
+            return
+
+        interrupt_info = _extract_interrupt_info(state)
+        if interrupt_info:
+            question_payload = _build_ask_user_question_payload(interrupt_info, thread_id)
+            meta["interrupt"] = question_payload
+            yield make_chunk(status="ask_user_question_required", meta=meta, **question_payload)
+
+    except Exception as e:
+        logger.error(f"Error checking interrupts: {e}")
+        logger.error(traceback.format_exc())
+
+async def check_and_handle_interrupts_bak(
     agent,
     langgraph_config: dict,
     make_chunk,
