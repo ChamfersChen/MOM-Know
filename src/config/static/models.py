@@ -85,6 +85,7 @@ DEFAULT_CHAT_MODEL_PROVIDERS: dict[str, ChatModelProvider] = {
         env="SILICONFLOW_API_KEY",
         models=[
             "Qwen/Qwen3-8B",
+            "Qwen/Qwen3.5-4B"
         ],
     ),
     # "together": ChatModelProvider(
