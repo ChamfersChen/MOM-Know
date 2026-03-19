@@ -180,6 +180,7 @@ import {
 } from '@ant-design/icons-vue'
 
 import { multimodalApi } from "@/apis/agent_api" 
+import { message } from 'ant-design-vue'
 
 // 点击外部关闭下拉框
 const mentionDropdownRef = ref(null)
@@ -190,6 +191,15 @@ const closeMentionPopup = (e) => {
   mentionPopupVisible.value = false
 }
 
+const waveformCanvas = ref(null)
+const isRecording = ref(false)
+const isTranscribing = ref(false)
+const mediaRecorder = ref(null)
+const audioChunks = ref([])
+const audioContext = ref(null)
+const analyser = ref(null)
+const animationId = ref(null)
+const recordedAudioBlob = ref(null)
 const inputRef = ref(null)
 const optionsExpanded = ref(false)
 // 用于防抖的定时器
@@ -568,6 +578,174 @@ const handleKeyUp = (e) => {
       checkMentionTrigger(e.target)
     })
   }
+}
+
+const startRecording = async () => {
+  try {
+    if (!navigator.mediaDevices) {
+      message.error('您的浏览器不支持录音功能，请使用 Chrome、Firefox 或 Edge 浏览器')
+      return
+    }
+
+    if (!navigator.mediaDevices.getUserMedia) {
+      message.error('您的浏览器版本不支持录音功能，请更新浏览器到最新版本')
+      return
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    
+    audioContext.value = new (window.AudioContext || window.webkitAudioContext)()
+    const source = audioContext.value.createMediaStreamSource(stream)
+    analyser.value = audioContext.value.createAnalyser()
+    analyser.value.fftSize = 256
+    source.connect(analyser.value)
+
+    mediaRecorder.value = new MediaRecorder(stream)
+    audioChunks.value = []
+
+    mediaRecorder.value.ondataavailable = (event) => {
+      audioChunks.value.push(event.data)
+    }
+
+    mediaRecorder.value.onstop = () => {
+      recordedAudioBlob.value = new Blob(audioChunks.value, { type: 'audio/wav' })
+      stream.getTracks().forEach(track => track.stop())
+    }
+
+    mediaRecorder.value.start()
+    isRecording.value = true
+
+    await nextTick()
+    drawWaveform()
+  } catch (error) {
+    console.error('录音失败:', error)
+    if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+      message.error('请允许麦克风权限以使用录音功能')
+    } else if (error.name === 'NotFoundError') {
+      message.error('未检测到麦克风设备，请检查您的设备')
+    } else {
+      message.error('录音功能启动失败: ' + (error.message || '未知错误'))
+    }
+  }
+}
+
+const drawWaveform = () => {
+  if (!isRecording.value || !waveformCanvas.value || !analyser.value) return
+
+  const canvas = waveformCanvas.value
+  const ctx = canvas.getContext('2d')
+  const bufferLength = analyser.value.frequencyBinCount
+  const dataArray = new Uint8Array(bufferLength)
+
+  const resizeCanvas = () => {
+    const rect = canvas.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return
+    canvas.width = rect.width * window.devicePixelRatio
+    canvas.height = rect.height * window.devicePixelRatio
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio)
+  }
+
+  const draw = () => {
+    if (!isRecording.value) return
+
+    animationId.value = requestAnimationFrame(draw)
+    analyser.value.getByteFrequencyData(dataArray)
+
+    const rect = canvas.getBoundingClientRect()
+    const width = rect.width
+    const height = rect.height
+
+    if (width === 0 || height === 0) {
+      resizeCanvas()
+      return
+    }
+
+    ctx.clearRect(0, 0, width, height)
+    const barWidth = (width / bufferLength) * 2.5
+    let barHeight
+    let x = 0
+
+    for (let i = 0; i < bufferLength; i++) {
+      barHeight = Math.max(2, (dataArray[i] / 255) * height)
+
+      const gradient = ctx.createLinearGradient(0, height - barHeight, 0, height)
+      gradient.addColorStop(0, getComputedStyle(document.documentElement).getPropertyValue('--main-500').trim() || '#3b82f6')
+      gradient.addColorStop(1, getComputedStyle(document.documentElement).getPropertyValue('--main-300').trim() || '#3b82f6')
+
+      ctx.fillStyle = gradient
+      ctx.fillRect(x, height - barHeight, barWidth, barHeight)
+
+      x += barWidth + 1
+    }
+  }
+
+  nextTick(() => {
+    resizeCanvas()
+    draw()
+  })
+}
+
+const cancelRecording = () => {
+  if (mediaRecorder.value && mediaRecorder.value.state !== 'inactive') {
+    mediaRecorder.value.stop()
+  }
+  
+  if (animationId.value) {
+    cancelAnimationFrame(animationId.value)
+  }
+
+  if (audioContext.value) {
+    audioContext.value.close()
+  }
+
+  isRecording.value = false
+  audioChunks.value = []
+  recordedAudioBlob.value = null
+}
+
+const confirmRecording = async () => {
+  if (mediaRecorder.value && mediaRecorder.value.state !== 'inactive') {
+    await new Promise((resolve) => {
+      const originalOnStop = mediaRecorder.value.onstop
+      mediaRecorder.value.onstop = () => {
+        recordedAudioBlob.value = new Blob(audioChunks.value, { type: 'audio/wav' })
+        if (originalOnStop) originalOnStop()
+        resolve()
+      }
+      mediaRecorder.value.stop()
+    })
+  }
+
+  if (animationId.value) {
+    cancelAnimationFrame(animationId.value)
+  }
+
+  if (audioContext.value) {
+    audioContext.value.close()
+  }
+
+  console.log('recordedAudioBlob.value', recordedAudioBlob.value)
+  if (recordedAudioBlob.value) {
+    isTranscribing.value = true
+    try {
+      const response = await multimodalApi.uploadAudio(recordedAudioBlob.value)
+      console.log('response', response)
+      
+      if (response.data && response.data.text) {
+        emit('update:modelValue', response.data.text)
+      }
+    } catch (error) {
+      console.error('音频识别失败:', error)
+    } finally {
+      isTranscribing.value = false
+      isRecording.value = false
+    }
+  } else {
+    isRecording.value = false
+  }
+
+  audioChunks.value = []
+  recordedAudioBlob.value = null
 }
 
 // 处理输入事件
