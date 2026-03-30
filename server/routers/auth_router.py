@@ -280,19 +280,6 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         "department_name": department_name,
     }
 
-# 利用Redis存储MOM的Token
-@auth.post("/cache-mom-token")
-async def cache_mom_token(
-    key: str = Body(...),
-    token: str = Body(...),
-):
-    try:
-        redis_client.set(key, token)
-        return {"code": 0}
-    except Exception as e:
-        return {"code":1, "msg": str(e)}
-
-
 # 路由：校验是否需要初始化管理员
 @auth.get("/check-first-run")
 async def check_first_run():
@@ -912,3 +899,16 @@ async def impersonate_user(
         "department_id": target_user.department_id,
         "department_name": department_name,
     }
+
+
+# 利用Redis存储MOM的Token
+@auth.post("/cache-mom-token")
+async def cache_mom_token(
+    key: str = Body(...),
+    token: str = Body(...),
+):
+    try:
+        redis_client.set(key, token)
+        return {"code": 0}
+    except Exception as e:
+        return {"code":1, "msg": str(e)}

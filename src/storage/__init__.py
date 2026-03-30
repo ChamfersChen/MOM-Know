@@ -1,0 +1,1 @@
+from .variable_store import global_variable

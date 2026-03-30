@@ -12,7 +12,7 @@ from src import config as sys_config
 from src.services.mcp_service import get_mcp_server_names
 from src.utils import logger
 
-from src.agents.common.tools import gen_tool_info
+from src.agents.common.toolkits.utils import gen_tool_info
 from src.agents.common.toolkits.mom import get_mom_tools
 
 

@@ -14,7 +14,7 @@ from src.agents.common.toolkits.mom.tools import get_mom_tools
 
 
 class MOMbotAgent(BaseAgent):
-    name = "智能体助手"
+    name = "MOM智能体助手"
     description = "基础的对话机器人，可以回答问题，可在配置中启用需要的工具。"
     capabilities = ["file_upload"]  # 支持文件上传功能
     context_schema: type[MOMBotContext] = MOMBotContext  # 智能体上下文 schema
