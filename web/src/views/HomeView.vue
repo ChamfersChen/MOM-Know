@@ -45,7 +45,7 @@
 
         <div class="hero-layout">
           <div class="hero-content reveal-up">
-            <p v-if="typedBadge" class="hero-badge" :class="{ typing: isBadgeTyping }">
+            <!-- <p v-if="typedBadge" class="hero-badge" :class="{ typing: isBadgeTyping }">
               <template v-if="badgeParts.number">
                 <span>{{ badgeParts.prefix }}</span>
                 <a
@@ -59,7 +59,7 @@
                 <span>{{ badgeParts.suffix }}</span>
               </template>
               <template v-else>{{ typedBadge }}</template>
-            </p>
+            </p> -->
             <h1 class="title reveal-up delay-1">{{ infoStore.branding.title }}</h1>
             <Transition name="subtitle-switch" mode="out-in">
               <p v-if="currentSubtitle" class="subtitle" :key="currentSubtitle">
@@ -69,9 +69,9 @@
             <!-- <p class="description">{{ infoStore.branding.description }}</p> -->
             <div class="hero-actions">
               <button class="button-base primary" @click="goToChat">开始体验</button>
-              <a class="doc-text-link" href="https://xerrors.github.io/Yuxi/" target="_blank"
+              <!-- <a class="doc-text-link" href="https://xerrors.github.io/Yuxi/" target="_blank"
                 >查看文档</a
-              >
+              > -->
             </div>
           </div>
           <div class="insight-panel" v-if="featureCards.length">

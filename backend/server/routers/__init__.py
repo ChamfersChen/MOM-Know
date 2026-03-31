@@ -14,6 +14,7 @@ from server.routers.task_router import tasks
 from server.routers.tool_router import tools
 from server.routers.apikey_router import apikey_router
 from server.routers.filesystem_router import filesystem_router
+from server.routers.sql_database_router import sql_database_router
 
 _LITE_MODE = os.environ.get("LITE_MODE", "").lower() in ("true", "1")
 
@@ -34,6 +35,7 @@ router.include_router(subagents_router)  # /api/system/subagents/* 子智能体�
 router.include_router(tools)  # /api/system/tools/* 工具列表与配置
 router.include_router(apikey_router)  # /api/apikey/* API Key 管理
 router.include_router(filesystem_router)  # /api/viewer/filesystem/* 工作台文件系统视图
+router.include_router(sql_database_router)  
 
 if not _LITE_MODE:
     from server.routers.graph_router import graph

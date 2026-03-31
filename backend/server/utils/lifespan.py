@@ -8,6 +8,7 @@ from yuxi.services.mcp_service import init_mcp_servers
 from yuxi.services.subagent_service import init_builtin_subagents
 from yuxi.services.run_queue_service import close_queue_clients, get_redis_client
 from yuxi.storage.postgres.manager import pg_manager
+from yuxi.sql_database import sql_database
 from yuxi.knowledge import knowledge_base
 from yuxi.utils import logger
 from yuxi.agents.backends.sandbox import init_sandbox_provider, shutdown_sandbox_provider
@@ -46,6 +47,7 @@ async def lifespan(app: FastAPI):
     else:
         try:
             await knowledge_base.initialize()
+            await sql_database.initialize()
         except Exception as e:
             logger.error(f"Failed to initialize knowledge base manager: {e}")
 
@@ -71,16 +73,15 @@ async def lifespan(app: FastAPI):
     await tasker.start()
     logger.info(f"""
 
-░██     ░██                       ░██
- ░██   ░██
-  ░██ ░██   ░██    ░██ ░██    ░██ ░██
-   ░████    ░██    ░██  ░██  ░██  ░██
-    ░██     ░██    ░██   ░█████   ░██
-    ░██     ░██   ░███  ░██  ░██  ░██
-    ░██      ░█████░██ ░██    ░██ ░██  v{get_version()}
+  __  __  ____  __  __       _ 
+ |  \/  |/ __ \|  \/  |     (_)
+ | \  / | |  | | \  / | __ _ _ 
+ | |\/| | |  | | |\/| |/ _` | |
+ | |  | | |__| | |  | | (_| | |
+ |_|  |_|\____/|_|  |_|\__,_|_| v{get_version()}
 
     """)
-    logger.info("Yuxi backend startup complete")
+    logger.info("MOMai backend startup complete")
     yield
     await tasker.shutdown()
     shutdown_sandbox_provider()

@@ -726,6 +726,8 @@ async def stream_agent_chat(
         logger.warning(f"No thread_id provided, generated new thread_id: {thread_id}")
 
     input_context = agent_config | {"user_id": user_id, "thread_id": thread_id}
+    input_context["username"] = current_user.username
+    input_context["department_id"] = current_user.department_id
     langfuse_run = _build_langfuse_run_context(
         current_user=current_user,
         thread_id=thread_id,

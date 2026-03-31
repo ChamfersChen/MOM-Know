@@ -26,9 +26,9 @@
             </div>
           </a-menu-item>
           <a-menu-divider />
-          <a-menu-item key="docs" @click="openDocs" :icon="BookOpenIcon">
+          <!-- <a-menu-item key="docs" @click="openDocs" :icon="BookOpenIcon">
             <span class="menu-text">文档中心</span>
-          </a-menu-item>
+          </a-menu-item> -->
           <a-menu-item
             key="theme"
             @click="toggleTheme"

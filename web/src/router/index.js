@@ -78,6 +78,37 @@ const router = createRouter({
       ]
     },
     {
+      path: '/sqldatabase',
+      name: 'SqlDatabase',
+      component: AppLayout,
+      children: [
+        {
+          path: '',
+          name: 'SqlDatabaseComp',
+          component: () => import('../views/SqlDataBaseView.vue'),
+          meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
+        },
+        {
+          path: 'term-config',
+          name: 'SqlTermConfigComp',
+          component: () => import('../views/SqlTermConfigView.vue'),
+          meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
+        },
+        {
+          path: 'sql-example',
+          name: 'SqlExampleComp',
+          component: () => import('../views/SqlExampleView.vue'),
+          meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
+        },
+        {
+          path: ':database_id',
+          name: 'SqlDatabaseInfoComp',
+          component: () => import('../views/SqlDataBaseInfoView.vue'),
+          meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
+        }
+      ]
+    },
+    {
       path: '/dashboard',
       name: 'dashboard',
       component: AppLayout,

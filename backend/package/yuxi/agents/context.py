@@ -114,6 +114,16 @@ class BaseContext:
             "type": "number",
         },
     )
+    
+    username: str | None = field(
+        default=None,
+        metadata={"name": "用户名称", "configurable": False, "description": "用来显示用户名称"},
+    )
+
+    department_id: int | None = field(
+        default=None,
+        metadata={"name": "部门ID", "configurable": False, "description": "用来唯一标识一个部门"},
+    )
 
     @classmethod
     def get_configurable_items(cls):

@@ -1,0 +1,527 @@
+import os
+import asyncio
+import pymysql
+from pymysql import MySQLError
+from pymysql.cursors import DictCursor
+from yuxi.sql_database.base import DBNotFoundError
+from yuxi.sql_database.base import ConnectorBase
+from yuxi.sql_database.factory import DBConnectorBaseFactory
+
+from yuxi.utils import logger
+
+
+class SqlDataBaseManager:
+    """数据库管理器
+
+    统一管理多种类型的数据库实例，提供统一的外部接口
+    """
+    def __init__(self, work_dir: str):
+        """
+        初始化知识库管理器
+
+        Args:
+            work_dir: 工作目录
+        """
+        self.work_dir = work_dir
+        os.makedirs(work_dir, exist_ok=True)
+
+        # 知识库实例缓存 {kb_type: kb_instance}
+        # self.db_instances: dict[str, MySQLConnector] = {}
+        self.db_instances: dict[str, ConnectorBase] = {}
+
+        # 知识库名称与ID映射, 用于Tool调用时使用
+        self.db_name_to_id: dict[str, str] = {}
+        self.db_host_port_name_to_id: dict[str, str] = {}
+
+    async def initialize(self):
+        """异步初始化"""
+        # 初始化已存在数据库实例
+        self._initialize_existing_dbs()
+        logger.info("SqlDatabaseManager initialized")
+
+    async def _load_all_metadata(self):
+        """异步加载所有元数据 - 保留兼容性的空方法，现在由 KB 实例自行加载"""
+        pass
+
+    def _initialize_existing_dbs(self):
+        """初始化已存在的知识库实例"""
+        from yuxi.repositories.sql_database_repository import SqlDatabaseRepository
+
+        async def _async_init():
+            db_repo = SqlDatabaseRepository()
+            rows = await db_repo.get_all()
+
+            db_types_in_use = set()
+            for row in rows:
+                db_type = row.db_type or "mysql"
+                db_types_in_use.add(db_type)
+                self.db_name_to_id[row.name] = row.db_id
+
+                host = row.connect_info['host']
+                port = row.connect_info['port']
+                self.db_host_port_name_to_id[f"{host}:{port}/{row.name}"] = str(row.db_id)
+
+            logger.info(f"[InitializeDB] 发现 {len(db_types_in_use)} 种数据库类型: {db_types_in_use}")
+
+            # 为每种使用中的数据库类型创建实例并加载元数据
+            for db_type in db_types_in_use:
+                try:
+                    db_instance = self._get_or_create_db_instance(db_type)
+                    # 让 DB 实例自行加载元数据
+                    await db_instance._load_metadata()
+                    logger.info(f"[InitializeDB] {db_type} 实例已初始化")
+                except Exception as e:
+                    logger.error(f"Failed to initialize {db_type} knowledge base: {e}")
+                    import traceback
+
+                    logger.error(traceback.format_exc())
+
+        # 在事件循环中运行异步初始化
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_async_init())
+        except RuntimeError:
+            asyncio.run(_async_init())
+
+
+    def _get_or_create_db_instance(self, db_type: str) -> ConnectorBase:
+        """
+        获取或创建知识库实例
+
+        Args:
+            kb_type: 知识库类型
+
+        Returns:
+            知识库实例
+        """
+        if db_type in self.db_instances:
+            return self.db_instances[db_type]
+
+        # 创建新的数据库实例
+        db_work_dir = os.path.join(self.work_dir, f"{db_type}_data")
+        db_instance = DBConnectorBaseFactory.create(db_type, db_work_dir)
+
+        self.db_instances[db_type] = db_instance
+        logger.info(f"Created {db_type} knowledge base instance")
+        return db_instance
+
+    async def _get_db_for_database(self, db_id: str) -> ConnectorBase:
+        """
+        根据数据库ID获取对应的知识库实例
+
+        Args:
+            db_id: 数据库ID
+
+        Returns:
+            知识库实例
+
+        Raises:
+            KBNotFoundError: 数据库不存在或知识库类型不支持
+        """
+        from yuxi.repositories.sql_database_repository import SqlDatabaseRepository
+
+        db_repo = SqlDatabaseRepository()
+        db = await db_repo.get_by_id(db_id)
+
+        if db is None:
+            raise DBNotFoundError(f"Database {db_id} not found")
+
+        db_type = db.db_type or "mysql"
+
+        if not DBConnectorBaseFactory.is_type_supported(db_type):
+            raise DBNotFoundError(f"Unsupported knowledge base type: {db_type}")
+
+        return self._get_or_create_db_instance(db_type)
+
+    def _get_db_for_database_sync(self, db_id: str) -> ConnectorBase:
+        """同步版本的 _get_db_for_database，用于兼容同步调用"""
+        try:
+            loop = asyncio.get_running_loop()
+            return loop.run_until_complete(self._get_db_for_database(db_id))
+        except RuntimeError:
+            return asyncio.run(self._get_db_for_database(db_id))
+
+    # =============================================================================
+    # 统一的外部接口 - 与原始 LightRagBasedKB 兼容
+    # =============================================================================
+
+    async def aget_kb(self, db_id: str) -> ConnectorBase:
+        """异步获取知识库实例
+
+        Args:
+            db_id: 数据库ID
+
+        Returns:
+            知识库实例
+        """
+        return await self._get_db_for_database(db_id)
+
+    def get_kb(self, db_id: str) -> ConnectorBase:
+        """同步获取知识库实例（兼容性方法，用于同步上下文）
+
+        Args:
+            db_id: 数据库ID
+
+        Returns:
+            知识库实例
+        """
+        return self._get_db_for_database_sync(db_id)
+
+    def test_connection(self, config: dict) -> bool:
+        try:
+            connection = pymysql.connect(
+                host=config["host"],
+                user=config["username"],
+                password=config["password"],
+                database=config["database"],
+                port=int(config["port"]),
+                charset=config.get("charset", "utf8mb4"),
+                cursorclass=DictCursor,
+                connect_timeout=10,
+                read_timeout=60,  # 增加读取超时
+                write_timeout=30,
+                autocommit=True,  # 自动提交
+            )
+            return connection
+
+        except MySQLError as e:
+            logger.error(f"Failed to connect to MySQL: {e}")
+            raise ConnectionError(f"MySQL connection failed: {e}")
+
+    async def get_databases(self) -> dict:
+        """获取所有数据库信息"""
+        from yuxi.repositories.sql_database_repository import SqlDatabaseRepository
+
+        # get all databases from database
+        db_repo = SqlDatabaseRepository()
+        rows = await db_repo.get_all()
+
+        all_databases = []
+        for row in rows:
+            db_instance = self._get_or_create_db_instance(row.db_type or "mysql")
+            db_info = db_instance.get_database_info(row.db_id)
+            if db_info:
+                # 补充 share_config
+                db_info["share_config"] = row.share_config or {"is_shared": True, "accessible_departments": []}
+                all_databases.append(db_info)
+        return {"databases": all_databases}
+
+    def get_database_instance(self, db_id: str) -> ConnectorBase:
+        """Public accessor to fetch the underlying knowledge base instance by database id.
+
+        This provides a simple compatibility layer for callers that expect a
+        `get_kb` method on the manager.
+        """
+        return self._get_db_for_database(db_id)
+
+    def _get_or_create_kb_instance(self, kb_type: str) -> ConnectorBase:
+        """
+        获取或创建知识库实例
+
+        Args:
+            kb_type: 知识库类型
+
+        Returns:
+            知识库实例
+        """
+        if kb_type in self.db_instances:
+            return self.db_instances[kb_type]
+
+        # 创建新的知识库实例
+        kb_work_dir = os.path.join(self.work_dir, f"{kb_type}_data")
+        kb_instance = DBConnectorBaseFactory.create(kb_type, kb_work_dir)
+
+        self.db_instances[kb_type] = kb_instance
+        logger.info(f"Created {kb_type} knowledge base instance")
+        return kb_instance
+
+    async def check_accessible(self, user: dict, db_id: str) -> bool:
+        """检查用户是否有权限访问数据库
+
+        Args:
+            user: 用户信息字典
+            db_id: 数据库ID
+
+        Returns:
+            bool: 是否有权限
+        """
+        # 超级管理员有权访问所有
+        if user.get("role") == "superadmin":
+            return True
+
+        from yuxi.repositories.sql_database_repository import SqlDatabaseRepository
+
+        sdb_repo = SqlDatabaseRepository()
+        sdb = await sdb_repo.get_by_id(db_id)
+        if sdb is None:
+            return False
+
+        share_config = sdb.share_config or {}
+        is_shared = share_config.get("is_shared", True)
+
+        # 如果是全员共享，则有权限
+        if is_shared:
+            return True
+
+        # 检查部门权限
+        user_department_id = user.get("department_id")
+        accessible_departments = share_config.get("accessible_departments", [])
+
+        if user_department_id is None:
+            return False
+
+        # 转换为整数进行比较（前端可能传递字符串，后端存储为整数）
+        try:
+            user_department_id = int(user_department_id)
+            accessible_departments = [int(d) for d in accessible_departments]
+        except (ValueError, TypeError):
+            return False
+
+        return user_department_id in accessible_departments
+
+
+    async def get_databases_by_user(self, user: dict) -> dict:
+        """根据用户权限获取知识库列表
+
+        Args:
+            user: 用户信息字典，包含 role 和 department_id
+
+        Returns:
+            过滤后的知识库列表
+        """
+        all_databases = (await self.get_databases()).get("databases", [])
+
+        # 超级管理员可以看到所有知识库
+        if user.get("role") == "superadmin":
+            return {"databases": all_databases}
+
+        filtered_databases = []
+
+        for db in all_databases:
+            db_id = db.get("db_id")
+            assert db_id, "数据库ID不能为空"
+            self.db_name_to_id[db['name']] = db_id
+
+            port = db['connect_info']['port']
+            host = db['connect_info']['host']
+            self.db_host_port_name_to_id[f"{host}:{port}/{db['name']}"] = db_id
+            if not db_id:
+                continue
+
+            if await self.check_accessible(user, db_id):
+                filtered_databases.append(db)
+
+        return {"databases": filtered_databases}
+
+    async def database_name_exists(self, database_name: str) -> bool:
+        """检查知识库名称是否已存在"""
+        from yuxi.repositories.sql_database_repository import SqlDatabaseRepository
+        from yuxi.storage.postgres.manager import pg_manager
+
+        # 确保 pg_manager 已初始化
+        if not pg_manager._initialized:
+            pg_manager.initialize()
+
+        sdb_repo = SqlDatabaseRepository()
+        rows = await sdb_repo.get_all()
+        for row in rows:
+            if (row.name or "").lower() == database_name.lower():
+                return True
+        return False
+
+    async def database_ip_port_name_exists(self, connect_info: dict) -> bool:
+        """检查知识库名称是否已存在"""
+        from yuxi.repositories.sql_database_repository import SqlDatabaseRepository
+        from yuxi.storage.postgres.manager import pg_manager
+
+        # 确保 pg_manager 已初始化
+        if not pg_manager._initialized:
+            pg_manager.initialize()
+
+        sdb_repo = SqlDatabaseRepository()
+        rows = await sdb_repo.get_all()
+        for row in rows:
+            if ( (row.connect_info.get("database") or "").lower() == str(connect_info.get("database", "")).lower()
+                and (row.connect_info.get("host") or "").lower() == str(connect_info.get("host", "")).lower()
+                and str(row.connect_info.get("port", "")).lower() == str(connect_info.get("port", "")).lower() ):
+                return True
+        return False
+
+    async def create_database(
+        self,
+        database_name: str,
+        description: str,
+        db_type: str,
+        connect_info:dict,
+        share_config: dict | None = None,
+        related_db_ids: str | None = None,
+        **kwargs
+    ) -> dict:
+        """
+        创建数据库
+
+        Args:
+            database_name: 数据库名称
+            description: 数据库描述
+            kb_type: 知识库类型，默认为lightrag
+            embed_info: 嵌入模型信息
+            **kwargs: 其他配置参数，包括chunk_size和chunk_overlap
+
+        Returns:
+            数据库信息字典
+        """
+        if not DBConnectorBaseFactory.is_type_supported(db_type):
+            available_types = list(DBConnectorBaseFactory.get_available_types().keys())
+            raise ValueError(f"Unsupported knowledge base type: {db_type}. Available types: {available_types}")
+        # 检查名称是否已存在
+        # if await self.database_name_exists(database_name):
+        if await self.database_ip_port_name_exists(connect_info):
+            raise ValueError(f"数据库名称 '{database_name}' 已存在，请使用其他名称")
+
+        # 默认共享配置
+        if share_config is None:
+            share_config = {"is_shared": True, "accessible_departments": []}
+
+        db_instance = self._get_or_create_db_instance(db_type)
+        db_info = await db_instance.create_database(
+            database_name,
+            description,
+            connect_info=connect_info,
+            share_config=share_config,
+            related_db_ids=related_db_ids,
+            **kwargs)
+        db_id = db_info["db_id"]
+        # 删除数据库名称与 ID 的映射
+        # self.db_host_port_to_id[f"{connect_info['host']}:{connect_info['port']}"] = db_id
+
+        created_databases = set([v['database_id'] for v in db_instance.tables_meta.values()])
+        if not created_databases or db_id not in created_databases:
+            await self.initialize_tables(db_id)
+            logger.debug(f"Initialize tables for {db_id}")
+
+        return db_info
+
+    async def delete_database(self, db_id: str) -> dict:
+        """删除数据库"""
+        try:
+            db_instance = await self._get_db_for_database(db_id)
+            db_info = db_instance.get_database_info(db_id)
+            db_name = db_info['name']
+            db_host = db_info['connect_info']['host']
+            db_port = db_info['connect_info']['port']
+
+            result = await db_instance.delete_database(db_id)
+            # 删除数据库名称与 ID 的映射
+            if db_name in self.db_name_to_id:
+                del self.db_name_to_id[db_name]
+            if f"{db_host}:{db_port}/{db_name}" in self.db_host_port_name_to_id:
+                del self.db_host_port_name_to_id[f"{db_host}:{db_port}/{db_name}"]
+
+            return result
+        except DBNotFoundError as e:
+            logger.warning(f"Database {db_id} not found during deletion: {e}")
+            return {"message": "删除成功"}
+
+    async def get_connection(self, db_id: str):
+        db_instance = await self._get_db_for_database(db_id)
+        return db_instance.get_connection(db_id)
+
+    async def invalidate_connection(self, db_id: str):
+        db_instance = await self._get_db_for_database(db_id)
+        return db_instance.invalidate_connection(db_id)
+
+    async def get_database_info(self, db_id: str) -> dict | None:
+        """获取数据库详细信息"""
+        from yuxi.repositories.sql_database_repository import SqlDatabaseRepository
+
+        db_repo = SqlDatabaseRepository()
+        db = await db_repo.get_by_id(db_id)
+        if db is None:
+            return None
+
+        try:
+            db_instance = await self._get_db_for_database(db_id)
+            db_info = db_instance.get_database_info(db_id)
+        except DBNotFoundError:
+            db_info = {
+                "db_id": db_id,
+                "name": db.name,
+                "description": db.description,
+                "connect_info": db.connect_info,
+                "db_type": db.db_type,
+                "tables": {},
+                "related_db_ids": [],
+                "row_count": 0,
+                "status": "已连接",
+            }
+
+        # 添加数据库中的附加字段
+        db_info["share_config"] = db.share_config or {"is_shared": True, "accessible_departments": []}
+        return db_info
+
+
+    async def initialize_tables(self, db_id: str) -> dict | None:
+        db_instance = await self._get_db_for_database(db_id)
+        return await db_instance.initalize_table(db_id)
+
+    async def select_tables(self, db_id: str, table_ids: list[dict]) -> list[dict]:
+        """设置表信息"""
+        db_instance = await self._get_db_for_database(db_id)
+        return await db_instance.select_tables(db_id, table_ids)
+
+    async def update_database(
+            self,
+            db_id:str,
+            name:str,
+            description:str,
+            share_config:dict=None,
+            related_db_ids:str=None) -> dict:
+
+        db_instance = await self._get_db_for_database(db_id)
+        db_instance.update_database(db_id, name, description, share_config, related_db_ids)
+
+        db_info = db_instance.get_database_info(db_id)
+        assert db_info, f"数据库信息为空. db_id: {db_id}"
+        db_name = db_info['name']
+        db_host = db_info['connect_info']['host']
+        db_port = db_info['connect_info']['port']
+        # 更新db名称到ID映射
+        self.db_name_to_id[name] = db_id
+        self.db_host_port_name_to_id[f"{db_host}:{db_port}/{db_name}"] = db_id
+
+        # 准备更新数据
+        update_data: dict = {
+            "name": name,
+            "description": description,
+        }
+        if share_config is not None:
+            update_data["share_config"] = share_config
+
+        if related_db_ids is not None:
+            update_data["related_db_ids"] = related_db_ids
+
+        return await self.get_database_info(db_id)
+
+    async def update_tables(self, db_id:str, table_info:dict):
+
+        db_instance = await self._get_db_for_database(db_id)
+        db_instance.update_tables(db_id, table_info)
+        return await self.get_database_info(db_id)
+
+    async def get_tables(self, db_id: str) -> dict:
+        """获取数据库表信息"""
+        db_instance = await self._get_db_for_database(db_id)
+        return await db_instance.get_tables()
+
+
+
+    def get_cursors(self) -> dict[str, dict]:
+        """获取所有检索器"""
+        all_cursors= {}
+
+        # 收集所有知识库的检索器
+        for db_instance in self.db_instances.values():
+            cursors = db_instance.get_cursors()
+            all_cursors.update(cursors)
+
+        return all_cursors

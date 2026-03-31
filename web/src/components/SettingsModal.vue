@@ -66,7 +66,7 @@
           </div>
         </div>
 
-        <div v-if="showStarCard" class="settings-star-card">
+        <!-- <div v-if="showStarCard" class="settings-star-card">
           <div class="star-card-header">
             <div class="star-card-badge">
               <Star :size="12" />
@@ -93,7 +93,7 @@
             />
             <ExternalLink :size="13" />
           </a>
-        </div>
+        </div> -->
       </div>
 
       <!-- 顶部导航 (Mobile) -->

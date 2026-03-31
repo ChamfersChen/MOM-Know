@@ -775,3 +775,48 @@ class UploadGraphService:
         except Exception as e:
             logger.error(f"数据库会话异常: {str(e)}")
             return []
+
+    async def database_meta_add_entity(self,
+                                       databases_meta:list,
+                                       kgdb_name="neo4j",
+                                       embed_model_name=None,
+                                       batch_size=40):
+        assert self.driver is not None, "Database is not connected"
+        self.connection.status = "processing"
+        kgdb_name = kgdb_name or "neo4j"
+        self.use_database(kgdb_name)  # 切换到指定数据库
+        logger.info(f"Start adding entity to {kgdb_name} with data")
+
+        triples = []
+        db_id2h = {}
+        for database_info in databases_meta:
+            h = {
+                "name": database_info["name"],
+                "database_name": database_info["name"],
+                "description": database_info["description"],
+                "host": database_info['connect_info']['host'],
+                "port": database_info['connect_info']['port'],
+
+            }
+            db_id2h[database_info["db_id"]] = h
+            for table_id, table_info in database_info["tables"].items():
+                if not table_info['is_choose']:
+                    continue
+                t = {
+                    "name": table_info["tablename"],
+                    "description": table_info["total_description"],
+                    "database_name": database_info["name"],
+                    "table_name": table_info["tablename"],
+                    "table_description": table_info["description"],
+                    "host": database_info['connect_info']['host'],
+                    "port": database_info['connect_info']['port'],
+                }
+                triples.append({"h": h, "t": t, "r": "Database2Table"})
+
+        for database_info in databases_meta:
+            for related_db_id in database_info["related_db_ids"]:
+                t = db_id2h[related_db_id]
+                if h['name'] != t['name']:
+                    triples.append({"h": h, "t": t, "r": "Database2Database"})
+        if triples:
+            await self.txt_add_vector_entity(triples, kgdb_name, embed_model_name, batch_size)

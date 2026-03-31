@@ -2,7 +2,7 @@
 import { ref, reactive, onMounted, computed, provide } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { GithubOutlined } from '@ant-design/icons-vue'
-import { Bot, Waypoints, LibraryBig, BarChart3, CircleCheck, Blocks } from 'lucide-vue-next'
+import { Bot, Waypoints, LibraryBig, BarChart3, CircleCheck, Blocks, Database } from 'lucide-vue-next'
 
 import { useConfigStore } from '@/stores/config'
 import { useDatabaseStore } from '@/stores/database'
@@ -115,16 +115,22 @@ const mainList = computed(() => {
     if (!isLiteMode) {
       items.push(
         {
-          name: '图谱',
-          path: '/graph',
-          icon: Waypoints,
-          activeIcon: Waypoints
-        },
-        {
           name: '知识库',
           path: '/database',
           icon: LibraryBig,
           activeIcon: LibraryBig
+        },
+        {
+          name: 'SQL数据库',
+          path: '/sqldatabase',
+          icon: Database,
+          activeIcon: Database 
+        },
+        {
+          name: '图谱',
+          path: '/graph',
+          icon: Waypoints,
+          activeIcon: Waypoints
         }
       )
     }
@@ -203,7 +209,7 @@ provide('settingsModal', {
       </div>
       <div class="fill"></div>
       <div class="github nav-item">
-        <a-tooltip placement="right">
+        <!-- <a-tooltip placement="right">
           <template #title>欢迎 Star</template>
           <a href="https://github.com/xerrors/Yuxi" target="_blank" class="github-link">
             <GithubOutlined class="icon" />
@@ -211,7 +217,7 @@ provide('settingsModal', {
               <span class="star-count">{{ (githubStars / 1000).toFixed(1) }}k</span>
             </span>
           </a>
-        </a-tooltip>
+        </a-tooltip> -->
       </div>
       <!-- 用户信息组件 -->
       <div class="nav-item user-info">
