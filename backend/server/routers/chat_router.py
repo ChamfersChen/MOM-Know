@@ -37,11 +37,13 @@ from yuxi.services.thread_files_service import (
     list_thread_files_view,
     read_thread_file_content_view,
     resolve_thread_artifact_view,
+    save_thread_artifact_to_workspace_view,
 )
 from yuxi.services.feedback_service import get_message_feedback_view, submit_message_feedback_view
 from yuxi.repositories.agent_config_repository import AgentConfigRepository
 from yuxi.utils.logging_config import logger
 from yuxi.utils.image_processor import process_uploaded_image
+from yuxi.utils.paths import VIRTUAL_PATH_PREFIX
 
 
 # TODO：当前文件的功能过于庞杂，路由标签混乱
@@ -259,6 +261,7 @@ async def create_agent_config_profile(
     repo = AgentConfigRepository(db)
     item = await repo.create(
         department_id=current_user.department_id,
+        agent_id=agent_id,
         name=payload.name,
         description=payload.description,
         icon=payload.icon,
@@ -687,6 +690,17 @@ class ThreadFileContentResponse(BaseModel):
     artifact_url: str
 
 
+class SaveThreadArtifactRequest(BaseModel):
+    path: str
+
+
+class SaveThreadArtifactResponse(BaseModel):
+    name: str
+    source_path: str
+    saved_path: str
+    saved_artifact_url: str
+
+
 # =============================================================================
 # > === 会话管理分组 ===
 # =============================================================================
@@ -804,7 +818,7 @@ async def delete_thread_attachment(
 @chat.get("/thread/{thread_id}/files", response_model=ThreadFileListResponse)
 async def list_thread_files(
     thread_id: str,
-    path: str = Query("/home/gem/user-data"),
+    path: str = Query(f"{VIRTUAL_PATH_PREFIX}"),
     recursive: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_required_user),
@@ -858,6 +872,22 @@ async def get_thread_artifact(
     media_type = guess_type(file_path.name)[0] or "application/octet-stream"
     headers = {"Content-Disposition": f'attachment; filename="{file_path.name}"'} if download else None
     return FileResponse(path=file_path, media_type=media_type, headers=headers)
+
+
+@chat.post("/thread/{thread_id}/artifacts/save", response_model=SaveThreadArtifactResponse)
+async def save_thread_artifact_to_workspace(
+    thread_id: str,
+    request: SaveThreadArtifactRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_required_user),
+):
+    """保存交付物到共享 workspace/saved_artifacts 目录。"""
+    return await save_thread_artifact_to_workspace_view(
+        thread_id=thread_id,
+        current_user_id=str(current_user.id),
+        db=db,
+        path=request.path,
+    )
 
 
 # =============================================================================
