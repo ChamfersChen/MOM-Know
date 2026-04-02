@@ -5890,7 +5890,7 @@ wheels = [
 
 [[package]]
 name = "yuxi"
-version = "0.6.0b3"
+version = "0.6.0"
 source = { virtual = "package/yuxi" }
 
 [[package]]
