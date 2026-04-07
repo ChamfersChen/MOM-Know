@@ -10,6 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import declarative_base
 from yuxi.storage.postgres.models_business import Base as BusinessBase
 from yuxi.storage.postgres.models_knowledge import Base as KnowledgeBase
+from yuxi.storage.postgres.models_sql_database import Base as SQLDatabaseBase
+from yuxi.storage.postgres.models_sql_examples import Base as SQLExamplesBase
+from yuxi.storage.postgres.models_terminology import Base as TerminologyBase
 from yuxi.utils import logger
 
 from server.utils.singleton import SingletonMeta
@@ -18,7 +21,7 @@ from server.utils.singleton import SingletonMeta
 CombinedBase = declarative_base()
 
 # 继承所有表
-for module in [KnowledgeBase, BusinessBase]:
+for module in [KnowledgeBase, BusinessBase, SQLDatabaseBase, SQLExamplesBase, TerminologyBase]:
     for table_name in dir(module):
         table = getattr(module, table_name)
         if isinstance(table, type) and hasattr(table, "__tablename__"):
@@ -99,6 +102,9 @@ class PostgresManager(metaclass=SingletonMeta):
         async with self.async_engine.begin() as conn:
             await conn.run_sync(KnowledgeBase.metadata.create_all)
             await conn.run_sync(BusinessBase.metadata.create_all)
+            await conn.run_sync(SQLDatabaseBase.metadata.create_all)
+            await conn.run_sync(SQLExamplesBase.metadata.create_all)
+            await conn.run_sync(TerminologyBase.metadata.create_all)
         logger.info("PostgreSQL tables created/checked (knowledge + business)")
 
     async def create_business_tables(self):
@@ -106,6 +112,9 @@ class PostgresManager(metaclass=SingletonMeta):
         self._check_initialized()
         async with self.async_engine.begin() as conn:
             await conn.run_sync(BusinessBase.metadata.create_all)
+            await conn.run_sync(SQLDatabaseBase.metadata.create_all)
+            await conn.run_sync(SQLExamplesBase.metadata.create_all)
+            await conn.run_sync(TerminologyBase.metadata.create_all)
         logger.info("PostgreSQL business tables created/checked")
 
     async def drop_tables(self):
@@ -114,6 +123,9 @@ class PostgresManager(metaclass=SingletonMeta):
         async with self.async_engine.begin() as conn:
             await conn.run_sync(BusinessBase.metadata.drop_all)
             await conn.run_sync(KnowledgeBase.metadata.drop_all)
+            await conn.run_sync(SQLDatabaseBase.metadata.drop_all)
+            await conn.run_sync(SQLExamplesBase.metadata.drop_all)
+            await conn.run_sync(TerminologyBase.metadata.drop_all)
         logger.info("PostgreSQL tables dropped")
 
     async def ensure_knowledge_schema(self):
