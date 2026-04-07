@@ -1,5 +1,7 @@
 .yuxi/
 
+*.egg-info
+
 ### python gitignore
 __pycache__/
 *.pyc
@@ -48,6 +50,7 @@ cache
 .claude
 .cursor
 .trae
+.codex
 .pytest_cache
 
 *.secret*

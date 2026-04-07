@@ -2,7 +2,7 @@
 import { ref, reactive, onMounted, computed, provide } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { GithubOutlined } from '@ant-design/icons-vue'
-import { Bot, Waypoints, LibraryBig, BarChart3, CircleCheck, Blocks, Database } from 'lucide-vue-next'
+import { Bot, LibraryBig, BarChart3, ClipboardList, Blocks, Database } from 'lucide-vue-next'
 
 import { useConfigStore } from '@/stores/config'
 import { useDatabaseStore } from '@/stores/database'
@@ -113,26 +113,20 @@ const mainList = computed(() => {
 
   if (userStore.isAdmin) {
     if (!isLiteMode) {
-      items.push(
-        {
-          name: '知识库',
-          path: '/database',
-          icon: LibraryBig,
-          activeIcon: LibraryBig
-        },
+      items.push({
+        name: '知识库',
+        path: '/database',
+        activePaths: ['/database', '/graph'],
+        icon: LibraryBig,
+        activeIcon: LibraryBig
+      },
         {
           name: 'SQL数据库',
           path: '/sqldatabase',
           icon: Database,
           activeIcon: Database 
         },
-        {
-          name: '图谱',
-          path: '/graph',
-          icon: Waypoints,
-          activeIcon: Waypoints
-        }
-      )
+    )
     }
 
     if (userStore.isSuperAdmin) {
@@ -154,6 +148,11 @@ const mainList = computed(() => {
 
   return items
 })
+
+const isNavItemActive = (item) => {
+  const activePaths = item.activePaths || [item.path]
+  return activePaths.some((path) => route.path === path || route.path.startsWith(`${path}/`))
+}
 
 // Provide settings modal methods to child components
 provide('settingsModal', {
@@ -177,13 +176,14 @@ provide('settingsModal', {
           :to="item.path"
           v-show="!item.hidden"
           class="nav-item"
+          :class="{ active: isNavItemActive(item) }"
           active-class="active"
         >
           <a-tooltip placement="right">
             <template #title>{{ item.name }}</template>
             <component
               class="icon"
-              :is="route.path.startsWith(item.path) ? item.activeIcon : item.icon"
+              :is="isNavItemActive(item) ? item.activeIcon : item.icon"
               size="22"
             />
           </a-tooltip>
@@ -398,6 +398,8 @@ div.header,
       display: none;
     }
     &.task-center {
+      margin-bottom: 16px;
+
       .task-center-badge {
         width: 100%;
         display: flex;
@@ -544,6 +546,10 @@ div.header,
           color: var(--main-color);
         }
       }
+    }
+
+    &.task-center {
+      margin-bottom: 0;
     }
   }
 }

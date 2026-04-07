@@ -2,33 +2,52 @@
   <div ref="panelRef" class="agent-panel" :class="{ resizing: isResizing }">
     <!-- 拖拽手柄 -->
     <div class="resize-handle" @pointerdown="startResize"></div>
-    <div class="panel-header">
-      <div class="panel-title">
-        <FolderCode :size="20" class="header-icon" />
-        <span><strong>状态工作台</strong></span>
+    <div class="panel-header" :class="{ 'is-compact': isCompactHeader }">
+      <div class="panel-header-main">
+        <div class="panel-title">
+          <span><strong>文件系统</strong></span>
+        </div>
+        <div class="window-actions">
+          <button
+            class="header-action-btn"
+            :title="isExpanded ? '恢复高度' : '向上展开'"
+            @click="emit('toggle-expand')"
+          >
+            <component :is="isExpanded ? ChevronsDownUp : ChevronsUpDown" :size="15" />
+          </button>
+          <button class="close-btn" @click="$emit('close')">
+            <X :size="18" />
+          </button>
+        </div>
       </div>
-      <div class="header-actions">
-        <button class="close-btn" @click="$emit('close')">
-          <X :size="18" />
-        </button>
-      </div>
-    </div>
-
-    <div class="tabs">
-      <div class="tab active">文件系统</div>
-      <div class="tab-actions">
+      <div class="file-toolbar">
         <button
-          class="tab-action-btn"
-          :title="isExpanded ? '恢复高度' : '向上展开'"
-          @click="emit('toggle-expand')"
+          class="header-action-btn"
+          title="新建文件夹"
+          :disabled="!threadId"
+          @click="openCreateDirectoryModal"
         >
-          <component :is="isExpanded ? ChevronsDownUp : ChevronsUpDown" :size="15" />
+          <FolderPlus :size="15" />
         </button>
-        <button class="tab-action-btn" title="刷新" @click="emitRefresh">
+        <button
+          class="header-action-btn"
+          title="上传文件"
+          :disabled="!threadId"
+          @click="openUploadFilePicker"
+        >
+          <Upload :size="15" />
+        </button>
+        <button class="header-action-btn" title="刷新" @click="emitRefresh">
           <RefreshCw :size="15" />
         </button>
       </div>
     </div>
+    <input
+      ref="uploadInputRef"
+      class="hidden-file-input"
+      type="file"
+      @change="handleUploadInputChange"
+    />
     <div class="tab-content">
       <div class="files-display">
         <div v-if="!threadId" class="empty">创建对话后可查看工作区</div>
@@ -123,6 +142,23 @@
         @close="closePreview"
       />
     </a-modal>
+
+    <a-modal
+      v-model:open="createDirectoryModalVisible"
+      title="新建文件夹"
+      okText="创建"
+      cancelText="取消"
+      :confirmLoading="creatingDirectory"
+      @ok="createDirectory"
+      @cancel="closeCreateDirectoryModal"
+    >
+      <a-input
+        v-model:value="newDirectoryName"
+        placeholder="输入文件夹名"
+        :maxlength="120"
+        @pressEnter="createDirectory"
+      />
+    </a-modal>
   </div>
 </template>
 
@@ -132,19 +168,22 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   Download,
-  FolderCode,
+  FolderPlus,
   RefreshCw,
   Trash2,
+  Upload,
   X
 } from 'lucide-vue-next'
 import { Modal, message } from 'ant-design-vue'
 import FileTreeComponent from '@/components/FileTreeComponent.vue'
 import AgentFilePreview from '@/components/AgentFilePreview.vue'
 import {
+  createViewerDirectory,
   deleteViewerFile,
   downloadViewerFile,
   getViewerFileContent,
-  getViewerFileSystemTree
+  getViewerFileSystemTree,
+  uploadViewerFile
 } from '@/apis/viewer_filesystem'
 
 const props = defineProps({
@@ -180,14 +219,20 @@ const props = defineProps({
 
 const emit = defineEmits(['refresh', 'close', 'resize', 'resizing', 'toggle-expand'])
 const INLINE_PREVIEW_MIN_WIDTH = 920
+const WORKSPACE_PATH = '/home/gem/user-data/workspace'
 
 const panelRef = ref(null)
+const uploadInputRef = ref(null)
 const modalVisible = ref(false)
+const createDirectoryModalVisible = ref(false)
 const currentFile = ref(null)
 const currentFilePath = ref('')
 const loadingFiles = ref(false)
 const filesystemError = ref('')
 const panelWidth = ref(0)
+const newDirectoryName = ref('')
+const creatingDirectory = ref(false)
+const uploadingFile = ref(false)
 
 const dynamicTreeData = ref([])
 const selectedKeys = ref([])
@@ -195,6 +240,7 @@ const expandedKeys = ref([])
 const deletingPaths = ref(new Set())
 
 const useInlinePreview = computed(() => panelWidth.value >= INLINE_PREVIEW_MIN_WIDTH)
+const isCompactHeader = computed(() => panelWidth.value > 0 && panelWidth.value < 360)
 
 const buildDisplayName = (fullPath) => {
   const normalized = String(fullPath || '').replace(/\/+$/, '')
@@ -281,6 +327,43 @@ const removeTreeNode = (nodes, targetKey) => {
 }
 
 const normalizePathKey = (path) => String(path || '').replace(/\/+$/, '')
+
+const isWorkspacePath = (path) => {
+  const normalizedPath = normalizePathKey(path)
+  return normalizedPath === WORKSPACE_PATH || normalizedPath.startsWith(`${WORKSPACE_PATH}/`)
+}
+
+const parentPathOf = (path) => {
+  const normalizedPath = normalizePathKey(path)
+  if (!normalizedPath || normalizedPath === '/') return '/'
+  const parts = normalizedPath.split('/').filter(Boolean)
+  parts.pop()
+  return parts.length ? `/${parts.join('/')}` : '/'
+}
+
+const findTreeNode = (nodes, targetKey) => {
+  const normalizedTargetKey = normalizePathKey(targetKey)
+  for (const node of nodes) {
+    if (normalizePathKey(node.key) === normalizedTargetKey) return node
+    if (node.children?.length) {
+      const child = findTreeNode(node.children, targetKey)
+      if (child) return child
+    }
+  }
+  return null
+}
+
+const resolveWorkspaceTargetDirectory = () => {
+  const selectedKey = selectedKeys.value[0]
+  if (!selectedKey) return WORKSPACE_PATH
+
+  // 根据当前选中节点推断写入目录，避免把文件上传到只读命名空间。
+  const selectedNode = findTreeNode(dynamicTreeData.value, selectedKey)
+  const targetPath = selectedNode?.isLeaf
+    ? parentPathOf(selectedKey)
+    : normalizePathKey(selectedKey)
+  return isWorkspacePath(targetPath) ? targetPath : ''
+}
 
 const isSameOrChildPath = (path, targetPath) => {
   const normalizedPath = normalizePathKey(path)
@@ -371,6 +454,28 @@ const loadData = (treeNode) => {
         resolve()
       })
   })
+}
+
+const refreshDirectoryChildren = async (directoryPath) => {
+  const normalizedDirectoryPath = normalizePathKey(directoryPath)
+  const targetNode = findTreeNode(dynamicTreeData.value, normalizedDirectoryPath)
+  if (!targetNode || targetNode.isLeaf) {
+    return
+  }
+
+  const res = await getViewerFileSystemTree(
+    props.threadId,
+    normalizedDirectoryPath,
+    props.agentId,
+    props.agentConfigId
+  )
+  if (res?.entries) {
+    const children = sortEntries(res.entries).map((entry) => createTreeNode(entry))
+    dynamicTreeData.value = updateTreeChildren(dynamicTreeData.value, targetNode.key, children)
+    if (!expandedKeys.value.includes(targetNode.key)) {
+      expandedKeys.value = [...expandedKeys.value, targetNode.key]
+    }
+  }
 }
 
 const fileTreeData = computed(() => dynamicTreeData.value)
@@ -487,6 +592,100 @@ const confirmDeleteNode = (node) => {
       }
     }
   })
+}
+
+const openCreateDirectoryModal = () => {
+  if (!props.threadId) return
+  const targetDirectory = resolveWorkspaceTargetDirectory()
+  if (!targetDirectory) {
+    message.warning('只能在 workspace 目录下新建文件夹')
+    return
+  }
+  newDirectoryName.value = ''
+  createDirectoryModalVisible.value = true
+}
+
+const closeCreateDirectoryModal = () => {
+  createDirectoryModalVisible.value = false
+  newDirectoryName.value = ''
+}
+
+const createDirectory = async () => {
+  if (creatingDirectory.value) return
+  const targetDirectory = resolveWorkspaceTargetDirectory()
+  const directoryName = newDirectoryName.value.trim()
+
+  if (!targetDirectory) {
+    message.warning('只能在 workspace 目录下新建文件夹')
+    return
+  }
+  if (!directoryName) {
+    message.warning('请输入文件夹名')
+    return
+  }
+
+  creatingDirectory.value = true
+  try {
+    await createViewerDirectory(
+      props.threadId,
+      targetDirectory,
+      directoryName,
+      props.agentId,
+      props.agentConfigId
+    )
+    await refreshDirectoryChildren(targetDirectory)
+    closeCreateDirectoryModal()
+    message.success('文件夹创建成功')
+  } catch (error) {
+    console.error('创建文件夹失败:', error)
+    message.error(error?.message || '创建文件夹失败')
+  } finally {
+    creatingDirectory.value = false
+  }
+}
+
+const openUploadFilePicker = () => {
+  if (!props.threadId || uploadingFile.value) return
+  const targetDirectory = resolveWorkspaceTargetDirectory()
+  if (!targetDirectory) {
+    message.warning('只能上传到 workspace 目录')
+    return
+  }
+  if (uploadInputRef.value) {
+    uploadInputRef.value.value = ''
+    uploadInputRef.value.click()
+  }
+}
+
+const handleUploadInputChange = async (event) => {
+  const file = event.target?.files?.[0]
+  if (!file || uploadingFile.value) return
+
+  const targetDirectory = resolveWorkspaceTargetDirectory()
+  if (!targetDirectory) {
+    message.warning('只能上传到 workspace 目录')
+    event.target.value = ''
+    return
+  }
+
+  uploadingFile.value = true
+  try {
+    await uploadViewerFile(
+      props.threadId,
+      targetDirectory,
+      file,
+      props.agentId,
+      props.agentConfigId
+    )
+    await refreshDirectoryChildren(targetDirectory)
+    message.success('文件上传成功')
+  } catch (error) {
+    console.error('上传文件失败:', error)
+    message.error(error?.message || '上传文件失败')
+  } finally {
+    uploadingFile.value = false
+    event.target.value = ''
+  }
 }
 
 const downloadFile = async (fileItem) => {
@@ -669,29 +868,112 @@ watch(useInlinePreview, (isInline) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 4px 16px;
-  height: 56px;
+  min-height: 56px;
   background: var(--gray-25);
   flex-shrink: 0;
+
+  &.is-compact {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 12px;
+
+    .panel-header-main {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .file-toolbar {
+      order: 2;
+      width: 100%;
+      justify-content: flex-start;
+      padding: 4px;
+      border-right: none;
+      border: 1px solid var(--gray-150);
+      border-radius: 8px;
+      background: var(--gray-0);
+    }
+  }
+}
+
+.panel-header-main {
+  display: contents;
+}
+
+.header-action-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--gray-600);
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: var(--gray-100);
+    color: var(--gray-900);
+  }
+
+  &:disabled {
+    color: var(--gray-300);
+    cursor: not-allowed;
+    background: transparent;
+  }
 }
 
 .panel-title {
   display: flex;
   align-items: center;
   gap: 12px;
+  order: 1;
+  flex: 1;
+  min-width: 0;
   font-weight: 600;
   font-size: 14px;
   color: var(--gray-900);
 
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .header-icon {
+    flex-shrink: 0;
     color: var(--gray-700);
   }
 }
 
-.header-actions {
+.file-toolbar,
+.window-actions {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.file-toolbar {
+  order: 2;
+  padding-right: 8px;
+  border-right: 1px solid var(--gray-300);
+}
+
+.window-actions {
+  order: 3;
+  flex-shrink: 0;
+}
+
+.hidden-file-input {
+  display: none;
 }
 
 .close-btn {
@@ -709,67 +991,6 @@ watch(useInlinePreview, (isInline) => {
   &:hover {
     background: var(--gray-100);
     color: var(--gray-700);
-  }
-}
-
-.tabs {
-  display: flex;
-  background: var(--gray-25);
-  position: relative;
-  align-items: center;
-  padding: 8px 10px;
-  padding-top: 0px;
-  gap: 4px;
-  flex-shrink: 0;
-  border-bottom: 1px solid var(--gray-150);
-}
-
-.tab-actions {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.tab {
-  padding: 4px 12px;
-  border: none;
-  background: none;
-  color: var(--gray-600);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  transition: all 0.15s ease;
-  border-radius: 999px;
-
-  &:hover {
-    background: var(--gray-150);
-    color: var(--gray-900);
-  }
-
-  &.active {
-    background: var(--gray-150);
-    color: var(--gray-900);
-  }
-}
-
-.tab-action-btn {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--gray-600);
-  cursor: pointer;
-  padding: 0;
-  transition: all 0.15s ease;
-
-  &:hover {
-    background: var(--gray-150);
-    color: var(--gray-900);
   }
 }
 

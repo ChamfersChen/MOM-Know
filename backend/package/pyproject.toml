@@ -1,8 +1,12 @@
+[build-system]
+requires = ["setuptools>=80", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "yuxi"
 version = "0.6.0"
 description = "Yuxi 智能知识库与知识图谱平台核心后端包"
-readme = "../../../README.md"
+readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "agent-sandbox>=0.0.26",
@@ -10,6 +14,7 @@ dependencies = [
     "aiofiles>=24.1.0",
     "aiohttp>=3.9.0",
     "aiosqlite>=0.20.0",
+    "argon2-cffi>=25.1.0",
     "asyncpg>=0.30.0",
     "chardet>=5.0.0",
     "colorlog>=6.9.0",
@@ -72,3 +77,29 @@ dependencies = [
     "unstructured>=0.17.2",
     "wcmatch>=8.0.0",
 ]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["yuxi*"]
+
+
+[tool.uv]
+
+[[tool.uv.index]]
+name = "tsinghua"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+yuxi = { path = "package", editable = true }
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }

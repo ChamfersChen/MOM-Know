@@ -13,6 +13,8 @@ Don't add error handling, fallbacks, or validation for scenarios that can't happ
 
 Don't create helpers, utilities, or abstractions for one-time operations. Don't design for hypothetical future requirements. The right amount of complexity is the minimum needed for the current task. Reuse existing abstractions where possible and follow the DRY principle.
 
+To ensure readability, it is necessary to add essential comments at key points, particularly to explain the functionality of a function and the design intent.
+
 ## 开发与调试工作流 (Development & Debugging Workflow)
 
 本项目完全通过 Docker Compose 进行管理。所有开发和调试都应在运行的容器环境中进行。使用 `docker compose up -d` 命令进行构建和启动。
@@ -37,8 +39,6 @@ Don't create helpers, utilities, or abstractions for one-time operations. Don't 
 # 代码检查和格式化
 make format        # 格式化代码
 
-# 直接在容器内执行命令
-docker compose exec api uv run python test/your_script.py  # 放在 test 文件夹
 ```
 注意：
 - Python 代码要符合 pythonic 风格
