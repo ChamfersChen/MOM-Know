@@ -209,15 +209,6 @@ provide('settingsModal', {
       </div>
       <div class="fill"></div>
       <div class="github nav-item">
-        <!-- <a-tooltip placement="right">
-          <template #title>欢迎 Star</template>
-          <a href="https://github.com/xerrors/Yuxi" target="_blank" class="github-link">
-            <GithubOutlined class="icon" />
-            <span v-if="githubStars > 0" class="github-stars">
-              <span class="star-count">{{ (githubStars / 1000).toFixed(1) }}k</span>
-            </span>
-          </a>
-        </a-tooltip> -->
       </div>
       <!-- 用户信息组件 -->
       <div class="nav-item user-info">
