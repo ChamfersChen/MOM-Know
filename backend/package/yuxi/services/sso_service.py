@@ -187,7 +187,7 @@ async def create_sso_user(db, user_info: SSOUserInfo, department_id: int | None 
 
     user_id = user_info.username
 
-    default_password = user_info.username
+    default_password = '1234qwer'  # 默认密码，可以根据需要修改
     password_hash = AuthUtils.hash_password(default_password)
 
     username = user_info.username
