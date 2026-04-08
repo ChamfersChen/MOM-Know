@@ -652,7 +652,7 @@ class UploadGraphService:
             embedding = self.get_embedding(text)
             result = tx.run(
                 """
-            CALL db.index.vector.queryNodes('entityEmbeddings', 10, $embedding)
+            CALL db.index.vector.queryNodes('entityEmbeddings', 100, $embedding)
             YIELD node AS similarEntity, score
             WHERE 'Upload' IN labels(similarEntity)
             RETURN similarEntity.name AS name, score
