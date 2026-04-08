@@ -13,6 +13,7 @@ export const useUserStore = defineStore('user', () => {
   const userRole = ref('')
   const departmentId = ref(null)
   const departmentName = ref('')
+  const requirePasswordChange = ref(false)
 
   // 计算属性
   const isLoggedIn = computed(() => !!token.value)
@@ -58,6 +59,7 @@ export const useUserStore = defineStore('user', () => {
       userRole.value = data.role
       departmentId.value = data.department_id || null
       departmentName.value = data.department_name || ''
+      requirePasswordChange.value = data.require_password_change === 1
 
       // 只保存 token 到本地存储
       localStorage.setItem('user_token', data.access_token)
@@ -65,6 +67,68 @@ export const useUserStore = defineStore('user', () => {
       return true
     } catch (error) {
       console.error('登录错误:', error)
+      throw error
+    }
+  }
+
+  async function ssoLogin(tenantId, ssoToken) {
+    try {
+      const response = await fetch('/api/auth/sso/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ tenant_id: tenantId, token: ssoToken })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || 'SSO 登录失败')
+      }
+
+      const data = await response.json()
+
+      // 更新状态
+      token.value = data.access_token
+      userId.value = data.user_id
+      username.value = data.username
+      userIdLogin.value = data.user_id_login
+      phoneNumber.value = data.phone_number || ''
+      avatar.value = data.avatar || ''
+      userRole.value = data.role
+      departmentId.value = data.department_id || null
+      departmentName.value = data.department_name || ''
+      requirePasswordChange.value = data.require_password_change === 1
+
+      localStorage.setItem('user_token', data.access_token)
+
+      return { requirePasswordChange: requirePasswordChange.value }
+    } catch (error) {
+      console.error('SSO 登录错误:', error)
+      throw error
+    }
+  }
+
+  async function changePassword(newPassword) {
+    try {
+      const response = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({ new_password: newPassword })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || '修改密码失败')
+      }
+
+      requirePasswordChange.value = false
+      return await response.json()
+    } catch (error) {
+      console.error('修改密码错误:', error)
       throw error
     }
   }
@@ -80,6 +144,7 @@ export const useUserStore = defineStore('user', () => {
     userRole.value = ''
     departmentId.value = null
     departmentName.value = ''
+    requirePasswordChange.value = false
 
     // 清除 agentStore 状态，确保重新登录时能正确加载数据
     const agentStore = useAgentStore()
@@ -311,6 +376,7 @@ export const useUserStore = defineStore('user', () => {
       userRole.value = userData.role
       departmentId.value = userData.department_id || null
       departmentName.value = userData.department_name || ''
+      requirePasswordChange.value = userData.require_password_change === 1
 
       return userData
     } catch (error) {
@@ -364,6 +430,7 @@ export const useUserStore = defineStore('user', () => {
     userRole,
     departmentId,
     departmentName,
+    requirePasswordChange,
 
     // 计算属性
     isLoggedIn,
@@ -383,7 +450,9 @@ export const useUserStore = defineStore('user', () => {
     validateUsernameAndGenerateUserId,
     uploadAvatar,
     getCurrentUser,
-    updateProfile
+    updateProfile,
+    ssoLogin,
+    changePassword
   }
 })
 

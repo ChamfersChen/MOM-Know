@@ -39,7 +39,7 @@ services:
     build:
       context: .
       dockerfile: docker/api.Dockerfile
-    image: yuxi-api:0.6.0
+    image: mom-api:0.6.0
     container_name: api-dev
     working_dir: /app
     volumes:
@@ -86,7 +86,7 @@ services:
     build:
       context: .
       dockerfile: docker/api.Dockerfile
-    image: yuxi-api:0.6.0
+    image: mom-api:0.6.0
     container_name: worker-dev
     working_dir: /app
     volumes:
@@ -125,7 +125,7 @@ services:
     build:
       context: ./docker/sandbox_provisioner
       dockerfile: Dockerfile
-    image: yuxi-sandbox-provisioner:0.6.0
+    image: mom-sandbox-provisioner:0.6.0
     container_name: sandbox-provisioner
     volumes:
       - ./saves:/app/saves
@@ -152,16 +152,16 @@ services:
       - HTTPS_PROXY=${SANDBOX_HTTPS_PROXY:-}
       - NO_PROXY=localhost,127.0.0.1,host.docker.internal
       # Docker backend only
-      - DOCKER_NETWORK=${SANDBOX_DOCKER_NETWORK:-yuxi-know_app-network}
+      - DOCKER_NETWORK=${SANDBOX_DOCKER_NETWORK:-mom-know_app-network}
       - DOCKER_THREADS_HOST_PATH=${SANDBOX_DOCKER_THREADS_HOST_PATH:-}
-      - DOCKER_SANDBOX_PREFIX=${SANDBOX_DOCKER_SANDBOX_PREFIX:-yuxi-sandbox}
+      - DOCKER_SANDBOX_PREFIX=${SANDBOX_DOCKER_SANDBOX_PREFIX:-mom-sandbox}
       - DOCKER_SANDBOX_HOST=${SANDBOX_DOCKER_SANDBOX_HOST:-host.docker.internal}
       # Kubernetes backend only
-      - K8S_NAMESPACE=${SANDBOX_K8S_NAMESPACE:-yuxi-know}
+      - K8S_NAMESPACE=${SANDBOX_K8S_NAMESPACE:-mom-know}
       - NODE_HOST=${SANDBOX_NODE_HOST:-host.docker.internal}
       - KUBECONFIG_PATH=${KUBECONFIG_PATH:-}
-      - THREAD_PVC=${THREAD_PVC:-yuxi-thread}
-      - SKILLS_PVC=${SKILLS_PVC:-yuxi-skills}
+      - THREAD_PVC=${THREAD_PVC:-mom-thread}
+      - SKILLS_PVC=${SKILLS_PVC:-mom-skills}
     command: >
       sh -lc "python -c 'import docker' >/dev/null 2>&1 || pip install --no-cache-dir 'docker>=7.1.0';
       uvicorn app:app --host 0.0.0.0 --port 8002"
@@ -178,7 +178,7 @@ services:
       context: .
       dockerfile: docker/web.Dockerfile
       target: development
-    image: yuxi-web:0.6.0
+    image: mom-web:0.6.0
     container_name: web-dev
     volumes:
       - ./web/src:/app/src
@@ -433,4 +433,4 @@ services:
 networks:
   app-network:
     driver: bridge
-    name: ${SANDBOX_DOCKER_NETWORK:-yuxi-know_app-network}
+    name: ${SANDBOX_DOCKER_NETWORK:-mom-know_app-network}

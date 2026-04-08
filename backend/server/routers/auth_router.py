@@ -34,6 +34,13 @@ from yuxi.services.oidc_service import (
     oidc_login_url_handler,
 )
 
+# SSO 认证相关导入
+from yuxi.services.sso_service import (
+    sso_config,
+    sso_login_handler,
+    change_sso_user_password,
+)
+
 # 创建路由器
 auth = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -50,6 +57,7 @@ class Token(BaseModel):
     role: str
     department_id: int | None = None
     department_name: str | None = None
+    require_password_change: int = 0
 
 
 class UserCreate(BaseModel):
@@ -124,6 +132,26 @@ class OIDCLoginResponse(BaseModel):
     role: str
     department_id: int | None = None
     department_name: str | None = None
+    require_password_change: int = 0
+
+
+class SSOConfigResponse(BaseModel):
+    """SSO 配置响应"""
+
+    enabled: bool
+
+
+class SSOLoginRequest(BaseModel):
+    """SSO 登录请求"""
+
+    tenant_id: str
+    token: str
+
+
+class ChangePasswordRequest(BaseModel):
+    """修改密码请求"""
+
+    new_password: str
 
 
 # =============================================================================
@@ -224,6 +252,8 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     if user.department_id:
         result = await db.execute(select(Department.name).filter(Department.id == user.department_id))
         department_name = result.scalar_one_or_none()
+    
+    print(user.require_password_change)
 
     return {
         "access_token": access_token,
@@ -236,6 +266,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         "role": user.role,
         "department_id": user.department_id,
         "department_name": department_name,
+        "require_password_change": user.require_password_change, # 是否需要修改密码
     }
 
 
@@ -492,6 +523,7 @@ async def create_user(
             "password_hash": hashed_password,
             "role": user_data.role,
             "department_id": department_id,
+            "require_password_change": 1,  # 新用户需要修改密码
         }
     )
 
@@ -864,6 +896,7 @@ async def impersonate_user(
 # === OIDC 认证分组 ===
 # =============================================================================
 
+
 @auth.get("/oidc/config", response_model=OIDCConfigResponse)
 async def get_oidc_config():
     """获取 OIDC 配置（供前端使用）"""
@@ -877,12 +910,7 @@ async def get_oidc_login_url(redirect_path: str = "/"):
 
 
 @auth.get("/oidc/callback", response_class=RedirectResponse)
-async def oidc_callback(
-    request: Request,
-    code: str,
-    state: str,
-    db: AsyncSession = Depends(get_db)
-):
+async def oidc_callback(request: Request, code: str, state: str, db: AsyncSession = Depends(get_db)):
     """处理 OIDC 回调 - 重定向到前端 Vue 路由"""
     return await oidc_callback_handler(code, state, db, request)
 
@@ -891,3 +919,42 @@ async def oidc_callback(
 async def oidc_exchange_code(code: str = Body(..., embed=True)):
     """使用一次性 code 交换 OIDC 登录数据"""
     return await oidc_exchange_code_handler(code)
+
+
+# =============================================================================
+# === SSO 认证分组 ===
+# =============================================================================
+
+
+@auth.get("/sso/config", response_model=SSOConfigResponse)
+async def get_sso_config():
+    """获取 SSO 配置（供前端使用）"""
+    return {"enabled": sso_config.enabled}
+
+
+@auth.post("/sso/login", response_model=Token)
+async def sso_login(request: Request, login_data: SSOLoginRequest, db: AsyncSession = Depends(get_db)):
+    """SSO 登录 - 通过 Java 系统的 token 进行认证"""
+    return await sso_login_handler(login_data.tenant_id, login_data.token, db, request)
+
+
+@auth.post("/change-password")
+async def change_password(
+    password_data: ChangePasswordRequest,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """修改当前用户密码"""
+    if len(password_data.new_password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="密码长度至少为 6 个字符",
+        )
+
+    current_user.password_hash = AuthUtils.hash_password(password_data.new_password)
+    current_user.require_password_change = 0
+    await db.commit()
+
+    await log_operation(db, current_user.id, "修改密码")
+
+    return {"success": True, "message": "密码修改成功"}

@@ -20,6 +20,8 @@ PUBLIC_PATHS = [
     r"^/api/auth/token$",  # 登录
     r"^/api/auth/check-first-run$",  # 检查是否首次运行
     r"^/api/auth/initialize$",  # 初始化系统
+    r"^/api/auth/sso/config$",  # SSO 配置
+    r"^/api/auth/sso/login$",  # SSO 登录
     r"^/api$",  # Health Check
     r"^/api/system/health$",  # Health Check
     r"^/api/system/info$",  # 获取系统信息配置

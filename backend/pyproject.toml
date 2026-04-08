@@ -42,6 +42,7 @@ dependencies = [
     "langgraph-checkpoint-postgres>=3.0.5",
     "asyncpg>=0.31.0",
     "langchain-openai>=1.1.12",
+    "ipdb>=0.13.13",
 ]
 [tool.ruff]
 line-length = 120  # 代码最大行宽

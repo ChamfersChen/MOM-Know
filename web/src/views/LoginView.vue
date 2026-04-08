@@ -46,6 +46,12 @@
             </header>
 
             <div class="login-content" :class="{ 'is-initializing': isFirstRun }">
+              <!-- SSO 登录处理中提示 -->
+              <div v-if="ssoProcessing" class="sso-processing">
+                <a-spin size="large" />
+                <p class="sso-processing-text">正在验证登录信息...</p>
+              </div>
+
               <!-- 初始化管理员表单 -->
               <div v-if="isFirstRun" class="login-form login-form--init">
                 <a-form :model="adminForm" @finish="handleInitialize" layout="vertical">
@@ -265,6 +271,38 @@
         &copy; {{ new Date().getFullYear() }} {{ brandName }}. All Rights Reserved.
       </div>
     </footer>
+
+    <!-- 密码修改弹窗 -->
+    <a-modal
+      v-model:open="showPasswordModal"
+      title="首次登录，请修改密码"
+      :maskClosable="false"
+      :closable="false"
+      :keyboard="false"
+      :confirmLoading="passwordLoading"
+      @ok="handleChangePassword"
+      @cancel="skipPasswordChange"
+      okText="确认修改"
+      cancelText="稍后修改"
+    >
+      <div class="password-modal-content">
+        <p class="password-modal-tip">您的账户使用默认密码登录，为了账户安全，请修改密码。</p>
+        <a-form layout="vertical">
+          <a-form-item label="新密码" required>
+            <a-input-password
+              v-model:value="passwordForm.newPassword"
+              placeholder="请输入新密码（至少6位）"
+            />
+          </a-form-item>
+          <a-form-item label="确认密码" required>
+            <a-input-password
+              v-model:value="passwordForm.confirmPassword"
+              placeholder="请再次输入新密码"
+            />
+          </a-form-item>
+        </a-form>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -334,6 +372,15 @@ const oidcEnabled = ref(false)
 const oidcLoading = ref(false)
 const oidcChecking = ref(true)
 const oidcButtonText = ref('OIDC 登录')
+
+// SSO 相关状态
+const ssoProcessing = ref(false)
+const showPasswordModal = ref(false)
+const passwordForm = reactive({
+  newPassword: '',
+  confirmPassword: ''
+})
+const passwordLoading = ref(false)
 
 // 登录锁定相关状态
 const isLocked = ref(false)
@@ -444,6 +491,13 @@ const handleLogin = async () => {
     })
 
     message.success('登录成功')
+
+    console.log('登录成功，用户信息：', userStore.requirePasswordChange)
+    // 检查是否需要修改密码
+    if (userStore.requirePasswordChange) {
+      showPasswordModal.value = true
+      return
+    }
 
     // 获取重定向路径
     const redirectPath = sessionStorage.getItem('redirect') || '/'
@@ -612,6 +666,87 @@ const checkServerHealth = async () => {
   }
 }
 
+// SSO 登录处理
+const handleSSOLogin = async (tenantId, ssoToken) => {
+  try {
+    ssoProcessing.value = true
+    errorMessage.value = ''
+
+    // 清除旧的登录状态，避免缓存问题
+    userStore.logout()
+
+    const result = await userStore.ssoLogin(tenantId, ssoToken)
+    message.success('登录成功')
+
+    const redirectPath = sessionStorage.getItem('redirect') || '/'
+    sessionStorage.removeItem('redirect')
+
+    if (result.requirePasswordChange) {
+      showPasswordModal.value = true
+    } else {
+      await redirectToTarget(redirectPath)
+    }
+  } catch (error) {
+    console.error('SSO 登录失败:', error)
+    errorMessage.value = error.message || '登录验证失败，请重试'
+  } finally {
+    ssoProcessing.value = false
+  }
+}
+
+// 重定向到目标页面
+const redirectToTarget = async (redirectPath) => {
+  if (redirectPath === '/') {
+    try {
+      await agentStore.initialize()
+      router.push('/agent')
+    } catch (error) {
+      console.error('获取智能体信息失败:', error)
+      router.push('/agent')
+    }
+  } else {
+    router.push(redirectPath)
+  }
+}
+
+// 修改密码
+const handleChangePassword = async () => {
+  if (passwordForm.newPassword.length < 6) {
+    message.error('密码长度至少为 6 个字符')
+    return
+  }
+  if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+    message.error('两次输入的密码不一致')
+    return
+  }
+
+  try {
+    passwordLoading.value = true
+    await userStore.changePassword(passwordForm.newPassword)
+    message.success('密码修改成功')
+    showPasswordModal.value = false
+
+    const redirectPath = sessionStorage.getItem('redirect') || '/'
+    sessionStorage.removeItem('redirect')
+    await redirectToTarget(redirectPath)
+  } catch (error) {
+    console.error('修改密码失败:', error)
+    message.error(error.message || '修改密码失败')
+  } finally {
+    passwordLoading.value = false
+  }
+}
+
+// 关闭密码修改弹窗（稍后修改）
+const skipPasswordChange = () => {
+  showPasswordModal.value = false
+  // 记录本次会话已跳过密码修改
+  sessionStorage.setItem('skipPasswordChange', 'true')
+  const redirectPath = sessionStorage.getItem('redirect') || '/'
+  sessionStorage.removeItem('redirect')
+  redirectToTarget(redirectPath)
+}
+
 // 组件挂载时
 onMounted(async () => {
   // 如果已登录，跳转到首页
@@ -623,6 +758,14 @@ onMounted(async () => {
   // 显示 OIDC 认证失败的错误信息（由后端重定向携带）
   if (route.query.oidc_error) {
     errorMessage.value = String(route.query.oidc_error)
+  }
+
+  // 检查 SSO 登录参数
+  const tenantId = route.query.tenantId
+  const ssoToken = route.query.token
+  if (tenantId && ssoToken) {
+    await handleSSOLogin(tenantId, ssoToken)
+    return
   }
 
   // 首先检查服务器健康状态
@@ -955,6 +1098,36 @@ onUnmounted(() => {
 .copyright {
   font-size: 12px;
   color: var(--gray-400);
+}
+
+/* SSO Processing */
+.sso-processing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
+  gap: 16px;
+}
+
+.sso-processing-text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--gray-600);
+}
+
+/* Password Modal */
+.password-modal-content {
+  padding: 8px 0;
+}
+
+.password-modal-tip {
+  margin-bottom: 16px;
+  padding: 12px;
+  background-color: var(--color-warning-50);
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--color-warning-700);
 }
 
 /* Server Status Alert */

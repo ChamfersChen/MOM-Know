@@ -77,5 +77,77 @@ async function exchangeOIDCCode(code) {
 export const authApi = {
   getOIDCConfig,
   getOIDCLoginUrl,
-  exchangeOIDCCode
+  exchangeOIDCCode,
+  getSSOConfig,
+  ssoLogin,
+  changePassword
+}
+
+/**
+ * 获取 SSO 配置
+ * @returns {Promise<{enabled: boolean}>}
+ */
+async function getSSOConfig() {
+  const response = await fetch('/api/auth/sso/config')
+  if (!response.ok) {
+    throw new Error('获取 SSO 配置失败')
+  }
+  return response.json()
+}
+
+/**
+ * SSO 登录
+ * @param {string} tenantId - 租户 ID
+ * @param {string} token - 认证 token
+ * @returns {Promise<{
+ *   access_token: string,
+ *   token_type: string,
+ *   user_id: number,
+ *   username: string,
+ *   user_id_login: string,
+ *   phone_number: string | null,
+ *   avatar: string | null,
+ *   role: string,
+ *   department_id: number | null,
+ *   department_name: string | null,
+ *   require_password_change: number
+ * }>}
+ */
+async function ssoLogin(tenantId, token) {
+  const response = await fetch('/api/auth/sso/login', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ tenant_id: tenantId, token })
+  })
+
+  if (!response.ok) {
+    const detail = await parseErrorDetail(response, 'SSO 登录失败')
+    throw new Error(detail)
+  }
+
+  return response.json()
+}
+
+/**
+ * 修改密码
+ * @param {string} newPassword - 新密码
+ * @returns {Promise<{success: boolean, message: string}>}
+ */
+async function changePassword(newPassword) {
+  const response = await fetch('/api/auth/change-password', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ new_password: newPassword })
+  })
+
+  if (!response.ok) {
+    const detail = await parseErrorDetail(response, '修改密码失败')
+    throw new Error(detail)
+  }
+
+  return response.json()
 }

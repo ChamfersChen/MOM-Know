@@ -11,7 +11,6 @@
       <a-result status="error" :title="error.title" :sub-title="error.message">
         <template #extra>
           <a-button type="primary" @click="retryLoad">重试</a-button>
-          <a-button :href="faqUrl" target="_blank" rel="noopener noreferrer">常见问题</a-button>
         </template>
       </a-result>
     </div>

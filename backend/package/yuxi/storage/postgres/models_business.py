@@ -73,6 +73,9 @@ class User(Base):
     is_deleted = Column(Integer, nullable=False, default=0, index=True)  # 是否已删除：0=否，1=是
     deleted_at = Column(DateTime, nullable=True)  # 删除时间
 
+    # SSO 相关字段
+    require_password_change = Column(Integer, nullable=False, default=0)  # 是否需要修改密码：0=否，1=是
+
     # 关联操作日志
     operation_logs = relationship("OperationLog", back_populates="user", cascade="all, delete-orphan")
 
@@ -98,6 +101,7 @@ class User(Base):
             "login_locked_until": format_utc_datetime(self.login_locked_until),
             "is_deleted": self.is_deleted,
             "deleted_at": format_utc_datetime(self.deleted_at),
+            "require_password_change": self.require_password_change,
         }
         if include_password:
             result["password_hash"] = self.password_hash
