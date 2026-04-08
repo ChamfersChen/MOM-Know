@@ -265,7 +265,7 @@ async def mysql_describe_table(
     global host_set, port_set
     host = deepcopy(host_set).pop() if len(host_set) == 1 else None
     port = deepcopy(port_set).pop() if len(port_set) == 1 else None
-    assert host and port, "数据库连接信息为空."
+    assert host and port, "数据库连接信息为空. 请先使用'列出MySQL表'工具获取表名，确保连接信息正确."
     try:
         # 验证表名安全性
         if not MySQLSecurityChecker.validate_table_name(table_name):
@@ -383,7 +383,7 @@ async def mysql_query(
     global host_set, port_set
     host = deepcopy(host_set).pop() if len(host_set) == 1 else None
     port = deepcopy(port_set).pop() if len(port_set) == 1 else None
-    assert host and port, "数据库连接信息为空."
+    assert host and port, "数据库连接信息为空. 请先使用'列出MySQL表'工具获取表名，确保连接信息正确."
     try:
         # 验证SQL安全性
         if not MySQLSecurityChecker.validate_sql(sql):
