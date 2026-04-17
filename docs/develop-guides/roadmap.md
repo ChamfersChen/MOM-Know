@@ -46,11 +46,13 @@
 - 新增 Skills 远程安装能力：Skills 管理页支持填写 `owner/repo` 或 GitHub URL，后端通过隔离的临时 `HOME` 调用 `npx skills add` 下载指定 skill，再复用现有导入链路写入 `saves/skills` 和数据库，避免将 `~/.agents/skills` 直接作为系统主存储；前端远程安装弹窗补充多选串行安装与批量进度展示，复用现有单 skill 安装接口逐个提交请求
 - 调整部门删除语义：删除部门时不再要求用户数为 0，而是将部门下用户迁移到默认部门，同时清理部门级配置和部门 API Key，保证测试部门、撤换部门等场景可直接删除，并补充对应集成测试覆盖该链路
 - 重构 MCP 运行时配置加载模型：移除 `MCP_SERVERS` 作为运行正确性前提的设计，改为每次直接从数据库读取最新 MCP 配置，并用 `server_name:config_hash` 作为本地工具缓存 key；同时将内置 MCP 初始化职责收敛为仅同步数据库默认项，前端 MCP 选项改为直接使用实时资源列表，解决 `api`/`worker` 分进程下的配置不一致与缓存失效问题
-- 为知识库检索工具补充 `metadata.filepath` 注入：在 `query_kb` 统一出口基于会话可见知识库构建 `file_id -> /home/gem/kbs/...` 映射并回填检索结果，注入逻辑复用知识库只读后端命名规则；并将工具调用范围收敛为 Milvus（仅支持 Milvus chunks 列表且要求显式 `file_id`），不再兼容无显式 `file_id` 的推断注入，新增单测覆盖该约束
+- 为知识库检索工具补充 `metadata.filepath` 注入：在 `query_kb` 统一出口基于会话可见知识库构建 `file_id -> /home/gem/kbs/...` 映射并回填 Milvus 检索结果，注入逻辑复用知识库只读后端命名规则；路径注入仅作用于 Milvus chunks 列表，Dify 和 LightRAG 等其他知识库保持原检索结果返回，不再兼容无显式 `file_id` 的推断注入，新增单测覆盖该约束
 - 调整 Milvus 混合检索实现：集合 schema 增加 Milvus 内置 BM25 稀疏向量字段、BM25 函数和中文 analyzer 配置，`keyword` 模式改为 BM25 全文检索，`hybrid` 模式改为 Milvus 原生向量 + BM25 混合检索，并同步更新检索参数说明。
 - 修复 DOCX 解析中的图片回插顺序：Docling 导出的多个 `<!-- image -->` 占位符现在按文档图片顺序替换，避免多图文档中的图片链接前后颠倒。
 - 修复前端依赖安全告警：通过 `pnpm.overrides` 将传递依赖 `flatted` 锁定到 `3.4.2`、`lodash-es` 锁定到 `4.18.1`，并同步更新 `pnpm-lock.yaml` 以消除 DriftGuard 报告的高危 CVE
 - 重写界面设计规范：参考 `DESIGN.md` 写法补充视觉气质、颜色 token、组件状态、布局层级、响应式与 Agent Prompt Guide，并基于该规范收敛首页视觉表现，移除装饰性渐变、重阴影、hover 位移和入场动画。
+- 修复对话摘要中间件的工具结果卸载链路：摘要触发时改为将大体积 `ToolMessage` 写入当前 agent 可见的 sandbox outputs 路径，修正 `summary_offload` 路径拼接错误、`messages` 触发条件下不会真正裁剪历史的问题，并避免将 system message 重复纳入摘要与最终消息列表；补充对应单元测试覆盖。
+- 调整智能体对话中的工具调用展示：连续工具调用默认折叠为“调用了 N 个工具”的轻量摘要，展开后改为弱化时间线样式，减少工具结果卡片对正文阅读节奏的干扰。
 
 ---
 
