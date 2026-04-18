@@ -14,6 +14,7 @@ import UserInfoComponent from '@/components/UserInfoComponent.vue'
 import DebugComponent from '@/components/DebugComponent.vue'
 import TaskCenterDrawer from '@/components/TaskCenterDrawer.vue'
 import SettingsModal from '@/components/SettingsModal.vue'
+import { AlertTriangle as AlertTriangleIcon } from 'lucide-vue-next'
 
 const configStore = useConfigStore()
 const databaseStore = useDatabaseStore()
@@ -21,6 +22,32 @@ const infoStore = useInfoStore()
 const taskerStore = useTaskerStore()
 const userStore = useUserStore()
 const { activeCount: activeCountRef, isDrawerOpen } = storeToRefs(taskerStore)
+
+// Java Token 警告
+const showJavaTokenWarning = computed(() => {
+  const status = userStore.javaTokenStatus
+  return status && status !== 'valid' && status !== 'disabled'
+})
+
+const javaTokenWarningMessage = computed(() => {
+  const status = userStore.javaTokenStatus
+  if (status === 'not_bound') {
+    return '未绑定 Java 系统账号，部分功能不可用'
+  } else if (status === 'expired') {
+    return 'Java 认证已过期，请重新从 Java 系统跳转'
+  }
+  return ''
+})
+
+// 点击前往同步：退出登录并跳转到 Java 系统
+const handleGoToJavaSync = async () => {
+  const url = userStore.javaLoginUrl
+  userStore.logout()
+  if (url) {
+    window.open(url, '_blank')
+  }
+  window.location.href = '/login'
+}
 
 const layoutSettings = reactive({
   showDebug: false,
@@ -89,6 +116,10 @@ onMounted(async () => {
     await getRemoteConfig()
     taskerStore.loadTasks()
     fetchGithubStars() // Fetch GitHub stars on mount
+  }
+  // 加载 Java 登录 URL（如果需要显示警告）
+  if (showJavaTokenWarning.value && !userStore.javaLoginUrl) {
+    userStore.fetchJavaLoginUrl().catch(() => {})
   }
 })
 
@@ -161,7 +192,19 @@ provide('settingsModal', {
 </script>
 
 <template>
-  <div class="app-layout" :class="{ 'use-top-bar': layoutSettings.useTopBar }">
+  <div class="app-layout-wrapper">
+    <!-- Java Token 警告横幅 -->
+    <div v-if="showJavaTokenWarning" class="java-token-warning">
+      <alert-triangle-icon class="warning-icon" size="16" />
+      <span class="warning-title">Java 系统认证未同步</span>
+      <span class="warning-separator" />
+      <span class="warning-message">{{ javaTokenWarningMessage }}</span>
+      <a-button type="link" size="small" @click="handleGoToJavaSync" class="warning-action">
+        前往同步
+      </a-button>
+      <button class="warning-close" @click="userStore.javaTokenStatus = 'disabled'" title="忽略">&times;</button>
+    </div>
+    <div class="app-layout" :class="{ 'use-top-bar': layoutSettings.useTopBar }">
     <div v-if="userStore.isAdmin" class="header" :class="{ 'top-bar': layoutSettings.useTopBar }">
       <div class="logo circle">
         <router-link to="/">
@@ -215,6 +258,7 @@ provide('settingsModal', {
         <UserInfoComponent />
       </div>
     </div>
+
     <router-view v-slot="{ Component, route }" id="app-router-view">
       <keep-alive v-if="route.meta.keepAlive !== false">
         <component :is="Component" />
@@ -237,6 +281,7 @@ provide('settingsModal', {
     </a-modal>
     <TaskCenterDrawer v-if="userStore.isAdmin" />
     <SettingsModal v-model:visible="showSettingsModal" @close="() => (showSettingsModal = false)" />
+    </div>
   </div>
 </template>
 
@@ -244,12 +289,87 @@ provide('settingsModal', {
 // Less 变量定义
 @header-width: 50px;
 
+.app-layout-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-width: var(--min-width);
+}
+
+/* Java Token Warning */
+.java-token-warning {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  height: 36px;
+  background: var(--color-warning-500);
+  color: var(--gray-0);
+  font-size: 13px;
+
+  .warning-icon {
+    flex-shrink: 0;
+    color: var(--gray-0);
+  }
+
+  .warning-title {
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .warning-separator {
+    width: 1px;
+    height: 14px;
+    background: rgba(255, 255, 255, 0.4);
+    flex-shrink: 0;
+  }
+
+  .warning-message {
+    flex: 1;
+    opacity: 0.9;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .warning-action {
+    flex-shrink: 0;
+    color: var(--gray-0);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 0;
+    height: auto;
+    line-height: 1;
+
+    &:hover {
+      color: var(--gray-0);
+      text-decoration: underline;
+    }
+  }
+
+  .warning-close {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    color: var(--gray-0);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.6;
+    padding: 0 2px;
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+}
+
 .app-layout {
   display: flex;
   flex-direction: row;
+  flex: 1;
+  min-height: 0;
   width: 100%;
-  height: 100vh;
-  min-width: var(--min-width);
 }
 
 div.header,

@@ -1,5 +1,5 @@
 <template>
-  <div class="login-view" :class="{ 'has-alert': serverStatus === 'error' }">
+  <div class="login-view" :class="{ 'has-alert': serverStatus === 'error', 'has-java-warning': showJavaTokenWarning }">
     <!-- 服务状态提示 -->
     <div v-if="serverStatus === 'error'" class="server-status-alert">
       <div class="alert-content">
@@ -13,6 +13,26 @@
         </a-button>
       </div>
     </div>
+
+    <!-- Java Token 状态提示 -->
+    <!-- <div v-if="showJavaTokenWarning" class="java-token-warning">
+      <div class="warning-content">
+        <alert-triangle-icon class="warning-icon" size="20" />
+        <div class="warning-text">
+          <div class="warning-title">Java 系统认证未同步，部分功能不可用</div>
+          <div class="warning-message">{{ javaTokenWarningMessage }}</div>
+        </div>
+        <a-button
+          type="link"
+          size="small"
+          :href="userStore.javaLoginUrl"
+          target="_blank"
+          class="warning-action"
+        >
+          前往 Java 系统同步
+        </a-button>
+      </div>
+    </div> -->
 
     <!-- 顶部导航：品牌名称 & 操作按钮 -->
     <nav class="login-navbar">
@@ -319,7 +339,8 @@ import {
   User as UserIcon,
   Lock as LockIcon,
   Key as KeyIcon,
-  AlertCircle as ExclamationCircleIcon
+  AlertCircle as ExclamationCircleIcon,
+  AlertTriangle as AlertTriangleIcon
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -357,6 +378,22 @@ const privacyPolicyUrl = computed(() => {
 const showAgreementConsent = computed(() => {
   return Boolean(userAgreementUrl.value && privacyPolicyUrl.value)
 })
+
+// Java Token 状态
+// const showJavaTokenWarning = computed(() => {
+//   const status = userStore.javaTokenStatus
+//   return status && status !== 'valid' && status !== 'disabled'
+// })
+
+// const javaTokenWarningMessage = computed(() => {
+//   const status = userStore.javaTokenStatus
+//   if (status === 'not_bound') {
+//     return '未绑定 Java 系统账号，请从 Java 系统跳转以解锁全部功能'
+//   } else if (status === 'expired') {
+//     return 'Java 认证已过期，请重新从 Java 系统跳转'
+//   }
+//   return ''
+// })
 
 // 状态
 const isFirstRun = ref(false)
@@ -489,6 +526,9 @@ const handleLogin = async () => {
       loginId: loginForm.loginId,
       password: loginForm.password
     })
+
+    // 获取 Java 登录 URL
+    await userStore.fetchJavaLoginUrl()
 
     message.success('登录成功')
 
@@ -676,6 +716,10 @@ const handleSSOLogin = async (tenantId, ssoToken) => {
     userStore.logout()
 
     const result = await userStore.ssoLogin(tenantId, ssoToken)
+
+    // 获取 Java 登录 URL
+    await userStore.fetchJavaLoginUrl()
+
     message.success('登录成功')
 
     const redirectPath = sessionStorage.getItem('redirect') || '/'
@@ -796,6 +840,10 @@ onUnmounted(() => {
   background-size: 24px 24px;
 
   &.has-alert {
+    padding-top: 60px;
+  }
+
+  &.has-java-warning {
     padding-top: 60px;
   }
 }
@@ -1175,6 +1223,58 @@ onUnmounted(() => {
       &:hover {
         color: var(--gray-0);
         background-color: color-mix(in srgb, var(--gray-0) 10%, transparent);
+      }
+    }
+  }
+}
+
+/* Java Token Warning */
+.java-token-warning {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 20px;
+  background: var(--color-warning-500);
+  color: var(--gray-0);
+  z-index: 1000;
+
+  .warning-content {
+    display: flex;
+    align-items: center;
+    max-width: 1500px;
+    margin: 0 auto;
+
+    .warning-icon {
+      font-size: 20px;
+      margin-right: 12px;
+      color: var(--gray-0);
+    }
+
+    .warning-text {
+      flex: 1;
+
+      .warning-title {
+        font-weight: 600;
+        font-size: 16px;
+        margin-bottom: 2px;
+      }
+
+      .warning-message {
+        font-size: 14px;
+        opacity: 0.9;
+      }
+    }
+
+    .warning-action {
+      color: var(--gray-0);
+      border-color: var(--gray-0);
+      font-weight: 500;
+
+      &:hover {
+        color: var(--gray-0);
+        background-color: color-mix(in srgb, var(--gray-0) 10%, transparent);
+        text-decoration: underline;
       }
     }
   }

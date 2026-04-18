@@ -1154,7 +1154,7 @@ const confirmDeleteConfig = async () => {
 .agent-config-sidebar {
   position: relative;
   width: 0;
-  height: 100vh;
+  height: 100%;
   background: var(--gray-0);
   border-left: 1px solid var(--gray-200);
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);

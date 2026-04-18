@@ -41,6 +41,10 @@ from yuxi.services.sso_service import (
     change_sso_user_password,
 )
 
+# Java Token 服务
+from yuxi.services.java_token_service import java_token_service
+from yuxi.config import java_config
+
 # 创建路由器
 auth = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -58,6 +62,7 @@ class Token(BaseModel):
     department_id: int | None = None
     department_name: str | None = None
     require_password_change: int = 0
+    java_token_status: str | None = None  # Java Token 状态: valid, not_bound, expired, disabled
 
 
 class UserCreate(BaseModel):
@@ -252,8 +257,20 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     if user.department_id:
         result = await db.execute(select(Department.name).filter(Department.id == user.department_id))
         department_name = result.scalar_one_or_none()
-    
-    print(user.require_password_change)
+
+    java_token_status = None
+    if java_config.enabled:
+        if user.java_tenant_id:
+            token_data_redis = await java_token_service.get_token(user.id, user.java_tenant_id)
+            if not token_data_redis:
+                java_token_status = "not_bound"
+            else:
+                is_valid = await java_token_service.validate_token(user.id, user.java_tenant_id)
+                java_token_status = "valid" if is_valid else "expired"
+        else:
+            java_token_status = "not_bound"
+    else:
+        java_token_status = "disabled"
 
     return {
         "access_token": access_token,
@@ -266,7 +283,8 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         "role": user.role,
         "department_id": user.department_id,
         "department_name": department_name,
-        "require_password_change": user.require_password_change, # 是否需要修改密码
+        "require_password_change": user.require_password_change,
+        "java_token_status": java_token_status,
     }
 
 
@@ -958,3 +976,37 @@ async def change_password(
     await log_operation(db, current_user.id, "修改密码")
 
     return {"success": True, "message": "密码修改成功"}
+
+
+# =============================================================================
+# === Java Token 分组 ===
+# =============================================================================
+
+
+class JavaTokenStatusResponse(BaseModel):
+    """Java Token 状态响应"""
+
+    bound: bool
+    tenant_id: str | None = None
+    tenant_name: str | None = None
+    expires_in: int | None = None
+
+
+@auth.get("/java-token/status", response_model=JavaTokenStatusResponse)
+async def get_java_token_status(
+    current_user: User = Depends(get_current_user),
+):
+    """获取当前用户的 Java Token 状态"""
+    if not java_config.enabled:
+        return JavaTokenStatusResponse(bound=False)
+
+    if not current_user.java_tenant_id:
+        return JavaTokenStatusResponse(bound=False)
+
+    return await java_token_service.get_status(current_user.id, current_user.java_tenant_id)
+
+
+@auth.get("/java-token/login-url")
+async def get_java_login_url():
+    """获取 Java 系统登录页面 URL"""
+    return {"login_url": java_config.get_login_url()}

@@ -14,6 +14,8 @@ export const useUserStore = defineStore('user', () => {
   const departmentId = ref(null)
   const departmentName = ref('')
   const requirePasswordChange = ref(false)
+  const javaTokenStatus = ref(null)  // Java Token 状态: valid, not_bound, expired, disabled
+  const javaLoginUrl = ref('')       // Java 系统登录页面 URL
 
   // 计算属性
   const isLoggedIn = computed(() => !!token.value)
@@ -60,6 +62,7 @@ export const useUserStore = defineStore('user', () => {
       departmentId.value = data.department_id || null
       departmentName.value = data.department_name || ''
       requirePasswordChange.value = data.require_password_change === 1
+      javaTokenStatus.value = data.java_token_status || null
 
       // 只保存 token 到本地存储
       localStorage.setItem('user_token', data.access_token)
@@ -99,6 +102,7 @@ export const useUserStore = defineStore('user', () => {
       departmentId.value = data.department_id || null
       departmentName.value = data.department_name || ''
       requirePasswordChange.value = data.require_password_change === 1
+      javaTokenStatus.value = data.java_token_status || null
 
       localStorage.setItem('user_token', data.access_token)
 
@@ -145,6 +149,8 @@ export const useUserStore = defineStore('user', () => {
     departmentId.value = null
     departmentName.value = ''
     requirePasswordChange.value = false
+    javaTokenStatus.value = null
+    javaLoginUrl.value = ''
 
     // 清除 agentStore 状态，确保重新登录时能正确加载数据
     const agentStore = useAgentStore()
@@ -419,6 +425,45 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  // 获取 Java Token 状态
+  async function getJavaTokenStatus() {
+    try {
+      const response = await fetch('/api/auth/java-token/status', {
+        headers: {
+          ...getAuthHeaders()
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error('获取 Java Token 状态失败')
+      }
+
+      const data = await response.json()
+      return data
+    } catch (error) {
+      console.error('获取 Java Token 状态错误:', error)
+      throw error
+    }
+  }
+
+  // 获取 Java 系统登录 URL
+  async function fetchJavaLoginUrl() {
+    try {
+      const response = await fetch('/api/auth/java-token/login-url')
+
+      if (!response.ok) {
+        throw new Error('获取 Java 登录地址失败')
+      }
+
+      const data = await response.json()
+      javaLoginUrl.value = data.login_url || ''
+      return data.login_url || ''
+    } catch (error) {
+      console.error('获取 Java 登录地址错误:', error)
+      throw error
+    }
+  }
+
   return {
     // 状态
     token,
@@ -431,6 +476,8 @@ export const useUserStore = defineStore('user', () => {
     departmentId,
     departmentName,
     requirePasswordChange,
+    javaTokenStatus,
+    javaLoginUrl,
 
     // 计算属性
     isLoggedIn,
@@ -452,7 +499,9 @@ export const useUserStore = defineStore('user', () => {
     getCurrentUser,
     updateProfile,
     ssoLogin,
-    changePassword
+    changePassword,
+    getJavaTokenStatus,
+    fetchJavaLoginUrl
   }
 })
 

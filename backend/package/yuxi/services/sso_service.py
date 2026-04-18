@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from yuxi.repositories.user_repository import UserRepository
 from yuxi.storage.postgres.models_business import Department, User
+from yuxi.services.java_token_service import java_token_service, JavaTokenData
 from yuxi.utils.datetime_utils import utc_now_naive
 from yuxi.utils.logging_config import logger
 
@@ -187,7 +188,7 @@ async def create_sso_user(db, user_info: SSOUserInfo, department_id: int | None 
 
     user_id = user_info.username
 
-    default_password = '1234qwer'  # 默认密码，可以根据需要修改
+    default_password = "1234qwer"  # 默认密码，可以根据需要修改
     password_hash = AuthUtils.hash_password(default_password)
 
     username = user_info.username
@@ -258,6 +259,8 @@ async def sso_login_handler(tenant_id: str, token: str, db, request=None) -> dic
             user.avatar = user_info.avatar
         if user_info.phone:
             user.phone_number = user_info.phone
+        if tenant_id:
+            user.java_tenant_id = tenant_id
         await db.commit()
         logger.info(f"SSO user logged in: {user.username}")
     else:
@@ -281,6 +284,19 @@ async def sso_login_handler(tenant_id: str, token: str, db, request=None) -> dic
         result = await db.execute(select(Department.name).filter(Department.id == user.department_id))
         department_name = result.scalar_one_or_none()
 
+    java_token_status = "valid"
+    if user.java_tenant_id:
+        java_token_data = JavaTokenData(
+            access_token=token,
+            refresh_token=None,
+            tenant_id=tenant_id,
+            tenant_name=user_info.name or user.username,
+            created_at=utc_now_naive().isoformat(),
+            expires_in=None,
+        )
+        await java_token_service.save_token(user.id, java_token_data)
+        logger.info(f"Java token 已保存到 Redis: user_id={user.id}, tenant_id={tenant_id}")
+
     return {
         "access_token": jwt_token,
         "token_type": "bearer",
@@ -293,6 +309,7 @@ async def sso_login_handler(tenant_id: str, token: str, db, request=None) -> dic
         "department_id": user.department_id,
         "department_name": department_name,
         "require_password_change": user.require_password_change,
+        "java_token_status": java_token_status,
     }
 
 

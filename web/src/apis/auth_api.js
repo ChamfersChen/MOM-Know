@@ -80,7 +80,9 @@ export const authApi = {
   exchangeOIDCCode,
   getSSOConfig,
   ssoLogin,
-  changePassword
+  changePassword,
+  getJavaTokenStatus,
+  getJavaLoginUrl
 }
 
 /**
@@ -149,5 +151,34 @@ async function changePassword(newPassword) {
     throw new Error(detail)
   }
 
+  return response.json()
+}
+
+/**
+ * 获取 Java Token 状态
+ * @returns {Promise<{
+ *   bound: boolean,
+ *   tenant_id: string | null,
+ *   tenant_name: string | null,
+ *   expires_in: number | null
+ * }>}
+ */
+async function getJavaTokenStatus() {
+  const response = await fetch('/api/auth/java-token/status')
+  if (!response.ok) {
+    throw new Error('获取 Java Token 状态失败')
+  }
+  return response.json()
+}
+
+/**
+ * 获取 Java 系统登录页面 URL
+ * @returns {Promise<{login_url: string}>}
+ */
+async function getJavaLoginUrl() {
+  const response = await fetch('/api/auth/java-token/login-url')
+  if (!response.ok) {
+    throw new Error('获取 Java 登录地址失败')
+  }
   return response.json()
 }

@@ -75,6 +75,7 @@ class User(Base):
 
     # SSO 相关字段
     require_password_change = Column(Integer, nullable=False, default=0)  # 是否需要修改密码：0=否，1=是
+    java_tenant_id = Column(String(128), nullable=True, index=True)  # Java 系统的租户 ID
 
     # 关联操作日志
     operation_logs = relationship("OperationLog", back_populates="user", cascade="all, delete-orphan")
@@ -102,6 +103,7 @@ class User(Base):
             "is_deleted": self.is_deleted,
             "deleted_at": format_utc_datetime(self.deleted_at),
             "require_password_change": self.require_password_change,
+            "java_tenant_id": self.java_tenant_id,
         }
         if include_password:
             result["password_hash"] = self.password_hash
