@@ -252,7 +252,7 @@ const getTodoStatusLabel = (status) => {
   padding: 6px 8px;
   // height: 28px;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--gray-600);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -357,9 +357,9 @@ const getTodoStatusLabel = (status) => {
 .todo-item {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 12px;
+  gap: 4px;
+  padding: 6px 6px;
+  border-radius: 6px;
   background: var(--light-70);
   box-shadow: inset 0 0 0 1px var(--light-70);
 }
