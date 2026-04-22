@@ -1,6 +1,11 @@
 # toolkits 包
 # 触发各模块的 @tool 装饰器执行，自动注册工具
-from . import buildin, debug, mysql, java_api
+from yuxi.config import java_config
+
+from . import buildin, debug, mysql
+
+if java_config.enabled:
+    from . import java_api
 
 # 工具获取函数
 from .kbs import get_common_kb_tools
@@ -23,5 +28,7 @@ __all__ = [
     "buildin",
     "debug",
     "mysql",
-    "java_api",
 ]
+
+if java_config.enabled:
+    __all__.append("java_api")
