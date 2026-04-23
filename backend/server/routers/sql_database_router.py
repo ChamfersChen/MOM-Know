@@ -14,8 +14,33 @@ from yuxi.utils.logging_config import logger
 from yuxi.storage.postgres.models_terminology import TerminologyInfo
 from yuxi.storage.postgres.models_sql_examples import SqlExampleInfo
 from yuxi.sql_database import sql_database, term_service, sql_example_service
+from yuxi.utils.sql_password_crypto import sql_password_crypto
 
 sql_database_router = APIRouter(prefix="/sql_database", tags=["sql database"])
+
+
+def _mask_connect_info_for_log(connect_info: dict | None) -> dict:
+    """脱敏连接信息，避免日志输出明文密码。"""
+    if not isinstance(connect_info, dict):
+        return {}
+
+    safe_connect_info = dict(connect_info)
+    if "password" in safe_connect_info:
+        safe_connect_info["password"] = "***"
+    if "password_encrypted" in safe_connect_info:
+        safe_connect_info["password_encrypted"] = "***"
+    return safe_connect_info
+
+
+def _normalize_connect_info(connect_info: dict) -> dict:
+    """标准化连接信息，兼容明文与密文密码输入。"""
+    connect_info_dict = connect_info.model_dump() if hasattr(connect_info, "model_dump") else dict(connect_info or {})
+
+    encrypted_password = connect_info_dict.pop("password_encrypted", None)
+    if encrypted_password:
+        connect_info_dict["password"] = sql_password_crypto.decrypt_password(encrypted_password)
+
+    return connect_info_dict
 
 class DatasourceConnectionInfo(BaseModel):
     host: str
@@ -25,6 +50,17 @@ class TermQueryInfo(BaseModel):
     query: str
     ds_host: str
     ds_port: int
+
+
+@sql_database_router.get("/password/public_key")
+async def get_sql_password_public_key(
+    current_user: User = Depends(get_admin_user),
+):
+    """获取 SQL 数据源密码加密公钥。"""
+    return {
+        "algorithm": "RSA-OAEP-256",
+        "public_key": sql_password_crypto.get_public_key_pem(),
+    }
 
 @sql_database_router.get("/databases")
 async def get_databases(
@@ -67,14 +103,14 @@ async def check_connection(
 ):
     """创建数据库"""
     logger.debug(
-        f"Check connection connect_info {connect_info}, datasource_type {db_type}"
+        f"Check connection connect_info {_mask_connect_info_for_log(connect_info)}, datasource_type {db_type}"
     )
     try:
-        # 先检查名称是否已存在
-        if await sql_database.database_ip_port_name_exists(connect_info):
-            return {"message": f"数据库连接校验失败。'{database_name}' 已存在，请使用其他名称", "status": "failed"}
+        connect_info_dict = _normalize_connect_info(connect_info)
 
-        connect_info_dict = connect_info.model_dump() if hasattr(connect_info, "model_dump") else connect_info
+        # 先检查名称是否已存在
+        if await sql_database.database_ip_port_name_exists(connect_info_dict):
+            return {"message": f"数据库连接校验失败。'{database_name}' 已存在，请使用其他名称", "status": "failed"}
 
         # 验证数据库连接信息
         sql_database.test_connection(connect_info_dict)
@@ -95,18 +131,18 @@ async def create_database(
 ):
     """创建数据库"""
     logger.debug(
-        f"Create database {database_name} with kb_type {db_type}, connect_info {connect_info}"
+        f"Create database {database_name} with kb_type {db_type}, connect_info {_mask_connect_info_for_log(connect_info)}"
     )
     try:
+        connect_info_dict = _normalize_connect_info(connect_info)
+
         # 先检查名称是否已存在
-        if await sql_database.database_ip_port_name_exists(connect_info):
+        if await sql_database.database_ip_port_name_exists(connect_info_dict):
             return {"message": f"创建数据库失败", "status": "failed"}
             # raise HTTPException(
             #     status_code=409,
             #     detail=f"知识库名称 '{database_name}' 已存在，请使用其他名称",
             # )
-
-        connect_info_dict = connect_info.model_dump() if hasattr(connect_info, "model_dump") else connect_info
 
         # 验证数据库连接信息
         sql_database.test_connection(connect_info_dict)
@@ -151,7 +187,7 @@ async def delete_database(
         await sql_database.delete_database(db_id)
 
         # 需要重新加载所有智能体，因为工具刷新了
-        from src.agents import agent_manager
+        from yuxi.agents.buildin import agent_manager
 
         await agent_manager.reload_all()
 

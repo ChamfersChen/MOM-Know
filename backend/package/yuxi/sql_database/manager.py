@@ -6,6 +6,7 @@ from pymysql.cursors import DictCursor
 from yuxi.sql_database.base import DBNotFoundError
 from yuxi.sql_database.base import ConnectorBase
 from yuxi.sql_database.factory import DBConnectorBaseFactory
+from yuxi.utils.sql_password_crypto import sql_password_crypto
 
 from yuxi.utils import logger
 
@@ -201,6 +202,7 @@ class SqlDataBaseManager:
             db_instance = self._get_or_create_db_instance(row.db_type or "mysql")
             db_info = db_instance.get_database_info(row.db_id)
             if db_info:
+                db_info["connect_info"] = sql_password_crypto.sanitize_connect_info_for_output(db_info.get("connect_info"))
                 # 补充 share_config
                 db_info["share_config"] = row.share_config or {"is_shared": True, "accessible_departments": []}
                 all_databases.append(db_info)
@@ -399,6 +401,7 @@ class SqlDataBaseManager:
             await self.initialize_tables(db_id)
             logger.debug(f"Initialize tables for {db_id}")
 
+        db_info["connect_info"] = sql_password_crypto.sanitize_connect_info_for_output(db_info.get("connect_info"))
         return db_info
 
     async def delete_database(self, db_id: str) -> dict:
@@ -442,12 +445,13 @@ class SqlDataBaseManager:
         try:
             db_instance = await self._get_db_for_database(db_id)
             db_info = db_instance.get_database_info(db_id)
+            db_info["connect_info"] = sql_password_crypto.sanitize_connect_info_for_output(db_info.get("connect_info"))
         except DBNotFoundError:
             db_info = {
                 "db_id": db_id,
                 "name": db.name,
                 "description": db.description,
-                "connect_info": db.connect_info,
+                "connect_info": sql_password_crypto.sanitize_connect_info_for_output(db.connect_info),
                 "db_type": db.db_type,
                 "tables": {},
                 "related_db_ids": [],

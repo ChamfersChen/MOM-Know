@@ -1,5 +1,65 @@
 import { apiAdminGet, apiAdminPost, apiAdminPut, apiAdminDelete } from './base'
 
+const SQL_PASSWORD_ALGORITHM = 'RSA-OAEP-256'
+
+function pemToArrayBuffer(pem) {
+  const base64 = pem.replace(/-----BEGIN PUBLIC KEY-----|-----END PUBLIC KEY-----|\s+/g, '')
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return bytes.buffer
+}
+
+async function encryptPassword(password, publicKeyPem) {
+  const keyBuffer = pemToArrayBuffer(publicKeyPem)
+  const publicKey = await window.crypto.subtle.importKey(
+    'spki',
+    keyBuffer,
+    {
+      name: 'RSA-OAEP',
+      hash: 'SHA-256'
+    },
+    false,
+    ['encrypt']
+  )
+  const encoded = new TextEncoder().encode(password)
+  const encrypted = await window.crypto.subtle.encrypt({ name: 'RSA-OAEP' }, publicKey, encoded)
+  const encryptedBytes = new Uint8Array(encrypted)
+  let binary = ''
+  encryptedBytes.forEach((byte) => {
+    binary += String.fromCharCode(byte)
+  })
+  return btoa(binary)
+}
+
+async function buildSecureDatabasePayload(databaseData) {
+  const connectInfo = databaseData?.connect_info || {}
+  if (!connectInfo.password) {
+    return databaseData
+  }
+
+  if (!window.crypto?.subtle) {
+    throw new Error('当前环境不支持密码加密传输，请使用 HTTPS 或 localhost 访问')
+  }
+
+  const keyPayload = await apiAdminGet('/api/sql_database/password/public_key')
+  if (keyPayload?.algorithm !== SQL_PASSWORD_ALGORITHM || !keyPayload?.public_key) {
+    throw new Error('服务端密码加密配置异常，请联系管理员')
+  }
+
+  const encryptedPassword = await encryptPassword(connectInfo.password, keyPayload.public_key)
+  return {
+    ...databaseData,
+    connect_info: {
+      ...connectInfo,
+      password: undefined,
+      password_encrypted: encryptedPassword
+    }
+  }
+}
+
 /**
  * 知识库管理API模块
  * 包含数据库管理、文档管理、查询接口等功能
@@ -24,7 +84,8 @@ export const databaseApi = {
    * @returns {Promise} - 创建结果
    */
   checkConnection: async (databaseData) => {
-    return apiAdminPost('/api/sql_database/check_connection', databaseData)
+    const securePayload = await buildSecureDatabasePayload(databaseData)
+    return apiAdminPost('/api/sql_database/check_connection', securePayload)
   },
 
   /**
@@ -33,7 +94,8 @@ export const databaseApi = {
    * @returns {Promise} - 创建结果
    */
   createDatabase: async (databaseData) => {
-    return apiAdminPost('/api/sql_database/database', databaseData)
+    const securePayload = await buildSecureDatabasePayload(databaseData)
+    return apiAdminPost('/api/sql_database/database', securePayload)
   },
 
   deleteConnection: async (dbId) => {

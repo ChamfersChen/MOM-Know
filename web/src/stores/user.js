@@ -383,6 +383,7 @@ export const useUserStore = defineStore('user', () => {
       departmentId.value = userData.department_id || null
       departmentName.value = userData.department_name || ''
       requirePasswordChange.value = userData.require_password_change === 1
+      javaTokenStatus.value = userData.java_token_status || null
 
       return userData
     } catch (error) {

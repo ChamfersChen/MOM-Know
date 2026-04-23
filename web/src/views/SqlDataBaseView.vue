@@ -315,15 +315,15 @@ const groupedDatabases = computed(() => {
 const getDbTypeLabel = (type) => {
   const typeMap = {
     'mysql': 'MySQL',
-    'pg': 'PostgreSQL',
-    'oracle': 'Oracle',
-    'sqlServer': 'SQL Server',
-    'ck': 'ClickHouse',
-    'dm': '达梦',
-    'doris': 'Apache Doris',
-    'redshift': 'AWS Redshift',
-    'es': 'Elasticsearch',
-    'kingbase': 'Kingbase'
+    // 'pg': 'PostgreSQL',
+    // 'oracle': 'Oracle',
+    // 'sqlServer': 'SQL Server',
+    // 'ck': 'ClickHouse',
+    // 'dm': '达梦',
+    // 'doris': 'Apache Doris',
+    // 'redshift': 'AWS Redshift',
+    // 'es': 'Elasticsearch',
+    // 'kingbase': 'Kingbase'
   }
   return typeMap[type] || type
 }
@@ -452,7 +452,6 @@ const buildCheckConnectionRequestData = () => {
 }
 // 校验按钮处理
 const handleCheckConnection = async () => {
-  console.log('>>> check connection: ', connectInfo)
   const requestData = buildCheckConnectionRequestData()
   try {
     await databaseStore.checkConnection(requestData)
@@ -468,7 +467,6 @@ const buildRequestData = () => {
     description: newDatabase.description?.trim() || '',
     db_type: newDatabase.db_type,
   }
-  console.log('shareConfig.value:', shareConfig.value)
   // 添加共享配置
   requestData.share_config = {
     is_shared: shareConfig.value.is_shared,
@@ -483,15 +481,12 @@ const buildRequestData = () => {
     password: connectInfo.password,
     database: connectInfo.database,
   }
-  console.log('requestData:', requestData)
-
   return requestData
 }
 
 // 创建按钮处理
 const handleCreateDatabase = async () => {
   const requestData = buildRequestData()
-  console.log('requestData >> :', requestData)
   try {
     const result = await databaseStore.createDatabase(requestData)
     if (result && result.db_id) {

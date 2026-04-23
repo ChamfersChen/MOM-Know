@@ -168,8 +168,8 @@ router.beforeEach(async (to, from, next) => {
 
   const userStore = useUserStore()
 
-  // 如果有 token 但用户信息未加载，先获取用户信息
-  if (userStore.token && !userStore.userId) {
+  // 如果有 token 但用户信息或 Java 状态未加载，先获取用户信息
+  if (userStore.token && (!userStore.userId || userStore.javaTokenStatus === null)) {
     try {
       await userStore.getCurrentUser()
     } catch (error) {

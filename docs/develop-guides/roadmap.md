@@ -61,6 +61,8 @@
 - 调整 Worker run 模式下的消息首屏反馈：前端发送消息时先乐观渲染用户消息，再将前端生成的 `request_id` 透传给 `/api/chat/runs` 与服务端 `init` 对账；“正在生成回复”动画改为仅在收到 `init` 确认后展示，修复 worker 轮询延迟导致的先转圈、后出现用户消息的问题。后续又补齐了线程切换场景：后端持久化 user message 时同步写入 `request_id`，前端在合并历史消息与 ongoing 消息时按 `request_id` 去掉重复的首条 human message，避免切回运行中的线程后出现连续两个 user message。
 - 修复 agents 页对话侧边栏在 `keep-alive` 路由切换后的误关闭问题：`AgentChatComponent` 的宽度监听现在会在页面 deactivated 时断开、activated 时重连，并忽略隐藏态的 `0` 宽度，避免从其他页面切回 `/agent` 时把用户持久化的侧边栏打开状态错误覆盖为关闭。
 - 调整 Java API 工具注册时机：`JAVA_ACCESS=false` 时不再导入 `yuxi.agents.toolkits.java_api`，从源头避免 `call_mom_api` 与 `list_mom_endpoints` 注册进全局 tools 列表，确保智能体工具集与开关配置一致。
+- 修复 Java 认证未同步提示在刷新后消失的问题：`/api/auth/me` 现在统一返回 `java_token_status`，前端在 `getCurrentUser` 时同步回填该状态，确保首次登录与页面刷新后的顶部提示行为一致。
+- 优化 SQL 数据源密码安全链路：新增 `/api/sql_database/password/public_key` 公钥接口，前端在创建/校验数据源时强制使用 `RSA-OAEP-256` 加密密码后传输；后端在路由层统一解密并对连接信息日志做密码脱敏。同时将 `connect_info.password` 改为密文落库（`password_encrypted_storage`），读取时自动解密用于连接，接口返回统一去除密码字段，并在加载历史数据时自动把旧明文迁移为密文。
 
 ---
 

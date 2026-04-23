@@ -107,6 +107,11 @@ const fetchGithubStars = async () => {
 }
 
 onMounted(async () => {
+  // 刷新页面后补齐 Java Token 状态，避免仅持久化 token 时告警状态丢失
+  if (userStore.isLoggedIn && userStore.javaTokenStatus === null) {
+    await userStore.getCurrentUser().catch(() => {})
+  }
+
   // 加载信息配置
   await infoStore.loadInfoConfig()
   // 加载知识库数据（普通用户加载可访问知识库）

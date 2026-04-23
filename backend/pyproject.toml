@@ -44,6 +44,7 @@ dependencies = [
     "langchain-openai>=1.1.12",
     "ipdb>=0.13.13",
     "pymupdf>=1.27.2.2",
+    "langchain-tavily>=0.2.18",
 ]
 [tool.ruff]
 line-length = 120  # 代码最大行宽

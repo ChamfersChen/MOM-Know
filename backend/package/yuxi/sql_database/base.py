@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 from yuxi.utils import logger, hashstr
 from yuxi.utils.datetime_utils import coerce_any_to_utc_datetime, utc_isoformat
+from yuxi.utils.sql_password_crypto import sql_password_crypto
 
 class DnowledgeBaseException(Exception):
     """数据库库统一异常基类"""
@@ -64,18 +65,28 @@ class ConnectorBase(ABC):
         table_repo = SqlDatabaseTableRepository()
 
         databases = [db for db in await db_repo.get_all() if db.db_type == self.db_type]
-        self.databases_meta = {
-            db.db_id: {
+        self.databases_meta = {}
+        for db in databases:
+            raw_connect_info = db.connect_info or {}
+            connect_info = sql_password_crypto.decrypt_connect_info_from_storage(raw_connect_info)
+            self.databases_meta[db.db_id] = {
                 "name": db.name,
                 "description": db.description,
                 "db_type": db.db_type,
-                "connect_info": db.connect_info,
+                "connect_info": connect_info,
                 "share_config": db.share_config,
                 "related_db_ids": db.related_db_ids.split(";") if db.related_db_ids else [],
                 "created_at": utc_isoformat(db.created_at) if db.created_at else utc_isoformat(),
             }
-            for db in databases
-        }
+
+            # 兼容历史明文数据：加载时迁移为密文存储。
+            if raw_connect_info.get("password"):
+                await db_repo.update(
+                    db.db_id,
+                    {
+                        "connect_info": sql_password_crypto.encrypt_connect_info_for_storage(connect_info),
+                    },
+                )
         # logger.debug(f"databases meta: {self.databases_meta}")
         self.tables_meta = {}
         for db in databases:
@@ -293,6 +304,7 @@ class ConnectorBase(ABC):
 
         meta = self.databases_meta[db_id].copy()
         meta["db_id"] = db_id
+        meta["connect_info"] = sql_password_crypto.sanitize_connect_info_for_output(meta.get("connect_info"))
 
         # 获取文件信息
         db_tables = {}
@@ -351,7 +363,7 @@ class ConnectorBase(ABC):
                 "name": meta.get("name") or db_id,
                 "description": meta.get("description"),
                 "db_type": meta.get("db_type") or self.db_type,
-                "connect_info": meta.get("connect_info"),
+                "connect_info": sql_password_crypto.encrypt_connect_info_for_storage(meta.get("connect_info")),
                 "share_config": meta.get("share_config"),
                 "related_db_ids": ";".join(meta.get("related_db_ids",[])),
             }

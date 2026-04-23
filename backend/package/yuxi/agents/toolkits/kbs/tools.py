@@ -282,4 +282,5 @@ def get_common_kb_tools() -> list:
     - get_mindmap: 获取指定知识库的思维导图
     - query_kb: 在指定知识库中检索
     """
-    return [list_kbs, get_mindmap, query_kb]
+    return [list_kbs, query_kb]
+    # return [list_kbs, get_mindmap, query_kb]

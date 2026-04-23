@@ -11,6 +11,7 @@ if sys.platform == "win32":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 sys.path.append(r"E:\lcfc\repositories\MOM-Know\backend\package")  # 替换为你的实际路径
+sys.path.append(r"/app/package")  # 替换为你的实际路径
 
 import time
 from collections import defaultdict, deque

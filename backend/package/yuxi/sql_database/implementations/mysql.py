@@ -500,8 +500,8 @@ class MySQLConnector(ConnectorBase):
         if db_id in self.databases_meta:
             self.get_connection(db_id).close()
 
-            from src.repositories.sql_database_repository import SqlDatabaseRepository
-            from src.repositories.sql_database_tables_repository import SqlDatabaseTableRepository
+            from yuxi.repositories.sql_database_repository import SqlDatabaseRepository
+            from yuxi.repositories.sql_database_tables_repository import SqlDatabaseTableRepository
 
             # 删除相关文件记录
             tables_to_delete = [fid for fid, finfo in self.tables_meta.items() if finfo.get("database_id") == db_id]

@@ -784,38 +784,38 @@ const enableOcrOptions = computed(() => [
     label: '不启用',
     title: '不启用'
   },
-  {
-    value: 'rapid_ocr',
-    label: getRapidOcrLabel(),
-    title: 'ONNX with RapidOCR',
-    disabled:
-      ocrHealthStatus.value?.rapid_ocr?.status === 'unavailable' ||
-      ocrHealthStatus.value?.rapid_ocr?.status === 'error'
-  },
-  {
-    value: 'mineru_ocr',
-    label: getMinerULabel(),
-    title: 'MinerU OCR',
-    disabled:
-      ocrHealthStatus.value?.mineru_ocr?.status === 'unavailable' ||
-      ocrHealthStatus.value?.mineru_ocr?.status === 'error'
-  },
-  {
-    value: 'mineru_official',
-    label: getMinerUOfficialLabel(),
-    title: 'MinerU Official API',
-    disabled:
-      ocrHealthStatus.value?.mineru_official?.status === 'unavailable' ||
-      ocrHealthStatus.value?.mineru_official?.status === 'error'
-  },
-  {
-    value: 'pp_structure_v3_ocr',
-    label: getPPStructureV3Label(),
-    title: 'PP-Structure-V3',
-    disabled:
-      ocrHealthStatus.value?.pp_structure_v3_ocr?.status === 'unavailable' ||
-      ocrHealthStatus.value?.pp_structure_v3_ocr?.status === 'error'
-  },
+  // {
+  //   value: 'rapid_ocr',
+  //   label: getRapidOcrLabel(),
+  //   title: 'ONNX with RapidOCR',
+  //   disabled:
+  //     ocrHealthStatus.value?.rapid_ocr?.status === 'unavailable' ||
+  //     ocrHealthStatus.value?.rapid_ocr?.status === 'error'
+  // },
+  // {
+  //   value: 'mineru_ocr',
+  //   label: getMinerULabel(),
+  //   title: 'MinerU OCR',
+  //   disabled:
+  //     ocrHealthStatus.value?.mineru_ocr?.status === 'unavailable' ||
+  //     ocrHealthStatus.value?.mineru_ocr?.status === 'error'
+  // },
+  // {
+  //   value: 'mineru_official',
+  //   label: getMinerUOfficialLabel(),
+  //   title: 'MinerU Official API',
+  //   disabled:
+  //     ocrHealthStatus.value?.mineru_official?.status === 'unavailable' ||
+  //     ocrHealthStatus.value?.mineru_official?.status === 'error'
+  // },
+  // {
+  //   value: 'pp_structure_v3_ocr',
+  //   label: getPPStructureV3Label(),
+  //   title: 'PP-Structure-V3',
+  //   disabled:
+  //     ocrHealthStatus.value?.pp_structure_v3_ocr?.status === 'unavailable' ||
+  //     ocrHealthStatus.value?.pp_structure_v3_ocr?.status === 'error'
+  // },
   {
     value: 'deepseek_ocr',
     label: getDeepSeekOcrLabel(),

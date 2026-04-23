@@ -27,16 +27,16 @@ export const dsType = [
 
 export const dsTypeWithImg = [
   // { name: 'local_excelcsv', type: 'excel', img: excel, description: '' },
-  { name: 'MySQL', type: 'mysql', img: mysql_ds, description: '1' },
-  { name: 'PostgreSQL', type: 'pg', img: pg, description: '2' },
-  { name: 'Oracle', type: 'oracle', img: oracle, description: '' },
-  { name: 'SQL Server', type: 'sqlServer', img: sqlServer, description: '' },
-  { name: 'ClickHouse', type: 'ck', img: ck, description: '' },
-  { name: '达梦', type: 'dm', img: dm, description: '' },
-  { name: 'Apache Doris', type: 'doris', img: doris, description: '' },
-  { name: 'AWS Redshift', type: 'redshift', img: redshift, description: '' },
-  { name: 'Elasticsearch', type: 'es', img: es, description: '' },
-  { name: 'Kingbase', type: 'kingbase', img: kingbase, description: '' },
+  { name: 'MySQL', type: 'mysql', img: mysql_ds, description: 'MySQL数据库' },
+  { name: 'PostgreSQL', type: 'pg', img: pg, description: 'PostgreSQL数据库' },
+  // { name: 'Oracle', type: 'oracle', img: oracle, description: '' },
+  // { name: 'SQL Server', type: 'sqlServer', img: sqlServer, description: '' },
+  // { name: 'ClickHouse', type: 'ck', img: ck, description: '' },
+  // { name: '达梦', type: 'dm', img: dm, description: '' },
+  // { name: 'Apache Doris', type: 'doris', img: doris, description: '' },
+  // { name: 'AWS Redshift', type: 'redshift', img: redshift, description: '' },
+  // { name: 'Elasticsearch', type: 'es', img: es, description: '' },
+  // { name: 'Kingbase', type: 'kingbase', img: kingbase, description: '' },
   // { name: 'StarRocks', type: 'starrocks', img: starrocks, description: '' },
 ]
 

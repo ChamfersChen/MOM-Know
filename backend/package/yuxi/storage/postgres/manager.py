@@ -187,6 +187,7 @@ class PostgresManager(metaclass=SingletonMeta):
             "CREATE INDEX IF NOT EXISTS idx_er_status ON evaluation_results(status)",
             "CREATE INDEX IF NOT EXISTS idx_er_started ON evaluation_results(started_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_erd_task ON evaluation_result_details(task_id)",
+            "CREATE EXTENSION IF NOT EXISTS vector;"
         ]
 
         async with self.async_engine.begin() as conn:

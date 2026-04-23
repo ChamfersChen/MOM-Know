@@ -46,6 +46,7 @@ async def test_admin_can_login_and_fetch_profile(test_client, admin_headers):
     assert data["role"] in {"admin", "superadmin"}
     assert data["username"]
     assert data["user_id"]
+    assert data["java_token_status"] in {"valid", "not_bound", "expired", "disabled"}
 
 
 async def test_admin_can_create_and_delete_user(test_client, admin_headers):

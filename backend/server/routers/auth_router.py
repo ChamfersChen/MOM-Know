@@ -96,6 +96,7 @@ class UserResponse(BaseModel):
     role: str
     department_id: int | None = None
     department_name: str | None = None  # 部门名称
+    java_token_status: str | None = None  # Java Token 状态: valid, not_bound, expired, disabled
     created_at: str
     last_login: str | None = None
 
@@ -169,6 +170,22 @@ async def get_default_department_id(db: AsyncSession) -> int | None:
     result = await db.execute(select(Department).filter(Department.name == "默认部门"))
     default_dept = result.scalar_one_or_none()
     return default_dept.id if default_dept else None
+
+
+async def resolve_java_token_status(user: User) -> str:
+    """计算当前用户 Java Token 状态，保证登录与刷新后展示一致。"""
+    if not java_config.enabled:
+        return "disabled"
+
+    if not user.java_tenant_id:
+        return "not_bound"
+
+    token_data_redis = await java_token_service.get_token(user.id, user.java_tenant_id)
+    if not token_data_redis:
+        return "not_bound"
+
+    is_valid = await java_token_service.validate_token(user.id, user.java_tenant_id)
+    return "valid" if is_valid else "expired"
 
 
 # 路由：登录获取令牌
@@ -258,19 +275,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         result = await db.execute(select(Department.name).filter(Department.id == user.department_id))
         department_name = result.scalar_one_or_none()
 
-    java_token_status = None
-    if java_config.enabled:
-        if user.java_tenant_id:
-            token_data_redis = await java_token_service.get_token(user.id, user.java_tenant_id)
-            if not token_data_redis:
-                java_token_status = "not_bound"
-            else:
-                is_valid = await java_token_service.validate_token(user.id, user.java_tenant_id)
-                java_token_status = "valid" if is_valid else "expired"
-        else:
-            java_token_status = "not_bound"
-    else:
-        java_token_status = "disabled"
+    java_token_status = await resolve_java_token_status(user)
 
     return {
         "access_token": access_token,
@@ -385,6 +390,8 @@ async def read_users_me(current_user: User = Depends(get_current_user), db: Asyn
     if current_user.department_id:
         result = await db.execute(select(Department.name).filter(Department.id == current_user.department_id))
         user_dict["department_name"] = result.scalar_one_or_none()
+
+    user_dict["java_token_status"] = await resolve_java_token_status(current_user)
 
     return user_dict
 
