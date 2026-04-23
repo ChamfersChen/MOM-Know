@@ -1,8 +1,7 @@
 # 使用轻量级Python基础镜像
 FROM python:3.12-slim
 
-RUN pip install uv==0.7.2 -i https://pypi.tuna.tsinghua.edu.cn/simple
-# COPY --from=ghcr.io/astral-sh/uv:0.7.2 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.7.2 /uv /uvx /bin/
 COPY --from=node:20-slim /usr/local/bin /usr/local/bin
 COPY --from=node:20-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
 COPY --from=node:20-slim /usr/local/include /usr/local/include
