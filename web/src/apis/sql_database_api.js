@@ -1,5 +1,5 @@
 import { apiAdminGet, apiAdminPost, apiAdminPut, apiAdminDelete } from './base'
-import { JSEncrypt } from 'jsencrypt'
+import forge from 'node-forge'
 
 const SQL_PASSWORD_ALGORITHM = 'RSA-OAEP-256'
 
@@ -15,13 +15,17 @@ function pemToArrayBuffer(pem) {
 
 async function encryptPassword(password, publicKeyPem) {
   if (!window.crypto?.subtle) {
-    const encryptor = new JSEncrypt()
-    encryptor.setPublicKey(publicKeyPem)
-    const encrypted = encryptor.encrypt(password)
+    const publicKey = forge.pki.publicKeyFromPem(publicKeyPem)
+    const encrypted = publicKey.encrypt(password, 'RSA-OAEP', {
+      md: forge.md.sha256.create(),
+      mgf1: {
+        md: forge.md.sha256.create()
+      }
+    })
     if (!encrypted) {
       throw new Error('浏览器 RSA 加密失败，请检查公钥配置')
     }
-    return encrypted
+    return forge.util.encode64(encrypted)
   }
 
   const keyBuffer = pemToArrayBuffer(publicKeyPem)

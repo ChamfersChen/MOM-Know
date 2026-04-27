@@ -17,6 +17,8 @@ stringData:
   NEO4J_PASSWORD: "0123456789"
   MINIO_ACCESS_KEY: minioadmin
   MINIO_SECRET_KEY: minioadmin
+  JWT_SECRET_KEY: please-change-this-jwt-secret
+  SQL_PASSWORD_ENCRYPTION_KEY: please-change-this-sql-password-key
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -254,6 +256,16 @@ spec:
                 secretKeyRef:
                   name: mom-know-secrets
                   key: NEO4J_PASSWORD
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mom-know-secrets
+                  key: JWT_SECRET_KEY
+            - name: SQL_PASSWORD_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mom-know-secrets
+                  key: SQL_PASSWORD_ENCRYPTION_KEY
           ports:
             - containerPort: 5050
               name: http
