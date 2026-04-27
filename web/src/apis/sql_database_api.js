@@ -1,4 +1,5 @@
 import { apiAdminGet, apiAdminPost, apiAdminPut, apiAdminDelete } from './base'
+import { JSEncrypt } from 'jsencrypt'
 
 const SQL_PASSWORD_ALGORITHM = 'RSA-OAEP-256'
 
@@ -13,6 +14,16 @@ function pemToArrayBuffer(pem) {
 }
 
 async function encryptPassword(password, publicKeyPem) {
+  if (!window.crypto?.subtle) {
+    const encryptor = new JSEncrypt()
+    encryptor.setPublicKey(publicKeyPem)
+    const encrypted = encryptor.encrypt(password)
+    if (!encrypted) {
+      throw new Error('浏览器 RSA 加密失败，请检查公钥配置')
+    }
+    return encrypted
+  }
+
   const keyBuffer = pemToArrayBuffer(publicKeyPem)
   const publicKey = await window.crypto.subtle.importKey(
     'spki',
@@ -38,10 +49,6 @@ async function buildSecureDatabasePayload(databaseData) {
   const connectInfo = databaseData?.connect_info || {}
   if (!connectInfo.password) {
     return databaseData
-  }
-
-  if (!window.crypto?.subtle) {
-    throw new Error('当前环境不支持密码加密传输，请使用 HTTPS 或 localhost 访问')
   }
 
   const keyPayload = await apiAdminGet('/api/sql_database/password/public_key')

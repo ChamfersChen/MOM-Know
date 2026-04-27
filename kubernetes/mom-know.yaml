@@ -1,0 +1,823 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mom-know
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mom-know-secrets
+  namespace: mom-know
+type: Opaque
+stringData:
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: pg123456
+  POSTGRES_DB: mom_ai
+  NEO4J_USERNAME: neo4j
+  NEO4J_PASSWORD: "0123456789"
+  MINIO_ACCESS_KEY: minioadmin
+  MINIO_SECRET_KEY: minioadmin
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mom-know-config
+  namespace: mom-know
+data:
+  HOST_IP: ""
+  LITE_MODE: "false"
+  RUNNING_IN_DOCKER: "true"
+  MODEL_DIR_IN_DOCKER: /models
+  POSTGRES_URL: postgresql+asyncpg://postgres:pg123456@postgres:15432/mom_ai
+  REDIS_URL: redis://redis:16379/0
+  NEO4J_URI: bolt://graph:17687
+  MILVUS_URI: http://milvus:19531
+  MILVUS_DB_NAME: default
+  MILVUS_TOKEN: ""
+  MINIO_URI: http://minio:9001
+  MINERU_VL_SERVER: http://mineru-vllm-server:30000
+  MINERU_API_URI: http://mineru-api:30001
+  PADDLEX_URI: http://paddlex:8080
+  YUXI_DOCKER_API_BASE: http://localhost
+  SANDBOX_PROVIDER: provisioner
+  SANDBOX_PROVISIONER_URL: http://sandbox-provisioner:8002
+  SANDBOX_VIRTUAL_PATH_PREFIX: /home/gem/user-data
+  SANDBOX_EXEC_TIMEOUT_SECONDS: "180"
+  SANDBOX_MAX_OUTPUT_BYTES: "262144"
+  EMBEDDING_TIMEOUT: "600"
+  LLM_TIMEOUT: "600"
+  RUN_CANCEL_KEY_TTL_SECONDS: "1800"
+  RUN_EVENTS_STREAM_TTL_SECONDS: "7200"
+  NO_PROXY: localhost,127.0.0.1,milvus,graph,minio,milvus-etcd-dev,etcd,mineru,paddlex,sandbox-provisioner,api.siliconflow.cn
+  no_proxy: localhost,127.0.0.1,milvus,graph,minio,milvus-etcd-dev,etcd,mineru,paddlex,sandbox-provisioner,api.siliconflow.cn
+  PROVISIONER_BACKEND: docker
+  SANDBOX_IMAGE: enterprise-public-cn-beijing.cr.volces.com/vefaas-public/all-in-one-sandbox:latest
+  SANDBOX_CONTAINER_PORT: "8080"
+  MEMORY_SANDBOX_URL_TEMPLATE: http://agent-sandbox:8000
+  SANDBOX_HEALTH_TIMEOUT_SECONDS: "300"
+  SANDBOX_IDLE_TIMEOUT_SECONDS: "120"
+  SANDBOX_IDLE_CHECK_INTERVAL_SECONDS: "10"
+  SANDBOX_DOCKER_NETWORK: mom-know_app-network
+  SANDBOX_DOCKER_THREADS_HOST_PATH: ""
+  SANDBOX_DOCKER_SANDBOX_PREFIX: mom-sandbox
+  SANDBOX_DOCKER_SANDBOX_HOST: host.docker.internal
+  SANDBOX_K8S_NAMESPACE: mom-know
+  SANDBOX_NODE_HOST: host.docker.internal
+  KUBECONFIG_PATH: ""
+  THREAD_PVC: mom-thread
+  SKILLS_PVC: mom-skills
+  NODE_ENV: development
+  VITE_API_URL: http://api:5050
+  VITE_USE_RUNS_API: "false"
+  VITE_LITE_MODE: ""
+  TZ: Asia/Shanghai
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: saves-pvc
+  namespace: mom-know
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: models-pvc
+  namespace: mom-know
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data-pvc
+  namespace: mom-know
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data-pvc
+  namespace: mom-know
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: neo4j-data-pvc
+  namespace: mom-know
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: neo4j-logs-pvc
+  namespace: mom-know
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: etcd-data-pvc
+  namespace: mom-know
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data-pvc
+  namespace: mom-know
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-config-pvc
+  namespace: mom-know
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: milvus-data-pvc
+  namespace: mom-know
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 30Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: milvus-logs-pvc
+  namespace: mom-know
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: mom-know
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      volumes:
+        - name: saves
+          persistentVolumeClaim:
+            claimName: saves-pvc
+        - name: models
+          persistentVolumeClaim:
+            claimName: models-pvc
+        - name: docker-sock
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket
+      containers:
+        - name: api
+          image: registry.cn-hangzhou.aliyuncs.com/shinemost/mom-api:0.6.0
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          command: ["uv", "run", "--no-dev", "uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "5050", "--reload", "--reload-dir", "/app/server", "--reload-dir", "/app/package"]
+          envFrom:
+            - configMapRef:
+                name: mom-know-config
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mom-know-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mom-know-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: mom-know-secrets
+                  key: POSTGRES_DB
+            - name: NEO4J_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mom-know-secrets
+                  key: NEO4J_USERNAME
+            - name: NEO4J_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mom-know-secrets
+                  key: NEO4J_PASSWORD
+          ports:
+            - containerPort: 5050
+              name: http
+          livenessProbe:
+            httpGet:
+              path: /api/system/health
+              port: 5050
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 8
+          readinessProbe:
+            httpGet:
+              path: /api/system/health
+              port: 5050
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: saves
+              mountPath: /app/saves
+            - name: models
+              mountPath: /models
+            - name: docker-sock
+              mountPath: /var/run/docker.sock
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: mom-know
+spec:
+  selector:
+    app: api
+  ports:
+    - port: 5050
+      targetPort: 5050
+      name: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: mom-know
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      volumes:
+        - name: saves
+          persistentVolumeClaim:
+            claimName: saves-pvc
+        - name: models
+          persistentVolumeClaim:
+            claimName: models-pvc
+        - name: docker-sock
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket
+      containers:
+        - name: worker
+          image: registry.cn-hangzhou.aliyuncs.com/shinemost/mom-api:0.6.0
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          command: ["uv", "run", "--no-dev", "arq", "server.worker_main.WorkerSettings"]
+          envFrom:
+            - configMapRef:
+                name: mom-know-config
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mom-know-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mom-know-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: mom-know-secrets
+                  key: POSTGRES_DB
+            - name: NEO4J_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mom-know-secrets
+                  key: NEO4J_USERNAME
+            - name: NEO4J_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mom-know-secrets
+                  key: NEO4J_PASSWORD
+          volumeMounts:
+            - name: saves
+              mountPath: /app/saves
+            - name: models
+              mountPath: /models
+            - name: docker-sock
+              mountPath: /var/run/docker.sock
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sandbox-provisioner
+  namespace: mom-know
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sandbox-provisioner
+  template:
+    metadata:
+      labels:
+        app: sandbox-provisioner
+    spec:
+      volumes:
+        - name: saves
+          persistentVolumeClaim:
+            claimName: saves-pvc
+        - name: docker-sock
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket
+      containers:
+        - name: sandbox-provisioner
+          image: registry.cn-hangzhou.aliyuncs.com/shinemost/mom-sandbox-provisioner:0.6.0
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-lc", "python -c 'import docker' >/dev/null 2>&1 || pip install --no-cache-dir 'docker>=7.1.0'; uvicorn app:app --host 0.0.0.0 --port 8002"]
+          envFrom:
+            - configMapRef:
+                name: mom-know-config
+          env:
+            - name: NO_PROXY
+              value: localhost,127.0.0.1,host.docker.internal
+            - name: HTTP_PROXY
+              value: ""
+            - name: HTTPS_PROXY
+              value: ""
+          ports:
+            - containerPort: 8002
+              name: http
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8002
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8002
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: saves
+              mountPath: /app/saves
+            - name: docker-sock
+              mountPath: /var/run/docker.sock
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sandbox-provisioner
+  namespace: mom-know
+spec:
+  selector:
+    app: sandbox-provisioner
+  ports:
+    - port: 8002
+      targetPort: 8002
+      name: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: mom-know
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: registry.cn-hangzhou.aliyuncs.com/shinemost/mom-web:0.6.0
+          imagePullPolicy: IfNotPresent
+          command: ["npm", "run", "server"]
+          envFrom:
+            - configMapRef:
+                name: mom-know-config
+          ports:
+            - containerPort: 5173
+              name: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: mom-know
+spec:
+  type: NodePort
+  selector:
+    app: web
+  ports:
+    - port: 5173
+      targetPort: 5173
+      nodePort: 30173
+      name: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: graph
+  namespace: mom-know
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: graph
+  template:
+    metadata:
+      labels:
+        app: graph
+    spec:
+      volumes:
+        - name: neo4j-data
+          persistentVolumeClaim:
+            claimName: neo4j-data-pvc
+        - name: neo4j-logs
+          persistentVolumeClaim:
+            claimName: neo4j-logs-pvc
+      containers:
+        - name: graph
+          image: neo4j:5.26
+          env:
+            - name: NEO4J_AUTH
+              value: neo4j/0123456789
+            - name: NEO4J_server_bolt_listen__address
+              value: 0.0.0.0:17687
+            - name: NEO4J_server_http_listen__address
+              value: 0.0.0.0:7474
+            - name: ENTITY_EMBEDDING
+              value: "true"
+          ports:
+            - containerPort: 7474
+              name: http
+            - containerPort: 17687
+              name: bolt
+          volumeMounts:
+            - name: neo4j-data
+              mountPath: /data
+            - name: neo4j-logs
+              mountPath: /var/lib/neo4j/logs
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: graph
+  namespace: mom-know
+spec:
+  selector:
+    app: graph
+  ports:
+    - port: 7474
+      targetPort: 7474
+      name: http
+    - port: 17687
+      targetPort: 17687
+      name: bolt
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: etcd
+  namespace: mom-know
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: etcd
+  template:
+    metadata:
+      labels:
+        app: etcd
+    spec:
+      volumes:
+        - name: etcd-data
+          persistentVolumeClaim:
+            claimName: etcd-data-pvc
+      containers:
+        - name: etcd
+          image: quay.io/coreos/etcd:v3.5.5
+          command: ["etcd", "-advertise-client-urls=http://etcd:2379", "-listen-client-urls", "http://0.0.0.0:2379", "--data-dir", "/etcd"]
+          env:
+            - name: ETCD_AUTO_COMPACTION_MODE
+              value: revision
+            - name: ETCD_AUTO_COMPACTION_RETENTION
+              value: "1000"
+            - name: ETCD_QUOTA_BACKEND_BYTES
+              value: "4294967296"
+            - name: ETCD_SNAPSHOT_COUNT
+              value: "50000"
+          ports:
+            - containerPort: 2379
+              name: client
+          volumeMounts:
+            - name: etcd-data
+              mountPath: /etcd
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: etcd
+  namespace: mom-know
+spec:
+  selector:
+    app: etcd
+  ports:
+    - port: 2379
+      targetPort: 2379
+      name: client
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: mom-know
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      volumes:
+        - name: minio-data
+          persistentVolumeClaim:
+            claimName: minio-data-pvc
+        - name: minio-config
+          persistentVolumeClaim:
+            claimName: minio-config-pvc
+      containers:
+        - name: minio
+          image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+          command: ["minio", "server", "/minio_data", "--address", "0.0.0.0:29000", "--console-address", "0.0.0.0:9001"]
+          env:
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mom-know-secrets
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mom-know-secrets
+                  key: MINIO_SECRET_KEY
+          ports:
+            - containerPort: 29000
+              name: s3
+            - containerPort: 9001
+              name: console
+          volumeMounts:
+            - name: minio-data
+              mountPath: /minio_data
+            - name: minio-config
+              mountPath: /root/.minio
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: mom-know
+spec:
+  selector:
+    app: minio
+  ports:
+    - port: 29000
+      targetPort: 29000
+      name: s3
+    - port: 9001
+      targetPort: 9001
+      name: console
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: milvus
+  namespace: mom-know
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: milvus
+  template:
+    metadata:
+      labels:
+        app: milvus
+    spec:
+      volumes:
+        - name: milvus-data
+          persistentVolumeClaim:
+            claimName: milvus-data-pvc
+        - name: milvus-logs
+          persistentVolumeClaim:
+            claimName: milvus-logs-pvc
+      containers:
+        - name: milvus
+          image: milvusdb/milvus:v2.5.6
+          command: ["milvus", "run", "standalone"]
+          env:
+            - name: ETCD_ENDPOINTS
+              value: etcd:2379
+            - name: MINIO_ADDRESS
+              value: minio:29000
+            - name: MILVUS_LOG_LEVEL
+              value: error
+          ports:
+            - containerPort: 19530
+              name: grpc
+            - containerPort: 9091
+              name: health
+          volumeMounts:
+            - name: milvus-data
+              mountPath: /var/lib/milvus
+            - name: milvus-logs
+              mountPath: /var/lib/milvus/logs
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: milvus
+  namespace: mom-know
+spec:
+  selector:
+    app: milvus
+  ports:
+    - port: 19531
+      targetPort: 19530
+      name: grpc
+    - port: 19091
+      targetPort: 9091
+      name: health
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: mom-know
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-data-pvc
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg16
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mom-know-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mom-know-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: mom-know-secrets
+                  key: POSTGRES_DB
+            - name: TZ
+              valueFrom:
+                configMapKeyRef:
+                  name: mom-know-config
+                  key: TZ
+          ports:
+            - containerPort: 5432
+              name: pg
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: mom-know
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 15432
+      targetPort: 5432
+      name: pg
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: mom-know
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      volumes:
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: redis-data-pvc
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          command: ["redis-server", "--appendonly", "yes"]
+          ports:
+            - containerPort: 6379
+              name: redis
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: mom-know
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 16379
+      targetPort: 6379
+      name: redis
