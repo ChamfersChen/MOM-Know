@@ -59,6 +59,7 @@ lint.select = [         # 选择的规则
 ]
 
 [tool.uv]
+index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 
 [[tool.uv.index]]
 name = "tsinghua"
