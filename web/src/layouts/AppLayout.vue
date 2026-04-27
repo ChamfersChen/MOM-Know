@@ -102,18 +102,18 @@ const getRemoteDatabase = async () => {
   }
 }
 
-const fetchGithubStars = async () => {
-  try {
-    isLoadingStars.value = true
-    const response = await fetch('https://api.github.com/repos/xerrors/Yuxi')
-    const data = await response.json()
-    githubStars.value = data.stargazers_count
-  } catch (error) {
-    console.error('获取GitHub stars失败:', error)
-  } finally {
-    isLoadingStars.value = false
-  }
-}
+// const fetchGithubStars = async () => {
+//   try {
+//     isLoadingStars.value = true
+//     const response = await fetch('https://api.github.com/repos/xerrors/Yuxi')
+//     const data = await response.json()
+//     githubStars.value = data.stargazers_count
+//   } catch (error) {
+//     console.error('获取GitHub stars失败:', error)
+//   } finally {
+//     isLoadingStars.value = false
+//   }
+// }
 
 const route = useRoute()
 const router = useRouter()
@@ -253,7 +253,7 @@ onMounted(async () => {
   if (userStore.isAdmin) {
     await getRemoteConfig()
     taskerStore.loadTasks()
-    fetchGithubStars()
+    // fetchGithubStars()
   }
 
   if (showJavaTokenWarning.value && !userStore.javaLoginUrl) {
@@ -371,7 +371,7 @@ provide('settingsModal', {
         </div>
 
         <div class="foo">
-          <div class="github nav-item" @click.stop>
+          <!-- <div class="github nav-item" @click.stop>
             <a-tooltip placement="right" :open="sidebarCollapsed ? undefined : false">
               <template #title>欢迎 Star</template>
               <a href="https://github.com/xerrors/Yuxi" target="_blank" class="github-link">
@@ -382,7 +382,7 @@ provide('settingsModal', {
                 </span>
               </a>
             </a-tooltip>
-          </div>
+          </div> -->
 
           <div class="nav-item user-info" @click.stop>
             <UserInfoComponent :show-role="!sidebarCollapsed">

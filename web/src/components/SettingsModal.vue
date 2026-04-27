@@ -205,7 +205,7 @@ const activeTab = ref('base')
 const showStarCard = ref(true)
 
 const STAR_CARD_STORAGE_KEY = 'yuxi-settings-star-card-dismissed'
-const projectRepoUrl = 'https://github.com/xerrors/Yuxi'
+// const projectRepoUrl = 'https://github.com/xerrors/Yuxi'
 
 const visible = computed({
   get: () => props.visible,
