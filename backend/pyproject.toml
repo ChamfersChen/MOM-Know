@@ -1,53 +1,14 @@
 [project]
 name = "mom-workspace"
 version = "0.6.2"
-description = "基于大模型的智能知识库与知识图谱智能体开发平台，融合了 RAG 技术与知识图谱技术，基于 LangGraph v1 + Vue.js + FastAPI + LightRAG 架构构建"
+description = ""
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "fastapi>=0.121",
     "uvicorn[standard]>=0.34.2",
     "arq>=0.26.3",
-    "chardet>=5.0.0",
-    "deepagents>=0.2.5",
-    "agent-sandbox>=0.0.26",
-    "json-repair>=0.54.0",
-    "torch>=2.8.0",
-    "torchvision==0.23",
-    "docling>=2.68.0",
-    "loguru>=0.7.3",
-    "redis>=5.2.0",
-    "aioboto3>=13.0.0",
-    "wcmatch>=8.0.0",
-    "psycopg[binary,pool]>=3.3.3",
-    "pgvector>=0.4.2",
-    "tomli>=2.4.1",
-    "tomli-w>=1.2.0",
-    "sqlalchemy>=2.0.49",
-    "python-jose>=3.5.0",
-    "argon2-cffi>=25.1.0",
-    "pypinyin>=0.55.0",
-    "minio>=7.2.20",
-    "python-multipart>=0.0.24",
-    "langgraph-checkpoint-sqlite>=3.0.3",
-    "langchain-text-splitters>=1.1.1",
-    "lightrag-hku>=1.4.13",
-    "openai>=2.30.0",
-    "neo4j>=6.1.0",
-    "pymilvus>=2.6.11",
-    "langchain-community>=0.4.1",
-    "markdownify>=1.2.2",
-    "pymysql>=1.1.2",
-    "langchain-mcp-adapters>=0.2.2",
-    "langgraph-checkpoint-postgres>=3.0.5",
-    "asyncpg>=0.31.0",
-    "langchain-openai>=1.1.12",
-    "ipdb>=0.13.13",
-    "pymupdf>=1.27.2.2",
-    "langchain-tavily>=0.2.18",
-    "mdit-py-plugins>=0.5.0",
-    "nltk>=3.9.4",
-    "scikit-learn>=1.8.0",
+    "yuxi",
 ]
 [tool.ruff]
 line-length = 120  # 代码最大行宽
@@ -58,6 +19,18 @@ lint.select = [         # 选择的规则
     "UP",
 ]
 
+[tool.uv]
+
+[[tool.uv.index]]
+name = "tsinghua"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.uv.sources]
 yuxi = { path = "package", editable = true }
