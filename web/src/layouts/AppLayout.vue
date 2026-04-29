@@ -119,7 +119,7 @@ const route = useRoute()
 const router = useRouter()
 
 const activeTaskCount = computed(() => activeCountRef.value || 0)
-const organizationName = computed(() => infoStore.organization.name || infoStore.branding.name || 'Yuxi')
+const organizationName = computed(() => infoStore.organization.name || infoStore.branding.name || 'LCMOM')
 
 const isLiteMode = import.meta.env.VITE_LITE_MODE === 'true'
 

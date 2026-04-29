@@ -137,8 +137,8 @@ const router = useRouter()
 const userStore = useUserStore()
 const infoStore = useInfoStore()
 const agentStore = useAgentStore()
-const repoUrl = 'https://github.com/xerrors/Yuxi'
-const faqUrl = 'https://xerrors.github.io/Yuxi/'
+// const repoUrl = 'https://github.com/xerrors/Yuxi'
+// const faqUrl = 'https://xerrors.github.io/Yuxi/'
 
 // 加载状态
 const isLoading = ref(true)

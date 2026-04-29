@@ -1079,9 +1079,10 @@ onMounted(() => {
       }
 
       h3 {
-        font-size: 17px;
+        font-size: 14px;
         font-weight: 600;
-        letter-spacing: -0.02em;
+        color: var(--gray-900);
+        letter-spacing: -0.01em;
         line-height: 1.4;
         white-space: nowrap;
         overflow: hidden;
@@ -1089,8 +1090,8 @@ onMounted(() => {
       }
 
       p {
-        color: var(--gray-700);
-        font-size: 13px;
+        color: var(--gray-600);
+        font-size: 12px;
         display: flex;
         align-items: center;
         gap: 8px;
@@ -1099,7 +1100,7 @@ onMounted(() => {
         font-weight: 400;
 
         .created-time-inline {
-          color: var(--gray-700);
+          color: var(--gray-600);
           font-size: 11px;
           font-weight: 400;
           background: var(--gray-50);
@@ -1114,13 +1115,14 @@ onMounted(() => {
     color: var(--gray-600);
     overflow: hidden;
     display: -webkit-box;
-    line-clamp: 1;
-    -webkit-line-clamp: 1;
+    line-clamp: 2;
+    -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     text-overflow: ellipsis;
     margin-bottom: 2px;
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 400;
+    line-height: 1.4;
     flex: 1;
   }
 }

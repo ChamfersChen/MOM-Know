@@ -5,8 +5,8 @@ import markdownItTaskCheckbox from 'markdown-it-task-checkbox'
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
   lang: 'zh-CN',
-  title: "Yuxi",
-  description: "语析",
+  title: "LCMOM",
+  description: "",
   base: '/Yuxi/',
   ignoreDeadLinks: [
     /localhost/,
