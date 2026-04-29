@@ -286,7 +286,7 @@ provide('settingsModal', {
       <a-button type="link" size="small" class="warning-action" @click="handleGoToJavaSync">
         前往同步
       </a-button>
-      <button class="warning-close" title="忽略" @click="userStore.javaTokenStatus = 'disabled'">
+      <button class="warning-close" title="忽略" @click="userStore.dismissJavaToken()">
         &times;
       </button>
     </div>

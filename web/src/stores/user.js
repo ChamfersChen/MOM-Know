@@ -67,6 +67,11 @@ export const useUserStore = defineStore('user', () => {
       // 只保存 token 到本地存储
       localStorage.setItem('user_token', data.access_token)
 
+      // 将 javaTokenStatus 同步到后端 User 表
+      if (data.java_token_status) {
+        await syncJavaTokenToBackend(data.java_token_status)
+      }
+
       return true
     } catch (error) {
       console.error('登录错误:', error)
@@ -105,6 +110,11 @@ export const useUserStore = defineStore('user', () => {
       javaTokenStatus.value = data.java_token_status || null
 
       localStorage.setItem('user_token', data.access_token)
+
+      // 将 javaTokenStatus 同步到后端 User 表
+      if (data.java_token_status) {
+        await syncJavaTokenToBackend(data.java_token_status)
+      }
 
       return { requirePasswordChange: requirePasswordChange.value }
     } catch (error) {
@@ -214,6 +224,28 @@ export const useUserStore = defineStore('user', () => {
     return {
       Authorization: `Bearer ${token.value}`
     }
+  }
+
+  // 同步 java_token_status 到后端 User 表
+  async function syncJavaTokenToBackend(status) {
+    try {
+      await fetch('/api/auth/java-token/status', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({ status })
+      })
+    } catch (error) {
+      console.error('同步 java_token_status 失败:', error)
+    }
+  }
+
+  // 忽略 Java Token 状态警告（后端持久化）
+  async function dismissJavaToken() {
+    javaTokenStatus.value = 'disabled'
+    await syncJavaTokenToBackend('disabled')
   }
 
   // 用户管理功能
@@ -502,7 +534,8 @@ export const useUserStore = defineStore('user', () => {
     ssoLogin,
     changePassword,
     getJavaTokenStatus,
-    fetchJavaLoginUrl
+    fetchJavaLoginUrl,
+    dismissJavaToken
   }
 })
 

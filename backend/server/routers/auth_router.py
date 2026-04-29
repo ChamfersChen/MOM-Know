@@ -277,6 +277,10 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 
     java_token_status = await resolve_java_token_status(user)
 
+    # 保存 java_token_status 到 User 表
+    user.java_token_status = java_token_status
+    await db.commit()
+
     return {
         "access_token": access_token,
         "token_type": "bearer",
@@ -391,7 +395,12 @@ async def read_users_me(current_user: User = Depends(get_current_user), db: Asyn
         result = await db.execute(select(Department.name).filter(Department.id == current_user.department_id))
         user_dict["department_name"] = result.scalar_one_or_none()
 
-    user_dict["java_token_status"] = await resolve_java_token_status(current_user)
+    java_token_status = await resolve_java_token_status(current_user)
+    user_dict["java_token_status"] = java_token_status
+
+    # 同步保存到 User 表
+    current_user.java_token_status = java_token_status
+    await db.commit()
 
     return user_dict
 
@@ -1017,3 +1026,38 @@ async def get_java_token_status(
 async def get_java_login_url():
     """获取 Java 系统登录页面 URL"""
     return {"login_url": java_config.get_login_url()}
+
+
+class JavaTokenDismissResponse(BaseModel):
+    """Java Token 状态更新响应"""
+
+    status: str
+
+
+class JavaTokenStatusUpdate(BaseModel):
+    """Java Token 状态更新请求"""
+
+    status: str
+
+
+@auth.post("/java-token/dismiss", response_model=JavaTokenDismissResponse)
+async def dismiss_java_token(
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """忽略 Java Token 状态警告，后端持久化该偏好"""
+    current_user.java_token_status = "disabled"
+    await db.commit()
+    return JavaTokenDismissResponse(status="disabled")
+
+
+@auth.put("/java-token/status", response_model=JavaTokenDismissResponse)
+async def update_java_token_status(
+    body: JavaTokenStatusUpdate,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """前端登录后同步 java_token_status 到后端 User 表"""
+    current_user.java_token_status = body.status
+    await db.commit()
+    return JavaTokenDismissResponse(status=body.status)

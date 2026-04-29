@@ -41,6 +41,7 @@
 - 调整 Java API 工具注册时机：`JAVA_ACCESS=false` 时不再导入 `yuxi.agents.toolkits.java_api`，从源头避免 `call_mom_api` 与 `list_mom_endpoints` 注册进全局 tools 列表，确保智能体工具集与开关配置一致。
 - 修复 Java 认证未同步提示在刷新后消失的问题：`/api/auth/me` 现在统一返回 `java_token_status`，前端在 `getCurrentUser` 时同步回填该状态，确保首次登录与页面刷新后的顶部提示行为一致。
 - 优化 SQL 数据源密码安全链路：新增 `/api/sql_database/password/public_key` 公钥接口，前端在创建/校验数据源时强制使用 `RSA-OAEP-256` 加密密码后传输；后端在路由层统一解密并对连接信息日志做密码脱敏。同时将 `connect_info.password` 改为密文落库（`password_encrypted_storage`），读取时自动解密用于连接，接口返回统一去除密码字段，并在加载历史数据时自动把旧明文迁移为密文。
+- JAVA_ACCESS 功能：将前端 javaTokenStatus 同步到后端 User 表。User 模型新增 `java_token_status` 字段，登录/SSO 登录时自动保存计算后的状态；新增 `PUT /api/auth/java-token/status` 端点供前端主动同步。
 
 ---
 

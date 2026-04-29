@@ -76,6 +76,7 @@ class User(Base):
     # SSO 相关字段
     require_password_change = Column(Integer, nullable=False, default=0)  # 是否需要修改密码：0=否，1=是
     java_tenant_id = Column(String(128), nullable=True, index=True)  # Java 系统的租户 ID
+    java_token_status = Column(String(32), nullable=True)  # Java Token 状态: valid, not_bound, expired, disabled
 
     # 关联操作日志
     operation_logs = relationship("OperationLog", back_populates="user", cascade="all, delete-orphan")

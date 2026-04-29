@@ -70,10 +70,19 @@ def _ensure_metadata_loaded():
     logger.info(f"Tool service loaded {len(_metadata_cache)} tools (lazy load)")
 
 
-def get_tool_metadata(category: str = None) -> list[dict]:
+def get_tool_metadata(category: str = None, user=None) -> list[dict]:
     """获取工具元数据列表（延迟加载）"""
     _ensure_metadata_loaded()
+    skip_words = ["mom", "mysql"]
+    filtered_tools = []
+    for t in _metadata_cache:
+        tool_name = t.get("name", "").lower()
+        if user.java_token_status != "valid":
+            if any(skip_word in tool_name.lower() for skip_word in skip_words):
+                logger.info(f"RuntimeConfigMiddleware: skipping tool '{tool_name}' due to invalid JAVA token")
+                continue
+        filtered_tools.append(t)
 
     if category:
         return [t for t in _metadata_cache if t.get("category") == category]
-    return _metadata_cache
+    return filtered_tools

@@ -297,6 +297,10 @@ async def sso_login_handler(tenant_id: str, token: str, db, request=None) -> dic
         await java_token_service.save_token(user.id, java_token_data)
         logger.info(f"Java token 已保存到 Redis: user_id={user.id}, tenant_id={tenant_id}")
 
+    # 保存 java_token_status 到 User 表
+    user.java_token_status = java_token_status
+    await db.commit()
+
     return {
         "access_token": jwt_token,
         "token_type": "bearer",

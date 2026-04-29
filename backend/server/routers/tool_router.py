@@ -13,7 +13,7 @@ async def list_tools(
     user: User = Depends(get_admin_user),
 ):
     """获取工具列表"""
-    return {"success": True, "data": get_tool_metadata(category)}
+    return {"success": True, "data": get_tool_metadata(category, user)}
 
 
 @tools.get("/options")
@@ -21,5 +21,5 @@ async def get_tool_options(
     user: User = Depends(get_admin_user),
 ):
     """获取工具选项（前端下拉框用）"""
-    all_tools = get_tool_metadata()
+    all_tools = get_tool_metadata(user=user)
     return {"success": True, "data": [{"label": t["name"], "value": t["id"]} for t in all_tools]}

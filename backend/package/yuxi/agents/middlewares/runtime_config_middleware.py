@@ -100,7 +100,7 @@ class RuntimeConfigMiddleware(AgentMiddleware):
                 if t_bind.name in enabled_tool_names or t_bind.name not in managed_tool_names:
                     t_bind.extras = {
                         "user_department": user_department,
-                        "current_username": current_username
+                        "current_username": current_username,
                     }
                     merged_tools.append(t_bind)
             overrides["tools"] = merged_tools
@@ -129,7 +129,9 @@ class RuntimeConfigMiddleware(AgentMiddleware):
 
         # 1. 基础工具 (从 context.tools 中筛选)
         tools = getattr(context, self.tools_context_name, None) or []
+        java_token_status = getattr(context, "java_token_status", "not_bound")
         all_tool_names = []
+        skip_words = ['mom', 'mysql']
         for tool_name in tools:
             if isinstance(tool_name, str):
                 all_tool_names.append(tool_name)
@@ -138,6 +140,10 @@ class RuntimeConfigMiddleware(AgentMiddleware):
         for tool_name in all_tool_names:
             if tool_name in selected_tool_names:
                 continue
+            if java_token_status != "valid":
+                if any(skip_word in tool_name.lower() for skip_word in skip_words):
+                    logger.info(f"RuntimeConfigMiddleware: skipping tool '{tool_name}' due to invalid JAVA token")
+                    continue
             if tool_name in tools_map:
                 selected_tools.append(tools_map[tool_name])
                 selected_tool_names.add(tool_name)

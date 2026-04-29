@@ -257,6 +257,7 @@ class PostgresManager(metaclass=SingletonMeta):
             "CREATE INDEX IF NOT EXISTS ix_conversations_is_pinned ON conversations(is_pinned)",
             "CREATE UNIQUE INDEX IF NOT EXISTS ix_model_providers_provider_id ON model_providers(provider_id)",
             "CREATE INDEX IF NOT EXISTS ix_model_providers_is_enabled ON model_providers(is_enabled)",
+            "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS java_token_status VARCHAR(32)",
         ]
         async with self.async_engine.begin() as conn:
             for stmt in stmts:
