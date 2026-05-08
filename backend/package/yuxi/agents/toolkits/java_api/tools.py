@@ -113,43 +113,16 @@ async def call_mom_api(
     认证信息（tenant_id 和 token）自动从当前用户的会话中获取，无需手动传入。
 
     注意事项：
+    - 如果先前对话中没有调用 list_mom_endpoints 工具，请先调用 list_mom_endpoints 工具查看完整端点列表。
     - GET 请求用于查询数据，不需要 body 参数，可使用 query_params 分页或筛选
     - POST/PUT 请求用于创建/更新数据，需要传入 body 参数
     - DELETE 请求用于删除数据
     - 如果提示认证过期，需要通知用户从 MOM 系统重新跳转登录
 
-    常用端点及参数格式：
-
-    【用户管理】
-    - admin/user/info_out (GET): 获取当前用户信息，无需参数
-    - admin/user/page (GET): 获取用户列表
-      query_params: {current: 页码, size: 每页数量, keyword?: 关键词}
-
-    【系统公告】
-    - admin/sysNews (POST): 创建系统公告
-      body: {title: 标题, content: 内容, startTime: 开始时间(YYYY-MM-DD), endTime: 结束时间(YYYY-MM-DD), organizationId: 工厂ID}
-    - admin/sysNews/page (GET): 分页查询公告
-      query_params: {current: 页码, size: 每页数量}
-
-    【日程管理】
-    - admin/schedule (POST): 创建日程
-      body: {title: 标题, description: 描述, startTime: 开始时间(YYYY-MM-DD HH:mm:ss), endTime: 结束时间}
-    - admin/schedule/page (GET): 分页查询日程
-      query_params: {current: 页码, size: 每页数量}
-
-    【订单统计】
-    - admin/order/statistics (GET): 获取订单统计信息
-      query_params: {factoryId: 工厂ID}
-
-    【角色管理】
-    - admin/role/page (GET): 分页查询角色
-      query_params: {current: 页码, size: 每页数量}
-
-    如果不确定端点或参数格式，请先调用 list_mom_endpoints 工具查看完整端点列表。
     """
     if not java_config.enabled:
         return json.dumps(
-            {"success": False, "error": "MOM API 访问未启用，请联系管理员配置 JAVA_ACCESS"},
+            {"success": False, "error": "MOM API 访问未启用，请联系管理员配置 MOM_ACCESS"},
             ensure_ascii=False,
         )
 
@@ -212,14 +185,14 @@ async def call_mom_api(
                 },
                 ensure_ascii=False,
             )
-
+        error_message = "请求失败，请仔细查看 list_mom_endpoints 工具返回的端点信息，确认路径、方法和参数格式是否正确。\n"
         if response.status_code >= 400:
-            error_detail = ""
+            error_detail = error_message
             try:
                 error_data = response.json()
-                error_detail = error_data.get("msg", error_data.get("message", str(error_data)))
+                error_detail += error_data.get("msg", error_data.get("message", str(error_data)))
             except Exception:
-                error_detail = response.text[:500]
+                error_detail += response.text[:500]
 
             logger.warning(f"MOM API 错误: {method} {url}, status={response.status_code}, detail={error_detail}")
             return json.dumps(
@@ -258,7 +231,7 @@ async def call_mom_api(
     except Exception as e:
         logger.error(f"MOM API 调用异常: {e}", exc_info=True)
         return json.dumps(
-            {"success": False, "error": f"MOM API 调用异常: {str(e)}"},
+            {"success": False, "error": f"MOM API 调用异常: {str(e)}\n\n{error_message}"},
             ensure_ascii=False,
         )
 
@@ -280,9 +253,9 @@ class ListMomEndpointsInput(BaseModel):
 )
 async def list_mom_endpoints(category: str | None = None) -> str:
     """查询 MOM 系统 API 的可用端点列表及参数格式。
-
-    当你不确定某个功能对应的端点路径或请求参数格式时，调用此工具获取完整的端点信息。
     可以按分类筛选，也可以获取全部端点。
+
+    注意：如果先前对话中没有调用 list_mom_endpoints 工具，请先调用 list_mom_endpoints 工具查看完整端点列表。
 
     返回内容包括：端点路径、HTTP 方法、参数格式说明、简要描述。
     """
