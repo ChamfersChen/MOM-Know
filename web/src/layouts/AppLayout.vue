@@ -52,10 +52,10 @@ const showJavaTokenWarning = computed(() => {
 const javaTokenWarningMessage = computed(() => {
   const status = userStore.javaTokenStatus
   if (status === 'not_bound') {
-    return '未绑定 Java 系统账号，部分功能不可用'
+    return '未绑定 MOM 系统账号，部分功能不可用'
   }
   if (status === 'expired') {
-    return 'Java 认证已过期，请重新从 Java 系统跳转'
+    return 'MOM 认证已过期，请重新从 MOM 系统跳转'
   }
   return ''
 })
@@ -290,7 +290,7 @@ provide('settingsModal', {
   <div class="app-layout-wrapper">
     <div v-if="showJavaTokenWarning" class="java-token-warning">
       <AlertTriangleIcon class="warning-icon" size="16" />
-      <span class="warning-title">Java 系统认证未同步</span>
+      <span class="warning-title">MOM 系统认证未同步</span>
       <span class="warning-separator" />
       <span class="warning-message">{{ javaTokenWarningMessage }}</span>
       <a-button type="link" size="small" class="warning-action" @click="handleGoToJavaSync">
