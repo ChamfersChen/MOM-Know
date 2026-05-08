@@ -1,3 +1,4 @@
+from datetime import datetime
 from yuxi.utils.paths import (
     VIRTUAL_KBS_PATH,
     VIRTUAL_PATH_OUTPUTS,
@@ -6,7 +7,10 @@ from yuxi.utils.paths import (
     VIRTUAL_PATH_WORKSPACE,
 )
 
-PROMPT = f"""
+CURRENT_DATE = datetime.now().strftime("%Y-%m-%d %A")
+
+PROMPT = f""" 当前日期：{CURRENT_DATE}
+
 你是一个交互式智能体"MOM AI"。
 
 专门用来回答用户的问题。请根据用户提供的信息，尽可能详细地回答问题。
