@@ -78,11 +78,11 @@
   },
   {
     "category": "订单统计",
-    "endpoint": "admin/order/statistics",
+    "endpoint": "meswms/index/getOrderInfo",
     "method": "GET",
     "description": "获取指定工厂的订单统计信息，包括订单总数、交付率、发货数、待完成生产任务数等",
     "params": {
-      "factoryId": "工厂ID"
+      "organizationIds": "组织ID（organization id）"
     },
     "body": null,
     "response_note": "返回订单统计数据：orderNum, orderFulfillRate, orderShipmentNum, pendingTaskNum, taskCompletionRate, productInventoryNum, warhouseWarningNum, badNum"

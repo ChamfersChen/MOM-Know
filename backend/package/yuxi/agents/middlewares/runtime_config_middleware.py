@@ -108,7 +108,7 @@ class RuntimeConfigMiddleware(AgentMiddleware):
 
         # 3. 系统提示词覆盖（可选）
         if self.enable_system_prompt_override:
-            cur_datetime = f"当前时间：{shanghai_now().strftime('%Y-%m-%d %H:%M:%S')} UTC"
+            cur_datetime = f"\n\n## Current Datetime: {shanghai_now().strftime('%Y-%m-%d %H:%M:%S %A')} UTC"
             system_prompt = getattr(runtime_context, self.system_prompt_context_name, "") or ""
             merged_system_prompt = f"{cur_datetime}\n\n{system_prompt}"
 
@@ -116,7 +116,9 @@ class RuntimeConfigMiddleware(AgentMiddleware):
             new_content = content_blocks + [{"type": "text", "text": merged_system_prompt}]
             new_system_message = SystemMessage(content=new_content)
             overrides["system_message"] = new_system_message
-
+        str_content = [c['text'] for c in new_system_message.content]
+        logger.debug("Currend datetime: " + cur_datetime)
+        logger.debug("Runtime System Prompt: " + "\n".join(str_content).replace("\n", "\\n"))
         if overrides:
             request = request.override(**overrides)
 

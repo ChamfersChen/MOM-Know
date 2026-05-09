@@ -79,3 +79,8 @@ docs/vibe
 /models
 
 run.sh
+
+
+*.tar
+*.zip
+*.tar.gz

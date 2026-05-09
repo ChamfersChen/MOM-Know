@@ -5,15 +5,15 @@ x-api-worker-env: &api-worker-env
   YUXI_ENV: development
   MODEL_DIR_IN_DOCKER: /models
   # DBs and other services
-  POSTGRES_URL: ${POSTGRES_URL:-postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-mom_ai}}
-  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-  NEO4J_URI: ${NEO4J_URI:-bolt://graph:7687}
+  POSTGRES_URL: ${POSTGRES_URL:-postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-pg123456}@postgres:15432/${POSTGRES_DB:-mom_ai}}
+  REDIS_URL: ${REDIS_URL:-redis://redis:16379/0}
+  NEO4J_URI: ${NEO4J_URI:-bolt://graph:17687}
   NEO4J_USERNAME: ${NEO4J_USERNAME:-neo4j}
   NEO4J_PASSWORD: ${NEO4J_PASSWORD:-0123456789}
-  MILVUS_URI: ${MILVUS_URI:-http://milvus:19530}
+  MILVUS_URI: ${MILVUS_URI:-http://milvus:19531}
   MILVUS_DB_NAME: ${MILVUS_DB_NAME:-default}
   MILVUS_TOKEN: ${MILVUS_TOKEN:-}
-  MINIO_URI: ${MINIO_URI:-http://minio:9000}
+  MINIO_URI: ${MINIO_URI:-http://minio:9001}
   # 文档解析
   MINERU_VL_SERVER: ${MINERU_VL_SERVER:-http://mineru-vllm-server:30000}
   MINERU_API_URI: ${MINERU_API_URI:-http://mineru-api:30001}
@@ -40,9 +40,8 @@ services:
     build:
       context: .
       dockerfile: docker/api.Dockerfile
-    platform: linux/amd64
-    image: mom-api:0.6.0
-    container_name: api-dev
+    image: momai-api:0.6.1
+    container_name: momai-api-dev
     working_dir: /app
     volumes:
       - ./backend/server:/app/server
@@ -84,14 +83,13 @@ services:
         condition: service_healthy
       sandbox-provisioner:
         condition: service_healthy
-
   worker:
-    # build:
-    #   context: .
-    #   dockerfile: docker/api.Dockerfile
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
     platform: linux/amd64
-    image: mom-api:0.6.0
-    container_name: worker-dev
+    image: momai-api:0.6.1
+    container_name: momai-worker-dev
     working_dir: /app
     volumes:
       - ./backend/server:/app/server
@@ -126,12 +124,12 @@ services:
         condition: service_healthy
 
   sandbox-provisioner:
-    # build:
-    #   context: ./docker/sandbox_provisioner
-    #   dockerfile: Dockerfile
-    # platform: linux/amd64
-    image: mom-sandbox-provisioner:0.6.0
-    container_name: sandbox-provisioner
+    build:
+      context: ./docker/sandbox_provisioner
+      dockerfile: Dockerfile
+    platform: linux/amd64
+    image: momai-sandbox-provisioner:0.6.1
+    container_name: momai-sandbox-provisioner
     volumes:
       - ./saves:/app/saves
       - ./docker/sandbox_provisioner/app.py:/app/app.py:ro
@@ -160,14 +158,14 @@ services:
       # Docker backend only
       - DOCKER_NETWORK=${SANDBOX_DOCKER_NETWORK:-mom-know_app-network}
       - DOCKER_THREADS_HOST_PATH=${SANDBOX_DOCKER_THREADS_HOST_PATH:-}
-      - DOCKER_SANDBOX_PREFIX=${SANDBOX_DOCKER_SANDBOX_PREFIX:-mom-sandbox}
+      - DOCKER_SANDBOX_PREFIX=${SANDBOX_DOCKER_SANDBOX_PREFIX:-momai-sandbox}
       - DOCKER_SANDBOX_HOST=${SANDBOX_DOCKER_SANDBOX_HOST:-host.docker.internal}
       # Kubernetes backend only
-      - K8S_NAMESPACE=${SANDBOX_K8S_NAMESPACE:-mom-know}
+      - K8S_NAMESPACE=${SANDBOX_K8S_NAMESPACE:-momai-know}
       - NODE_HOST=${SANDBOX_NODE_HOST:-host.docker.internal}
       - KUBECONFIG_PATH=${KUBECONFIG_PATH:-}
-      - THREAD_PVC=${THREAD_PVC:-mom-thread}
-      - SKILLS_PVC=${SKILLS_PVC:-mom-skills}
+      - THREAD_PVC=${THREAD_PVC:-momai-thread}
+      - SKILLS_PVC=${SKILLS_PVC:-momai-skills}
     command: >
       sh -lc "python -c 'import docker' >/dev/null 2>&1 || pip install --no-cache-dir 'docker>=7.1.0';
       uvicorn app:app --host 0.0.0.0 --port 8002"
@@ -179,52 +177,25 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  web:
-    # build:
-    #   context: .
-    #   dockerfile: docker/web.Dockerfile
-    #   target: development
-    # platform: linux/amd64
-    image: mom-web:0.6.0
-    container_name: web-dev
-    volumes:
-      - ./web/src:/app/src
-      - ./web/public:/app/public
-      - ./web/index.html:/app/index.html
-      - ./web/vite.config.js:/app/vite.config.js
-    ports:
-      - "5173:5173"
-    depends_on:
-      - api
-    networks:
-      - app-network
-    environment:
-      - NODE_ENV=development
-      - VITE_API_URL=http://api:5050
-      - VITE_USE_RUNS_API=${VITE_USE_RUNS_API:-false}
-      - VITE_LITE_MODE=${LITE_MODE:-}
-    command: pnpm run server
-    restart: unless-stopped
-
   # region neo4j
   graph:
     image: neo4j:5.26
-    container_name: graph
+    container_name: momai-graph
     ports:
       - "7474:7474"
-      - "7687:7687"
+      - "17687:17687"
     volumes:
       - ./docker/volumes/neo4j/data:/data
       - ./docker/volumes/neo4j/logs:/var/lib/neo4j/logs
     healthcheck:
-      test: ["CMD-SHELL", "cypher-shell -a bolt://localhost:7687 -u ${NEO4J_USERNAME:-neo4j} -p ${NEO4J_PASSWORD:-0123456789} 'RETURN 1;' >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "cypher-shell -a bolt://localhost:17687 -u ${NEO4J_USERNAME:-neo4j} -p ${NEO4J_PASSWORD:-0123456789} 'RETURN 1;' >/dev/null || exit 1"]
       interval: 20s
       timeout: 10s
       retries: 5
       start_period: 30s
     environment:
       - NEO4J_AUTH=${NEO4J_USERNAME:-neo4j}/${NEO4J_PASSWORD:-0123456789}
-      - NEO4J_server_bolt_listen__address=0.0.0.0:7687
+      - NEO4J_server_bolt_listen__address=0.0.0.0:17687
       - NEO4J_server_http_listen__address=0.0.0.0:7474
       - ENTITY_EMBEDDING=true
     networks:
@@ -233,7 +204,7 @@ services:
   # endregion neo4j
 
   etcd:
-    container_name: milvus-etcd-dev
+    container_name: momai-milvus-etcd-dev
     image: quay.io/coreos/etcd:v3.5.5
     environment:
       - ETCD_AUTO_COMPACTION_MODE=revision
@@ -254,7 +225,7 @@ services:
     restart: unless-stopped
 
   minio:
-    container_name: minio
+    container_name: momai-minio
     image: minio/minio:RELEASE.2023-03-20T20-16-18Z
     environment:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
@@ -270,15 +241,15 @@ services:
       retries: 5
       start_period: 30s
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "19005:9001"
+      - "19004:9000"
     networks:
       - app-network
     restart: unless-stopped
 
   milvus:
     image: milvusdb/milvus:v2.5.6
-    container_name: milvus
+    container_name: momai-milvus
     command: ["milvus", "run", "standalone"]
     security_opt:
       - seccomp:unconfined
@@ -290,14 +261,14 @@ services:
       - ./docker/volumes/milvus/milvus:/var/lib/milvus
       - ./docker/volumes/milvus/logs:/var/lib/milvus/logs
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:19091/healthz"]
       interval: 60s
       start_period: 120s
       timeout: 30s
       retries: 5
     ports:
-      - "19530:19530"
-      - "9091:9091"
+      - "29530:19530"
+      - "19091:9091"
     depends_on:
       - "etcd"
       - "minio"
@@ -307,9 +278,9 @@ services:
 
   postgres:
     image: pgvector/pgvector:pg16 # postgres:16
-    container_name: postgres
+    container_name: momai-postgres
     ports:
-      - "5432:5432"
+      - "15432:5432"
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-pg123456}
@@ -328,9 +299,9 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: redis
+    container_name: momai-redis
     ports:
-      - "6379:6379"
+      - "16379:6379"
     command: redis-server --appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -342,101 +313,9 @@ services:
     networks:
       - app-network
     restart: unless-stopped
-
-  # lastest version: wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
-#  mineru-vllm-server:
-#    build:
-#      context: .
-#      dockerfile: docker/mineru.Dockerfile
-#    image: mineru-vllm:latest
-#    container_name: mineru-vllm-server
-#    profiles:
-#      - all
-#    env_file:
-#      - .env
-#    ports:
-#      - 30000:30000
-#    environment:
-#      MINERU_MODEL_SOURCE: local
-#    entrypoint: mineru-vllm-server
-#    command:
-#      --host 0.0.0.0
-#      --port 30000
-#      # parameters for vllm-engine
-#      # --data-parallel-size 2  # If using multiple GPUs, increase throughput using vllm's multi-GPU parallel mode
-#      # --gpu-memory-utilization 0.5  # If running on a single GPU and encountering VRAM shortage, reduce the KV cache size by this parameter, if VRAM issues persist, try lowering it further to `0.4` or below.
-#    ulimits:
-#      memlock: -1
-#      stack: 67108864
-#    ipc: host
-#    healthcheck:
-#      test: ["CMD-SHELL", "curl -f http://localhost:30000/health || exit 1"]
-#    deploy:
-#      resources:
-#        reservations:
-#          devices:
-#            - driver: nvidia
-#              device_ids: ["0"]
-#              capabilities: [gpu]
-#    networks:
-#      - app-network
-#    restart: unless-stopped
-#
-#  mineru-api:
-#    build:
-#      context: .
-#      dockerfile: docker/mineru.Dockerfile
-#    image: mineru-vllm:latest
-#    container_name: mineru-api
-#    profiles:
-#      - all
-#    env_file:
-#      - .env
-#    ports:
-#      - 30001:30001
-#    environment:
-#      MINERU_MODEL_SOURCE: local
-#    entrypoint: mineru-api
-#    command:
-#      --host 0.0.0.0
-#      --port 30001
-#    ulimits:
-#      memlock: -1
-#      stack: 67108864
-#    ipc: host
-#    restart: unless-stopped
-#    networks:
-#      - app-network
-#
-#  paddlex:
-#    build:
-#      context: .
-#      dockerfile: docker/paddlex.Dockerfile
-#    image: paddlex:latest
-#    container_name: paddlex-ocr
-#    profiles:
-#      - all
-#    volumes:
-#      - ./docker/volumes/paddlex:/paddlex
-#    ports:
-#      - "8080:8080"
-#    healthcheck:
-#      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
-#      interval: 20s
-#      timeout: 10s
-#      retries: 5
-#      start_period: 60s
-#    deploy:
-#      resources:
-#        reservations:
-#          devices:
-#            - driver: nvidia
-#              device_ids: ['0']
-#              capabilities: [gpu]
-#    networks:
-#      - app-network
-#    restart: unless-stopped
-
+volumes:
+  nltk_data:
+  
 networks:
   app-network:
     driver: bridge
