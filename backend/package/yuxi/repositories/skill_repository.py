@@ -55,8 +55,7 @@ class SkillRepository:
             updated_at=now,
         )
         self.db.add(item)
-        await self.db.commit()
-        await self.db.refresh(item)
+        await self.db.flush()
         return item
 
     async def update_builtin_install(
@@ -72,8 +71,7 @@ class SkillRepository:
         item.is_builtin = True
         item.updated_by = updated_by
         item.updated_at = utc_now_naive()
-        await self.db.commit()
-        await self.db.refresh(item)
+        await self.db.flush()
         return item
 
     async def update_dependencies(
@@ -90,8 +88,7 @@ class SkillRepository:
         item.skill_dependencies = skill_dependencies
         item.updated_by = updated_by
         item.updated_at = utc_now_naive()
-        await self.db.commit()
-        await self.db.refresh(item)
+        await self.db.flush()
         return item
 
     async def update_metadata(
@@ -106,10 +103,9 @@ class SkillRepository:
         item.description = description
         item.updated_by = updated_by
         item.updated_at = utc_now_naive()
-        await self.db.commit()
-        await self.db.refresh(item)
+        await self.db.flush()
         return item
 
     async def delete(self, item: Skill) -> None:
         await self.db.delete(item)
-        await self.db.commit()
+        await self.db.flush()
