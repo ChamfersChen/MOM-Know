@@ -25,12 +25,12 @@ HTTP_METHODS = ["GET", "POST", "PUT", "DELETE"]
 _ENDPOINT_REGISTRY_PATH = os.path.join(os.path.dirname(__file__), "endpoint_registry.json")
 
 
-def fuzzy_match_keywords(keywords: List[str], content: List[str], top_k: int = 5) -> List[str]:
+def fuzzy_match_keywords(rewritten_query: str, content: List[str], top_k: int = 5) -> List[str]:
     """
-    将 keywords 中每个关键词与 content 进行模糊匹配，取 top_k 并去重后返回。
+    将 rewritten_query 中的查询与 content 进行模糊匹配，取 top_k 并去重后返回。
     
     Args:
-        keywords: 关键词列表
+        rewritten_query: 改写后的查询字符串
         content: 待匹配的内容列表
         top_k: 每个关键词取前 k 个匹配结果
     
@@ -39,7 +39,8 @@ def fuzzy_match_keywords(keywords: List[str], content: List[str], top_k: int = 5
     """
     seen = set()
     results = []
-
+    if isinstance(rewritten_query, str):
+        keywords = [rewritten_query]
     for keyword in keywords:
         # 计算每个 content 与当前 keyword 的相似度
         scores = [
@@ -245,9 +246,9 @@ async def call_mom_api(
 class ListMomEndpointsInput(BaseModel):
     """查询 MOM 系统端点列表的参数"""
 
-    keywords: list | None = Field(
+    rewritten_query: str | None = Field(
         default=None,
-        description="可选的关键词，用于模糊搜索端点路径或描述，帮助快速定位相关端点。例如输入 '公告' 可以筛选出与系统公告相关的端点。",
+        description="对原始用户问题进行的语义等价改写结果。用于提升模型对多样化表达的鲁棒性，或作为数据增强、问答一致性评估的输入。",
     )
 
 
@@ -257,7 +258,7 @@ class ListMomEndpointsInput(BaseModel):
     display_name="查询MOM系统端点列表",
     args_schema=ListMomEndpointsInput,
 )
-async def list_mom_endpoints( keywords: Annotated[list, "搜索关键词"],) -> str:
+async def list_mom_endpoints( rewritten_query: Annotated[str, "改写后的查询"],) -> str:
     """查询 MOM 系统 API 的可用端点列表及参数格式。
     可以按分类筛选，也可以获取全部端点。
 
@@ -272,10 +273,10 @@ async def list_mom_endpoints( keywords: Annotated[list, "搜索关键词"],) -> 
             ensure_ascii=False,
         )
 
-    if keywords:
+    if rewritten_query:
         # 使用fuzzywuzzy算法进行模糊匹配，提升搜索体验
         content = [f"{item.get('category', '')} {item.get('endpoint', '')} {item.get('description', '')}" for item in registry]
-        filtered = fuzzy_match_keywords(keywords, content, top_k=5)
+        filtered = fuzzy_match_keywords(rewritten_query, content, top_k=5)
     else:
         filtered = registry
 
