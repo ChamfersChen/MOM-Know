@@ -10,6 +10,9 @@ import os
 import httpx
 from langgraph.prebuilt.tool_node import ToolRuntime
 from pydantic import BaseModel, Field
+from typing import Annotated, Any
+from fuzzywuzzy import fuzz
+from typing import List
 
 from yuxi.agents.toolkits.registry import tool
 from yuxi.config import java_config
@@ -20,6 +23,38 @@ HTTP_METHODS = ["GET", "POST", "PUT", "DELETE"]
 
 # 端点注册表文件路径
 _ENDPOINT_REGISTRY_PATH = os.path.join(os.path.dirname(__file__), "endpoint_registry.json")
+
+
+def fuzzy_match_keywords(keywords: List[str], content: List[str], top_k: int = 5) -> List[str]:
+    """
+    将 keywords 中每个关键词与 content 进行模糊匹配，取 top_k 并去重后返回。
+    
+    Args:
+        keywords: 关键词列表
+        content: 待匹配的内容列表
+        top_k: 每个关键词取前 k 个匹配结果
+    
+    Returns:
+        去重后的匹配结果列表
+    """
+    seen = set()
+    results = []
+
+    for keyword in keywords:
+        # 计算每个 content 与当前 keyword 的相似度
+        scores = [
+            (item, fuzz.partial_ratio(keyword, item))
+            for item in content
+        ]
+        # 按相似度降序排列，取 top_k
+        top_matches = sorted(scores, key=lambda x: x[1], reverse=True)[:top_k]
+
+        for item, score in top_matches:
+            if item not in seen:
+                seen.add(item)
+                results.append(item)
+
+    return results
 
 
 def _load_endpoint_registry() -> list[dict]:
@@ -40,36 +75,7 @@ class MomApiInput(BaseModel):
 
     endpoint: str = Field(
         description=(
-            "API 端点路径，不要包含前导斜杠。"
-            "常用端点如下：\n"
-            "【用户管理】\n"
-            "- admin/user/info_out (GET): 获取当前用户信息，无需参数\n"
-            "- admin/user/page (GET): 获取用户列表\n"
-            "  query_params: {current: 页码, size: 每页数量, keyword?: 关键词}\n"
-            "\n"
-            "【系统公告】\n"
-            "- admin/sysNews (POST): 创建系统公告\n"
-            "  body: {title: 公告标题, content: 公告内容, startTime: 开始时间, endTime: 结束时间, organizationId: 工厂ID}\n"
-            "- admin/sysNews/page (GET): 分页查询公告\n"
-            "  query_params: {current: 页码, size: 每页数量}\n"
-            "\n"
-            "【日程管理】\n"
-            "- admin/schedule (POST): 创建日程\n"
-            "  body: {title: 日程标题, description: 日程描述, startTime: 开始时间, endTime: 结束时间}\n"
-            "- admin/schedule/page (GET): 分页查询日程\n"
-            "  query_params: {current: 页码, size: 每页数量}\n"
-            "\n"
-            "【订单统计】\n"
-            "- admin/order/statistics (GET): 获取订单统计信息\n"
-            "  query_params: {factoryId: 工厂ID}\n"
-            "\n"
-            "【角色管理】\n"
-            "- admin/role/page (GET): 分页查询角色\n"
-            "  query_params: {current: 页码, size: 每页数量}\n"
-            "\n"
-            "【菜单管理】\n"
-            "- admin/menu (GET): 获取菜单列表\n"
-            "\n"
+            "API 端点路径，不要包含前导斜杠。\n"
             "如果不确定端点或参数格式，请先调用 list_mom_endpoints 工具查询。"
         ),
     )
@@ -239,9 +245,9 @@ async def call_mom_api(
 class ListMomEndpointsInput(BaseModel):
     """查询 MOM 系统端点列表的参数"""
 
-    category: str | None = Field(
+    keywords: list | None = Field(
         default=None,
-        description="按分类筛选端点，如 '用户管理'、'系统公告'、'日程管理'、'订单统计' 等。不传则返回全部。",
+        description="可选的关键词，用于模糊搜索端点路径或描述，帮助快速定位相关端点。例如输入 '公告' 可以筛选出与系统公告相关的端点。",
     )
 
 
@@ -251,7 +257,7 @@ class ListMomEndpointsInput(BaseModel):
     display_name="查询MOM系统端点列表",
     args_schema=ListMomEndpointsInput,
 )
-async def list_mom_endpoints(category: str | None = None) -> str:
+async def list_mom_endpoints( keywords: Annotated[list, "搜索关键词"],) -> str:
     """查询 MOM 系统 API 的可用端点列表及参数格式。
     可以按分类筛选，也可以获取全部端点。
 
@@ -266,23 +272,21 @@ async def list_mom_endpoints(category: str | None = None) -> str:
             ensure_ascii=False,
         )
 
-    if category:
-        filtered = [ep for ep in registry if ep.get("category") == category]
-        if not filtered:
-            available_categories = list({ep.get("category", "未分类") for ep in registry})
-            return json.dumps(
-                {
-                    "success": False,
-                    "error": f"未找到分类 '{category}' 的端点",
-                    "available_categories": available_categories,
-                },
-                ensure_ascii=False,
-            )
+    if keywords:
+        # 使用fuzzywuzzy算法进行模糊匹配，提升搜索体验
+        content = [f"{item.get('category', '')} {item.get('endpoint', '')} {item.get('description', '')}" for item in registry]
+        filtered = fuzzy_match_keywords(keywords, content, top_k=5)
+    else:
+        filtered = registry
+
+    if not filtered:
         return json.dumps(
-            {"success": True, "endpoints": filtered, "count": len(filtered)},
+            {
+                "success": False,
+                "error": f"未找到包含关键词 '{keywords}' 的端点",
+            },
             ensure_ascii=False,
-            default=str,
-        )
+            )
 
     return json.dumps(
         {"success": True, "endpoints": registry, "count": len(registry)},

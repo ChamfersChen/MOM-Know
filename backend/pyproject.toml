@@ -51,6 +51,9 @@ dependencies = [
     "mdit-py-plugins>=0.5.0",
     "nltk>=3.9.4",
     "scikit-learn>=1.8.0",
+    "aiofiles>=25.1.0",
+    "anyio>=4.13.0",
+    "fuzzywuzzy>=0.18.0",
 ]
 [tool.ruff]
 line-length = 120  # 代码最大行宽
@@ -78,6 +81,11 @@ explicit = true
 yuxi = { path = "package", editable = true }
 torch = { index = "pytorch-cpu" }
 torchvision = { index = "pytorch-cpu" }
+
+[tool.uv.workspace]
+members = [
+    "mcp_server",
+]
 
 
 [tool.pytest.ini_options]

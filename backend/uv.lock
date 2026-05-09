@@ -978,6 +978,15 @@ wheels = [
 ]
 
 [[package]]
+name = "fuzzywuzzy"
+version = "0.18.0"
+source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/11/4b/0a002eea91be6048a2b5d53c5f1b4dafd57ba2e36eea961d05086d7c28ce/fuzzywuzzy-0.18.0.tar.gz", hash = "sha256:45016e92264780e58972dca1b3d939ac864b78437422beecebb3095f8efd00e8", size = 28888, upload-time = "2020-02-13T21:06:27.054Z" }
+wheels = [
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/43/ff/74f23998ad2f93b945c0309f825be92e04e0348e062026998b5eefef4c33/fuzzywuzzy-0.18.0-py2.py3-none-any.whl", hash = "sha256:928244b28db720d1e0ee7587acf660ea49d7e4c632569cad4f1cd7e68a5f0993", size = 18272, upload-time = "2020-02-13T21:06:25.209Z" },
+]
+
+[[package]]
 name = "google-api-core"
 version = "2.30.2"
 source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
@@ -1939,7 +1948,7 @@ wheels = [
 
 [[package]]
 name = "mcp"
-version = "1.27.0"
+version = "1.20.0"
 source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
 dependencies = [
     { name = "anyio" },
@@ -1953,13 +1962,11 @@ dependencies = [
     { name = "pywin32", marker = "sys_platform == 'win32'" },
     { name = "sse-starlette" },
     { name = "starlette" },
-    { name = "typing-extensions" },
-    { name = "typing-inspection" },
     { name = "uvicorn", marker = "sys_platform != 'emscripten'" },
 ]
-sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/8b/eb/c0cfc62075dc6e1ec1c64d352ae09ac051d9334311ed226f1f425312848a/mcp-1.27.0.tar.gz", hash = "sha256:d3dc35a7eec0d458c1da4976a48f982097ddaab87e278c5511d5a4a56e852b83", size = 607509, upload-time = "2026-04-02T14:48:08.88Z" }
+sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/f8/22/fae38092e6c2995c03232635028510d77e7decff31b4ae79dfa0ba99c635/mcp-1.20.0.tar.gz", hash = "sha256:9ccc09eaadbfbcbbdab1c9723cfe2e0d1d9e324d7d3ce7e332ef90b09ed35177", size = 451377, upload-time = "2025-10-30T22:14:53.421Z" }
 wheels = [
-    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/9c/46/f6b4ad632c67ef35209a66127e4bddc95759649dd595f71f13fba11bdf9a/mcp-1.27.0-py3-none-any.whl", hash = "sha256:5ce1fa81614958e267b21fb2aa34e0aea8e2c6ede60d52aba45fd47246b4d741", size = 215967, upload-time = "2026-04-02T14:48:07.24Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/df/00/76fc92f4892d47fecb37131d0e95ea69259f077d84c68f6793a0d96cfe80/mcp-1.20.0-py3-none-any.whl", hash = "sha256:d0dc06f93653f7432ff89f694721c87f79876b6f93741bf628ad1e48f7ac5e5d", size = 173136, upload-time = "2025-10-30T22:14:51.078Z" },
 ]
 
 [[package]]
@@ -2006,6 +2013,8 @@ source = { virtual = "." }
 dependencies = [
     { name = "agent-sandbox" },
     { name = "aioboto3" },
+    { name = "aiofiles" },
+    { name = "anyio" },
     { name = "argon2-cffi" },
     { name = "arq" },
     { name = "asyncpg" },
@@ -2013,6 +2022,7 @@ dependencies = [
     { name = "deepagents" },
     { name = "docling" },
     { name = "fastapi" },
+    { name = "fuzzywuzzy" },
     { name = "ipdb" },
     { name = "json-repair" },
     { name = "langchain-community" },
@@ -2066,6 +2076,8 @@ test = [
 requires-dist = [
     { name = "agent-sandbox", specifier = ">=0.0.26" },
     { name = "aioboto3", specifier = ">=13.0.0" },
+    { name = "aiofiles", specifier = ">=25.1.0" },
+    { name = "anyio", specifier = ">=4.13.0" },
     { name = "argon2-cffi", specifier = ">=25.1.0" },
     { name = "arq", specifier = ">=0.26.3" },
     { name = "asyncpg", specifier = ">=0.31.0" },
@@ -2073,6 +2085,7 @@ requires-dist = [
     { name = "deepagents", specifier = ">=0.2.5" },
     { name = "docling", specifier = ">=2.68.0" },
     { name = "fastapi", specifier = ">=0.121" },
+    { name = "fuzzywuzzy", specifier = ">=0.18.0" },
     { name = "ipdb", specifier = ">=0.13.13" },
     { name = "json-repair", specifier = ">=0.54.0" },
     { name = "langchain-community", specifier = ">=0.4.1" },

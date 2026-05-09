@@ -1,6 +1,6 @@
 [
   {
-    "category": "用户管理",
+    "category": "系统管理",
     "endpoint": "admin/user/info_out",
     "method": "GET",
     "description": "获取当前用户信息，包括用户名、角色、所属工厂等",
@@ -9,19 +9,7 @@
     "response_note": "返回 userInfo 和 factoriesInfo"
   },
   {
-    "category": "用户管理",
-    "endpoint": "admin/user/page",
-    "method": "GET",
-    "description": "分页查询用户列表",
-    "params": {
-      "current": "页码，从1开始",
-      "size": "每页数量，默认10"
-    },
-    "body": null,
-    "response_note": "返回用户分页列表"
-  },
-  {
-    "category": "系统公告",
+    "category": "系统管理",
     "endpoint": "admin/sysNews",
     "method": "POST",
     "description": "创建系统公告",
@@ -39,7 +27,7 @@
     "response_note": "返回创建结果"
   },
   {
-    "category": "系统公告",
+    "category": "系统管理",
     "endpoint": "admin/sysNews/page",
     "method": "GET",
     "description": "分页查询系统公告列表",
@@ -51,7 +39,7 @@
     "response_note": "返回公告分页列表"
   },
   {
-    "category": "日程管理",
+    "category": "系统管理",
     "endpoint": "admin/schedule",
     "method": "POST",
     "description": "创建日程",
@@ -65,7 +53,7 @@
     "response_note": "返回创建结果"
   },
   {
-    "category": "日程管理",
+    "category": "系统管理",
     "endpoint": "admin/schedule/page",
     "method": "GET",
     "description": "分页查询日程列表",
@@ -77,7 +65,7 @@
     "response_note": "返回日程分页列表"
   },
   {
-    "category": "订单统计",
+    "category": "MES系统",
     "endpoint": "meswms/index/getOrderInfo",
     "method": "GET",
     "description": "获取指定工厂的订单统计信息，包括订单总数、交付率、发货数、待完成生产任务数等",
@@ -86,38 +74,5 @@
     },
     "body": null,
     "response_note": "返回订单统计数据：orderNum, orderFulfillRate, orderShipmentNum, pendingTaskNum, taskCompletionRate, productInventoryNum, warhouseWarningNum, badNum"
-  },
-  {
-    "category": "角色管理",
-    "endpoint": "admin/role/page",
-    "method": "GET",
-    "description": "分页查询角色列表",
-    "params": {
-      "current": "页码，从1开始",
-      "size": "每页数量，默认10"
-    },
-    "body": null,
-    "response_note": "返回角色分页列表"
-  },
-  {
-    "category": "菜单管理",
-    "endpoint": "admin/menu",
-    "method": "GET",
-    "description": "获取菜单列表",
-    "params": null,
-    "body": null,
-    "response_note": "返回菜单树形结构"
-  },
-  {
-    "category": "租户管理",
-    "endpoint": "admin/tenant/page",
-    "method": "GET",
-    "description": "分页查询租户列表",
-    "params": {
-      "current": "页码，从1开始",
-      "size": "每页数量，默认10"
-    },
-    "body": null,
-    "response_note": "返回租户分页列表"
   }
 ]
