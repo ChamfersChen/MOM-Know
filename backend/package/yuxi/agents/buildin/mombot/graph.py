@@ -14,7 +14,6 @@ from yuxi.agents.middlewares import (
 from yuxi.agents.middlewares.knowledge_base_middleware import KnowledgeBaseMiddleware
 from yuxi.agents.middlewares.skills_middleware import SkillsMiddleware
 from yuxi.services.mcp_service import get_tools_from_all_servers
-from yuxi.services.subagent_service import get_subagents_from_names
 
 from .prompt import TODO_MID_PROMPT, build_prompt_with_context
 
@@ -33,26 +32,13 @@ async def _build_middlewares(context):
         max_retention_ratio=0.5,
     )
 
-    # subagents
-    # subagents = await get_subagents_from_names(context.subagents)
-    # subagents_middleware = SubAgentMiddleware(
-    #     default_model=load_chat_model(fully_specified_name=context.subagents_model),
-    #     subagents=subagents,
-    #     general_purpose_agent=True,
-    #     default_middleware=[
-    #         FilesystemMiddleware(backend=create_agent_composite_backend),  # 文件系统后端
-    #         PatchToolCallsMiddleware(),
-    #         summary_middleware,
-    #     ],
-    # )
     # all middlewares
     middlewares = [
-        # FilesystemMiddleware(backend=create_agent_composite_backend),  # 文件系统后端
+        FilesystemMiddleware(backend=create_agent_composite_backend),  # 文件系统后端
         save_attachments_to_fs,  # 附件注入提示词
         KnowledgeBaseMiddleware(),  # 知识库工具
         RuntimeConfigMiddleware(extra_tools=all_mcp_tools),  # 运行时配置应用（模型/工具/MCP/提示词）
         SkillsMiddleware(),  # Skills 中间件（提示词注入、依赖展开、动态激活）
-        # subagents_middleware,
         summary_middleware,
         TodoListMiddleware(system_prompt=TODO_MID_PROMPT),  # 待办事项中间件
         PatchToolCallsMiddleware(),
