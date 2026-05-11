@@ -65,6 +65,15 @@
     "response_note": "返回日程分页列表"
   },
   {
+    "category": "系统管理",
+    "endpoint": "admin/modelFactory/organization/list",
+    "method": "GET",
+    "description": "获得当前用户可访问的组织列表",
+    "params": null,
+    "body": null,
+    "response_note": "返回可访问的组织列表"
+  },
+  {
     "category": "MES系统",
     "endpoint": "meswms/index/getOrderInfo",
     "method": "GET",

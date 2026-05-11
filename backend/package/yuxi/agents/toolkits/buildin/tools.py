@@ -115,7 +115,7 @@ def _normalize_presented_artifact_path(filepath: str, runtime: ToolRuntime) -> s
 def calculator(a: float, b: float, operation: str) -> float:
     """计算器：对给定的2个数字进行基本数学运算"""
     try:
-        if operation == "add":
+        if operation == "addition":
             return a + b
         elif operation == "subtract":
             return a - b

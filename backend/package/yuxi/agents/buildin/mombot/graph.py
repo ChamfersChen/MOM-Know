@@ -54,9 +54,8 @@ class MOMbotAgent(BaseAgent):
     capabilities = ["file_upload", "files"]  # 支持文件上传功能
     metadata = {
         "examples": [
-            "你好，请介绍一下你自己",
             "请基于知识库中的内容，解释一下什么是MOM",
-            "当前仓储系统中一共有多少订单?",
+            "查看当前用户可访问的工厂，并查看合肥工厂的订单情况。",
         ]
     }
 
