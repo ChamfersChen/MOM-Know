@@ -14,6 +14,14 @@ class AgentConfigRepository:
     def __init__(self, db_session: AsyncSession):
         self.db = db_session
 
+    async def list_by_department(self, *, department_id: int) -> list[AgentConfig]:
+        result = await self.db.execute(
+            select(AgentConfig)
+            .where(AgentConfig.department_id == department_id)
+            .order_by(AgentConfig.is_default.desc(), AgentConfig.id.asc())
+        )
+        return list(result.scalars().all())
+
     async def list_by_department_agent(self, *, department_id: int, agent_id: str) -> list[AgentConfig]:
         result = await self.db.execute(
             select(AgentConfig)

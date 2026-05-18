@@ -229,6 +229,40 @@ async def list_agent_configs(
     ]
     return {"configs": configs}
 
+@chat.get("/agent/config/list")
+async def get_configs(
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    repo = AgentConfigRepository(db)
+    items = await repo.list_by_department(department_id=current_user.department_id)
+    configs = [
+        {
+            "id": item.id,
+            "name": item.name,
+            "agent_id": item.agent_id,
+            "description": item.description,
+            "icon": item.icon,
+            "pics": item.pics or [],
+            "examples": item.examples or [],
+            "is_default": bool(item.is_default),
+        }
+        for item in items
+    ]
+    return {"configs": configs}
+
+@chat.get("/agent/configs/{config_id}")
+async def get_config_profile(
+    config_id: int,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    repo = AgentConfigRepository(db)
+    item = await repo.get_by_id(config_id)
+    if not item or item.department_id != current_user.department_id:
+        raise HTTPException(status_code=404, detail="配置不存在")
+
+    return {"config": item.to_dict()}
 
 @chat.get("/agent/{agent_id}/configs/{config_id}")
 async def get_agent_config_profile(

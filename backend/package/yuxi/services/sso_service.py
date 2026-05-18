@@ -27,7 +27,7 @@ class SSOConfig(BaseModel):
 
     enabled: bool = Field(default=False, description="是否启用 SSO")
     java_api_base_url: str = Field(default="", description="Java API 基础 URL")
-    verify_endpoint: str = Field(default="/api/admin/user/info_out", description="验证用户信息的端点")
+    verify_endpoint: str = Field(default="/admin/user/info_out", description="验证用户信息的端点")
 
     @classmethod
     def from_env(cls) -> "SSOConfig":
