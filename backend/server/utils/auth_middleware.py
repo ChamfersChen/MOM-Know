@@ -94,7 +94,7 @@ async def get_current_user(
         return None
 
     # 根据 token 前缀判断认证方式
-    if token.startswith("yxkey_"):
+    if token.startswith("key_"):
         # API Key 认证
         user, api_key_obj = await _verify_api_key(token, db)
         if user is not None and api_key_obj is not None:

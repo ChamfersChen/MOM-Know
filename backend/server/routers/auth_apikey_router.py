@@ -25,7 +25,7 @@ def generate_api_key() -> tuple[str, str, str]:
     - key_prefix: 保存前缀用于显示
     """
     random_part = secrets.token_hex(24)
-    full_key = f"yxkey_{random_part}"
+    full_key = f"key_{random_part}"
     key_hash = hashlib.sha256(full_key.encode()).hexdigest()
     key_prefix = full_key[:12]
     return full_key, key_hash, key_prefix
