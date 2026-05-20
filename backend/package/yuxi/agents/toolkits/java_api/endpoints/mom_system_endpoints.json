@@ -72,44 +72,5 @@
     "params": null,
     "body": null,
     "response_note": "返回可访问的组织列表"
-  },
-  {
-    "category": "MES系统",
-    "endpoint": "meswms/index/getOrderInfo",
-    "method": "GET",
-    "description": "获取指定工厂的订单统计信息，包括订单总数、交付率、发货数、待完成生产任务数等",
-    "params": {
-      "organizationIds": "组织ID（organization id）"
-    },
-    "body": null,
-    "response_note": "返回订单统计数据：orderNum, orderFulfillRate, orderShipmentNum, pendingTaskNum, taskCompletionRate, productInventoryNum, warhouseWarningNum, badNum"
-  },
-  {
-    "category": "MES系统",
-    "endpoint": "meswms/warning/page",
-    "method": "GET",
-    "description": "获取指定工厂的原材库存预警信息，包含物料类型、安全库存数量、当前库存数量等",
-    "params": {
-      "organizationIds": "组织ID列表，注意，多个组织ID由逗号分隔; 组织信息可以通过接口`admin/modelFactory/organization/list`获取",
-      "current": "页码，从1开始",
-      "size": "每页数量，默认15"
-    },
-    "body": null,
-    "response_note": "返回原材库存预警分页列表，包含物料名称、物料类型、安全库存数量、当前库存数量等信息"
-  },
-  {
-    "category": "MES系统",
-    "endpoint": "meswms/workOrderTask/page",
-    "method": "GET",
-    "description": "获取指定工厂的生产订单信息，包含订单数量、订单编码、产品名称、订单状态等",
-    "params": {
-      "organizationIds": "组织ID列表，注意，多个组织ID由逗号分隔; 组织信息可以通过接口`admin/modelFactory/organization/list`获取",
-      "current": "页码，从1开始",
-      "size": "每页数量，默认15",
-      "productCode": "产品编码，可选参数，用于筛选特定产品的订单",
-      "orderCode": "订单编码，可选参数，用于筛选特定订单"
-    },
-    "body": null,
-    "response_note": "返回生产订单分页列表，包含订单数量、订单编码、产品名称、订单状态等信息"
   }
 ]

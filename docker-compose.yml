@@ -87,7 +87,7 @@ services:
     build:
       context: .
       dockerfile: docker/api.Dockerfile
-    platform: linux/amd64
+    # platform: linux/amd64
     image: momai-api:0.6.1
     container_name: momai-worker-dev
     working_dir: /app
@@ -127,7 +127,7 @@ services:
     build:
       context: ./docker/sandbox_provisioner
       dockerfile: Dockerfile
-    platform: linux/amd64
+    # platform: linux/amd64
     image: momai-sandbox-provisioner:0.6.1
     container_name: momai-sandbox-provisioner
     volumes:
