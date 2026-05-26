@@ -11,17 +11,17 @@ class JavaConfig(BaseSettings):
 
     enabled: bool = Field(
         description="是否启用 Java API 访问",
-        default=os.environ.get("JAVA_ACCESS", "true").lower() == "true",
+        default=os.environ.get("SSO_ENABLED", "true").lower() == "true",
     )
 
     api_base_url: str = Field(
         description="Java API 基础地址",
-        default=os.environ.get("JAVA_API_BASE_URL") or "http://8.130.128.22/api",
+        default=os.environ.get("SSO_JAVA_API_BASE_URL") or "http://localhost/api",
     )
 
     token_ttl: int = Field(
         description="Token 默认 TTL（秒）",
-        default=int(os.environ.get("JAVA_TOKEN_TTL") or 86400),
+        default=int(os.environ.get("SSO_JAVA_TOKEN_TTL") or 86400),
     )
 
     def get_login_url(self) -> str:

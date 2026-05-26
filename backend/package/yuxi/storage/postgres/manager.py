@@ -96,6 +96,13 @@ class PostgresManager(metaclass=SingletonMeta):
         if not self._initialized:
             raise RuntimeError("PostgreSQL manager not initialized. Please check configuration.")
 
+    async def create_vector(self):
+        """创建向量扩展（如果尚未创建）"""
+        self._check_initialized()
+        async with self.async_engine.begin() as conn:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+        logger.info("PostgreSQL vector extension ensured")
+
     async def create_tables(self):
         """创建所有表（知识库和业务表）"""
         self._check_initialized()

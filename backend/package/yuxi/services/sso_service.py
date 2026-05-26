@@ -42,7 +42,7 @@ class SSOConfig(BaseModel):
         return cls(
             enabled=enabled,
             java_api_base_url=java_api_base_url,
-            verify_endpoint=_env("SSO_VERIFY_ENDPOINT", "/api/admin/user/info_out"),
+            verify_endpoint=_env("SSO_VERIFY_ENDPOINT", "/admin/user/info_out"),
         )
 
     def is_configured(self) -> bool:
@@ -60,7 +60,7 @@ class SSOUserInfo(BaseModel):
 
     user_id: str = Field(description="Java 系统的用户 ID")
     username: str = Field(description="用户名")
-    name: str = Field(default="", description="姓名")
+    name: str | None = Field(default=None, description="姓名")
     avatar: str | None = Field(default=None, description="头像 URL")
     phone: str | None = Field(default=None, description="手机号")
     tenant_id: str | None = Field(default=None, description="租户 ID")

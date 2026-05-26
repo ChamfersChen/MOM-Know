@@ -20,6 +20,8 @@ from yuxi.services.java_token_service import java_token_service
 from yuxi.utils.logging_config import logger
 
 HTTP_METHODS = ["GET", "POST", "PUT", "DELETE"]
+REMOVE_KEYS = ["files", "updateTime", "createTime", "updateBy", "createBy", "remark", "tenantId", 
+               "organizationId", "parentId", "weight"]  # 需要从结果中移除的字段，避免返回过多无用信息
 
 # 端点注册表文件路径
 MOM_SYSTEM_ENDPOINTS_PATH = os.path.join(os.path.dirname(__file__), "endpoints/mom_system_endpoints.json")
@@ -121,11 +123,31 @@ async def call_api(
     - 如果提示认证过期，需要通知用户从 MOM 系统重新跳转登录
 
     """
-    def remove_none_fields(obj):
+    # def remove_none_fields(obj):
+    #     if isinstance(obj, dict):
+    #         return {k: remove_none_fields(v) for k, v in obj.items() if v is not None}
+    #     elif isinstance(obj, list):
+    #         return [remove_none_fields(i) for i in obj]
+    #     return obj
+    def remove_none_fields(obj, remove_keys=None):
+        """
+        递归删除:
+        1. value 为 None 的字段
+        2. key 在 remove_keys 中的字段
+        """
+
+        remove_keys = set(remove_keys or [])
+
         if isinstance(obj, dict):
-            return {k: remove_none_fields(v) for k, v in obj.items() if v is not None}
+            return {
+                k: remove_none_fields(v, remove_keys)
+                for k, v in obj.items()
+                if v is not None and k not in remove_keys
+            }
+
         elif isinstance(obj, list):
-            return [remove_none_fields(i) for i in obj]
+            return [remove_none_fields(i, remove_keys) for i in obj]
+
         return obj
 
     error_message = "请求失败，请仔细查看工具返回的端点信息，确认路径、方法和参数格式是否正确。\n"
@@ -231,7 +253,8 @@ async def call_api(
                 extra_message = f"\n\n注意：返回结果中的 dsScope 字段值({ds_scope})为“当前用户能够访问的组织ID列表”, 可请求"
             
             # 清理结果中的 None 值，避免返回过多无用信息
-            result = remove_none_fields(result)
+
+            result = remove_none_fields(result, remove_keys=REMOVE_KEYS)
         except Exception as e:
             logger.error(f"MOM API 返回值处理错误: {method} {url}, error={e}")
             result = response.text
