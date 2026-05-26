@@ -472,5 +472,6 @@ class SkillsMiddleware(AgentMiddleware):
         skills_list = self._format_skills_list(skills_meta)
         return SKILLS_SYSTEM_PROMPT.format(
             skills_locations=skills_locations,
+            skills_load_warnings="",
             skills_list=skills_list,
         )

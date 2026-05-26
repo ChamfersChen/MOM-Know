@@ -19,47 +19,32 @@
   },
   {
     "category": "MES系统",
-    "endpoint": "meswms/index/getOrderInfo",
+    "endpoint": "meswms/orderForAi/unscheduledOrders",
     "method": "GET",
-    "description": "获取指定工厂的订单统计信息，包括订单总数、交付率、发货数、待完成生产任务数等",
+    "description": "获取指定工厂的没有排程的订单信息，包含订单数量、订单编码、产品名称、订单状态等",
     "params": {
-      "organizationIds": "组织ID（organization id）"
+      "organizationId": "组织ID; 组织信息可以通过接口`admin/modelFactory/organization/list`获取"
     },
     "body": null,
-    "response_note": "返回订单统计数据：orderNum, orderFulfillRate, orderShipmentNum, pendingTaskNum, taskCompletionRate, productInventoryNum, warhouseWarningNum, badNum"
+    "response_note": "返回没有排程的订单信息列表，包含订单数量、订单编码、产品名称、订单状态等信息"
   },
   {
     "category": "MES系统",
-    "endpoint": "meswms/order/page",
+    "endpoint": "meswms/orderForAi/getOrderInfo",
     "method": "GET",
-    "description": "获取指定工厂的订单信息，包含订单数量、订单编码、产品名称、订单状态等",
+    "description": "获取指定订单的详细订单产品和BOM信息，包含产品名称、BOM列表等",
     "params": {
-      "organizationIds": "组织ID列表，注意，多个组织ID由逗号分隔; 组织信息可以通过接口`admin/modelFactory/organization/list`获取",
-      "size": "每页数量，默认100",
-      "productCode": "产品编码，可选参数，用于筛选特定产品的订单",
-      "code": "订单编码，可选参数，用于筛选特定订单",
-      "productName": "产品名称，可选参数，用于筛选特定产品名称的订单"
-    },
-    "body": null,
-    "response_note": "返回生产工单信息分页列表，包含订单数量、订单编码、产品名称、订单状态等信息"
-  },
-  {
-    "category": "MES系统",
-    "endpoint": "meswms/order/getOrderInfo",
-    "method": "GET",
-    "description": "获取指定订单的详细订单信息，包含订单数量、订单编码、产品名称、订单状态、BOM列表等",
-    "params": {
-      "orderId": "订单ID，用于筛选特定订单, 订单ID可以通过接口`meswms/order/page`的元素ID获取",
+      "orderId": "订单ID，用于筛选特定订单, 订单ID可以通过接口`meswms/orderForAi/unscheduledOrders`的元素ID获取",
       "percent": "订单完成度百分比, 默认为103"
     },
     "body": null,
-    "response_note": "返回生产工单信息分页列表，包含订单数量、订单编码、产品名称、订单状态等信息"
+    "response_note": "返回生产工单信息详细信息，包含产品名称、BOM列表等信息"
   },
   {
     "category": "MES系统",
-    "endpoint": "meswms/workOrderTask/pageWithChildren",
+    "endpoint": "meswms/orderForAi/scheduledOrders",
     "method": "GET",
-    "description": "获取指定工厂的工单任务及其物料清单的排程计划, 包含订单数量、订单编码、物料清单信息、产品名称、订单状态等",
+    "description": "获取指定工厂的工单任务及其物料清单的已排程计划, 包含订单数量、订单编码、物料清单信息、产品名称、订单状态等",
     "params": {
       "organizationIds": "组织ID列表，注意，多个组织ID由逗号分隔; 组织信息可以通过接口`admin/modelFactory/organization/list`获取",
       "size": "每页数量，默认1000",
@@ -67,6 +52,39 @@
     },
     "body": null,
     "response_note": "返回工单计划任务完成情况，包含订单编码、任务编码、产品编码、产品名称、计划数量、计划完成日期、任务完成进度等信息"
+  },
+  {
+    "category": "MES系统",
+    "endpoint": "meswms/orderForAi/section/process",
+    "method": "GET",
+    "description": "获取指定工厂的工段和工艺信息，包含工段ID、工段名称、工艺ID、工艺名称等",
+    "params": {
+      "organizationId": "组织ID; 组织信息可以通过接口`admin/modelFactory/organization/list`获取"
+    },
+    "body": null,
+    "response_note": "返回工单计划任务完成情况，包含订单编码、任务编码、产品编码、产品名称、计划数量、计划完成日期、任务完成进度等信息"
+  },
+  {
+    "category": "MES系统",
+    "endpoint": "meswms/orderForAi/createSchedule",
+    "method": "POST",
+    "description": "为指定工厂的指定订单创建排程计划",
+    "params": null,
+    "body": {
+      "orderId": "订单ID, 可以通过接口`meswms/orderForAi/unscheduledOrders`的元素ID获取",
+      "overLimitRatio": "超额排产比例, 默认为103",
+      "organizationId": "组织ID; 组织信息可以通过接口`admin/modelFactory/organization/list`获取",
+      "scheduleList": [
+        {
+          "id": "getOrderInfo接口返回的数据中的ID及children ID字段",
+          "sectionId": "工段ID",
+          "processId": "工艺ID",
+          "scheduleDate": "排产开始时间 (YYYY-MM-DD HH:mm:ss)",
+          "scheduleEndDate": "排产结束时间 (YYYY-MM-DD HH:mm:ss)"
+        }
+      ]
+    },
+    "response_note": "返回排程是否成功信息"
   }
 ]
 
