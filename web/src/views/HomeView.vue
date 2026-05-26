@@ -106,7 +106,9 @@
 
       <footer class="footer">
         <div class="footer-content">
-          <p class="copyright">{{ infoStore.footer?.copyright || '© 2025 All rights reserved' }}</p>
+          <p class="copyright">
+            {{ infoStore.footer?.copyright || '© 2025 All rights reserved' }}
+          </p>
         </div>
       </footer>
     </template>

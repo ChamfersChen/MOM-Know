@@ -2363,6 +2363,31 @@ wheels = [
 ]
 
 [[package]]
+name = "onnxruntime"
+version = "1.26.0"
+source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+dependencies = [
+    { name = "flatbuffers" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "protobuf" },
+]
+wheels = [
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/81/b1/d111b1df656761f980d9e298a60039a9cb66036b1d039e777537743d0ac3/onnxruntime-1.26.0-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:05b028781b322ad74b57ce5b50aa5280bb1fe96ceec334628ade681e0b24c1ac", size = 18016624, upload-time = "2026-05-12T00:41:01.735Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/f6/a0/3f9d896a0385a36bd04345d6d0b802821a5782adde562e7e135f6bb71c73/onnxruntime-1.26.0-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:91f2bb870a4b9224eba0a6728c1fa7a9e552b8e59e1083c51fbbc3d013f2b5c0", size = 16052692, upload-time = "2026-05-08T19:07:13.829Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/7c/43/2a4e04f8dbeffad19bbcced4bcd4289bf478921518437404d6b92bdf213b/onnxruntime-1.26.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9b6dd70599005bd1bf29779f04a91978b92b5e719c11a20068a8f8e535f725b6", size = 18185439, upload-time = "2026-05-08T19:07:36.299Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/44/fc/026d0a7162b9c2153dac292baea9e027c42304dc1d9dc6f8ff5b4cfbaedd/onnxruntime-1.26.0-cp312-cp312-win_amd64.whl", hash = "sha256:a26374dc7fbcaae593601086b242120e13f2310558df0991da6dd8b8fac00414", size = 13026427, upload-time = "2026-05-08T19:08:03.503Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/3e/27/1dcf88e45e4c69db5f7b106f2dacc3801ba98994e082ca03e1dfdf7bfe57/onnxruntime-1.26.0-cp312-cp312-win_arm64.whl", hash = "sha256:54a8053410fd31fd66469bd754fcfe8a4df9f7eb44756b4b5479bf50c842d948", size = 12796647, upload-time = "2026-05-08T19:07:52.108Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/cf/a2/c801242685e0ce48a4ca51dfafbb588765e0446397e123be53ba5598f3f5/onnxruntime-1.26.0-cp313-cp313-macosx_14_0_arm64.whl", hash = "sha256:ccce19c5f771b8268902f77d9fed9e88f9499465d6780808faa6611a789d33f0", size = 18016563, upload-time = "2026-05-08T19:07:28.081Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/e2/64/0492c0b1db04e29b2630c87cfa36f9d6872b1ca8614b90c5cad58fac7d76/onnxruntime-1.26.0-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:bdbed8cf3b672b66acb032f33a253bc27f42bce6ece48ae3fab4fa483a5e96e0", size = 16052634, upload-time = "2026-05-08T19:07:16.885Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/3d/26/4d09ddc755a84fc8d5e192991626b0e0680e8f6c5d58f4f1d05c42bc48cf/onnxruntime-1.26.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:c07af6fc6d5557835f2b6ee7a96d8b3235d0c57a8e230efdedaee106a8a3cbc6", size = 18185632, upload-time = "2026-05-08T19:07:38.756Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/77/89/3e52249aa08fa301e217ecba07b5246a8338fa2b401e109326e3fc5be0f9/onnxruntime-1.26.0-cp313-cp313-win_amd64.whl", hash = "sha256:61bec80655efa460591c2bc655392d57d2650ce85533a6b9b3b7a790d7ea7916", size = 13026751, upload-time = "2026-05-08T19:08:06.2Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/06/b3/c1c8782b14af6797c303de132d6eef26a9fb80dfacd3750ce57911d11c6b/onnxruntime-1.26.0-cp313-cp313-win_arm64.whl", hash = "sha256:a6677545ff451e3539a02746d2f207d8c5baa4a0a818886bb9d6a6eb9511ee89", size = 12796807, upload-time = "2026-05-08T19:07:54.879Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/c3/f5/47b0676408abec652c14b84d7173e389837832d850c24f87184277313e8d/onnxruntime-1.26.0-cp313-cp313t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:5e016edc15d3c19f36807e1c6b10be5b27807688c32720f91b5ae480a95215d0", size = 16057265, upload-time = "2026-05-08T19:07:19.603Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/3b/45/33ab6deeef010ca844c877dd618cebc079590bbe52d2a3678e7223b1b908/onnxruntime-1.26.0-cp313-cp313t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:f5fc48a91a046a6a5c9b147f83fb41d65d24d24923373b222cdd248f0f4f4aac", size = 18197590, upload-time = "2026-05-08T19:07:41.422Z" },
+]
+
+[[package]]
 name = "openai"
 version = "2.30.0"
 source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
@@ -3356,6 +3381,20 @@ dependencies = [
 ]
 wheels = [
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/5c/b8/011338eec8aea40cf9b82da7481f3e65e100537cff4c866b3c1b1e719b97/rapidocr-3.7.0-py3-none-any.whl", hash = "sha256:ace47f037956fa3780875f8556a0f27ab20d91962d36a9a2816aa367bb48718f", size = 15080131, upload-time = "2026-03-04T15:38:20.339Z" },
+]
+
+[[package]]
+name = "readability-lxml"
+version = "0.8.4.1"
+source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+dependencies = [
+    { name = "chardet" },
+    { name = "cssselect" },
+    { name = "lxml", extra = ["html-clean"] },
+]
+sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/55/3e/dc87d97532ddad58af786ec89c7036182e352574c1cba37bf2bf783d2b15/readability_lxml-0.8.4.1.tar.gz", hash = "sha256:9d2924f5942dd7f37fb4da353263b22a3e877ccf922d0e45e348e4177b035a53", size = 22874, upload-time = "2025-05-03T21:11:45.493Z" }
+wheels = [
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/c7/75/2cc58965097e351415af420be81c4665cf80da52a17ef43c01ffbe2caf91/readability_lxml-0.8.4.1-py3-none-any.whl", hash = "sha256:874c0cea22c3bf2b78c7f8df831bfaad3c0a89b7301d45a188db581652b4b465", size = 19912, upload-time = "2025-05-03T21:11:43.993Z" },
 ]
 
 [[package]]
@@ -4665,6 +4704,213 @@ wheels = [
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/43/68/8c5b36aa5178900b37387937bc2c2fe0e9505537f713495472dcf6f6fccc/yarl-1.23.0-cp313-cp313t-win_amd64.whl", hash = "sha256:dd00607bffbf30250fe108065f07453ec124dbf223420f57f5e749b04295e090", size = 94932, upload-time = "2026-03-01T22:06:39.579Z" },
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/c6/cc/d79ba8292f51f81f4dc533a8ccfb9fc6992cabf0998ed3245de7589dc07c/yarl-1.23.0-cp313-cp313t-win_arm64.whl", hash = "sha256:ac09d42f48f80c9ee1635b2fcaa819496a44502737660d3c0f2ade7526d29144", size = 84786, upload-time = "2026-03-01T22:06:41.988Z" },
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/69/68/c8739671f5699c7dc470580a4f821ef37c32c4cb0b047ce223a7f115757f/yarl-1.23.0-py3-none-any.whl", hash = "sha256:a2df6afe50dea8ae15fa34c9f824a3ee958d785fd5d089063d960bae1daa0a3f", size = 48288, upload-time = "2026-03-01T22:07:51.388Z" },
+]
+
+[[package]]
+name = "yuxi"
+version = "0.6.2"
+source = { editable = "package" }
+dependencies = [
+    { name = "agent-sandbox" },
+    { name = "aioboto3" },
+    { name = "aiofiles" },
+    { name = "aiohttp" },
+    { name = "aiosqlite" },
+    { name = "argon2-cffi" },
+    { name = "asyncpg" },
+    { name = "beautifulsoup4" },
+    { name = "chardet" },
+    { name = "colorlog" },
+    { name = "dashscope" },
+    { name = "deepagents" },
+    { name = "docling" },
+    { name = "docx2txt" },
+    { name = "httpx" },
+    { name = "json-repair" },
+    { name = "langchain" },
+    { name = "langchain-community" },
+    { name = "langchain-core" },
+    { name = "langchain-deepseek" },
+    { name = "langchain-mcp-adapters" },
+    { name = "langchain-openai" },
+    { name = "langchain-tavily" },
+    { name = "langchain-text-splitters" },
+    { name = "langfuse" },
+    { name = "langgraph" },
+    { name = "langgraph-checkpoint-postgres" },
+    { name = "langgraph-checkpoint-sqlite" },
+    { name = "langgraph-cli", extra = ["inmem"] },
+    { name = "langsmith" },
+    { name = "lightrag-hku" },
+    { name = "llama-index" },
+    { name = "llama-index-readers-file" },
+    { name = "loguru" },
+    { name = "markdown-it-py" },
+    { name = "markdownify" },
+    { name = "mcp" },
+    { name = "mdit-py-plugins" },
+    { name = "minio" },
+    { name = "neo4j" },
+    { name = "networkx" },
+    { name = "nltk" },
+    { name = "onnxruntime" },
+    { name = "openai" },
+    { name = "opencv-python-headless" },
+    { name = "pillow" },
+    { name = "psycopg", extra = ["binary", "pool"] },
+    { name = "pyjwt" },
+    { name = "pymilvus" },
+    { name = "pymupdf" },
+    { name = "pymysql" },
+    { name = "pypinyin" },
+    { name = "python-dotenv" },
+    { name = "python-jose", extra = ["cryptography"] },
+    { name = "python-multipart" },
+    { name = "pyyaml" },
+    { name = "rapidocr" },
+    { name = "readability-lxml" },
+    { name = "redis" },
+    { name = "rich" },
+    { name = "scikit-learn" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "tabulate" },
+    { name = "tavily-python" },
+    { name = "tenacity" },
+    { name = "tomli" },
+    { name = "tomli-w" },
+    { name = "torch", version = "2.8.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
+    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
+    { name = "torchvision", version = "0.23.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or sys_platform == 'darwin'" },
+    { name = "torchvision", version = "0.23.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (platform_python_implementation != 'CPython' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "tqdm" },
+    { name = "typer" },
+    { name = "unstructured" },
+    { name = "wcmatch" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "agent-sandbox", specifier = ">=0.0.26" },
+    { name = "aioboto3", specifier = ">=13.0.0" },
+    { name = "aiofiles", specifier = ">=24.1.0" },
+    { name = "aiohttp", specifier = ">=3.9.0" },
+    { name = "aiosqlite", specifier = ">=0.20.0" },
+    { name = "argon2-cffi", specifier = ">=25.1.0" },
+    { name = "asyncpg", specifier = ">=0.30.0" },
+    { name = "beautifulsoup4", specifier = ">=4.12.0" },
+    { name = "chardet", specifier = ">=5.0.0" },
+    { name = "colorlog", specifier = ">=6.9.0" },
+    { name = "dashscope", specifier = ">=1.23.2" },
+    { name = "deepagents", specifier = ">=0.2.5" },
+    { name = "docling", specifier = ">=2.68.0" },
+    { name = "docx2txt", specifier = ">=0.9" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "json-repair", specifier = ">=0.54.0" },
+    { name = "langchain", specifier = ">=1.2.0" },
+    { name = "langchain-community", specifier = ">=0.4" },
+    { name = "langchain-core", specifier = ">=1.2.5" },
+    { name = "langchain-deepseek", specifier = ">=1.0" },
+    { name = "langchain-mcp-adapters", specifier = ">=0.1.9" },
+    { name = "langchain-openai", specifier = ">=1.0.2" },
+    { name = "langchain-tavily", specifier = ">=0.2.13" },
+    { name = "langchain-text-splitters", specifier = ">=1.0" },
+    { name = "langfuse", specifier = ">=4.0.0" },
+    { name = "langgraph", specifier = ">=1.0.1" },
+    { name = "langgraph-checkpoint-postgres", specifier = ">=2.0.0" },
+    { name = "langgraph-checkpoint-sqlite", specifier = ">=3.0" },
+    { name = "langgraph-cli", extras = ["inmem"], specifier = ">=0.4" },
+    { name = "langsmith", specifier = ">=0.4" },
+    { name = "lightrag-hku", specifier = ">=1.4.6" },
+    { name = "llama-index", specifier = ">=0.14" },
+    { name = "llama-index-readers-file", specifier = ">=0.4.7" },
+    { name = "loguru", specifier = ">=0.7.3" },
+    { name = "markdown-it-py", specifier = ">=3.0.0" },
+    { name = "markdownify", specifier = ">=1.1.0" },
+    { name = "mcp", specifier = ">=1.20" },
+    { name = "mdit-py-plugins", specifier = ">=0.4.0" },
+    { name = "minio", specifier = ">=7.2.7" },
+    { name = "neo4j", specifier = ">=5.28.1" },
+    { name = "networkx", specifier = ">=3.5" },
+    { name = "nltk", specifier = ">=3.8.1" },
+    { name = "onnxruntime", specifier = ">=1.20.0" },
+    { name = "openai", specifier = ">=1.109" },
+    { name = "opencv-python-headless", specifier = ">=4.11.0.86" },
+    { name = "pillow", specifier = ">=10.5.0" },
+    { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.3.3" },
+    { name = "pyjwt", specifier = ">=2.8.0" },
+    { name = "pymilvus", specifier = ">=2.5.8" },
+    { name = "pymupdf", specifier = ">=1.25.5" },
+    { name = "pymysql", specifier = ">=1.1.0" },
+    { name = "pypinyin", specifier = ">=0.55.0" },
+    { name = "python-dotenv", specifier = ">=1.1.0" },
+    { name = "python-jose", extras = ["cryptography"], specifier = ">=3.4.0" },
+    { name = "python-multipart", specifier = ">=0.0.20" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "rapidocr", specifier = ">=3.0.0" },
+    { name = "readability-lxml", specifier = ">=0.8.1" },
+    { name = "redis", specifier = ">=5.2.0" },
+    { name = "rich", specifier = ">=13.7.1" },
+    { name = "scikit-learn", specifier = ">=1.3.0" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.0" },
+    { name = "tabulate", specifier = ">=0.9.0" },
+    { name = "tavily-python", specifier = ">=0.7.0" },
+    { name = "tenacity", specifier = ">=8.0.0" },
+    { name = "tomli" },
+    { name = "tomli-w" },
+    { name = "torch", specifier = ">=2.8.0", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "torchvision", specifier = "==0.23", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "tqdm", specifier = ">=4.66.4" },
+    { name = "typer", specifier = ">=0.16.0" },
+    { name = "unstructured", specifier = ">=0.17.2" },
+    { name = "wcmatch", specifier = ">=8.0.0" },
+]
+
+[[package]]
+name = "yuxi-workspace"
+version = "0.6.2"
+source = { virtual = "." }
+dependencies = [
+    { name = "arq" },
+    { name = "fastapi" },
+    { name = "uvicorn", extra = ["standard"] },
+    { name = "yuxi" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "ruff" },
+]
+test = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-httpx" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "arq", specifier = ">=0.26.3" },
+    { name = "fastapi", specifier = ">=0.121" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.2" },
+    { name = "yuxi", editable = "package" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "ruff", specifier = ">=0.12.1" }]
+test = [
+    { name = "pytest", specifier = ">=8.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24.0" },
+    { name = "pytest-cov", specifier = ">=6.0.0" },
+    { name = "pytest-httpx", specifier = ">=0.32.0" },
+]
+
+[[package]]
+name = "zipp"
+version = "3.23.0"
+source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/e3/02/0f2892c661036d50ede074e376733dca2ae7c6eb617489437771209d4180/zipp-3.23.0.tar.gz", hash = "sha256:a07157588a12518c9d4034df3fbbee09c814741a33ff63c05fa29d26a2404166", size = 25547, upload-time = "2025-06-08T17:06:39.4Z" }
+wheels = [
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/2e/54/647ade08bf0db230bfea292f893923872fd20be6ac6f53b2b936ba839d75/zipp-3.23.0-py3-none-any.whl", hash = "sha256:071652d6115ed432f5ce1d34c336c0adfd6a884660d1e9712a256d3d3bd4b14e", size = 10276, upload-time = "2025-06-08T17:06:38.034Z" },
 ]
 
 [[package]]
