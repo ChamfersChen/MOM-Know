@@ -87,6 +87,7 @@ async def create_provider(
             payload.model_dump(exclude_none=True),
             current_user.username,
         )
+        await db.commit()
         await _refresh_model_cache()
         return {"success": True, "data": provider.to_dict()}
     except ValueError as e:
@@ -138,6 +139,7 @@ async def update_provider(
         provider = await update_provider_config(db, provider_id, data, current_user.username)
         if provider is None:
             raise HTTPException(status_code=404, detail=f"供应商 {provider_id} 不存在")
+        await db.commit()
         await _refresh_model_cache()
         return {"success": True, "data": provider.to_dict()}
     except HTTPException:
@@ -159,6 +161,7 @@ async def delete_provider(
     deleted = await delete_provider_config(db, provider_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"供应商 {provider_id} 不存在")
+    await db.commit()
     await _refresh_model_cache()
     return {"success": True}
 

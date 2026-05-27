@@ -105,6 +105,19 @@ class BaseReranker(ABC):
             return asyncio.run(self.acompute_score(sentence_pairs, batch_size, max_length, normalize))
         raise RuntimeError("compute_score cannot be used while an event loop is running. Use acompute_score instead.")
 
+    async def test_connection(self) -> tuple[bool, str]:
+        try:
+            scores = await self._batch_rerank("test query", ["test document"], max_length=128)
+            if scores:
+                return True, "连接正常"
+            return False, "响应无效"
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Rerank connection test failed: {error_msg}")
+            return False, error_msg
+        finally:
+            await self.aclose()
+
     async def aclose(self) -> None:
         if self.session and not self.session.closed:
             await self.session.close()

@@ -1,7 +1,17 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { message, Modal } from 'ant-design-vue'
-import { Globe, Plus, RefreshCw, Search, Settings2, Trash2, CheckCircle2, Edit3 } from 'lucide-vue-next'
+import {
+  Globe,
+  Plus,
+  RefreshCw,
+  Search,
+  Settings2,
+  Trash2,
+  CheckCircle2,
+  Edit3,
+  LayersPlus
+} from 'lucide-vue-next'
 
 import { modelProviderApi } from '@/apis/system_api'
 import { modelIcons } from '@/utils/modelIcon'
@@ -14,6 +24,8 @@ const remoteLoading = ref(false)
 const saving = ref(false)
 const providers = ref([])
 const searchQuery = ref('')
+const modelTestLoadingBySpec = ref({})
+const modelTestResultBySpec = ref({})
 
 // Provider form state
 const showProviderModal = ref(false)
@@ -144,6 +156,23 @@ const getModelDisplayName = (model) => {
 
 const getModelId = (model) => {
   return model.id
+}
+
+const buildModelSpec = (providerId, modelId) => `${providerId}:${modelId}`
+
+const getModelTestTitle = (providerId, model) => {
+  const spec = buildModelSpec(providerId, model.id)
+  const result = modelTestResultBySpec.value[spec]
+  if (!result) return '测试连接'
+
+  const statusText =
+    {
+      available: '可用',
+      unavailable: '不可用',
+      unsupported: '暂不支持',
+      error: '错误'
+    }[result.status] || '未知'
+  return `${statusText}: ${result.message || '无详细信息'}`
 }
 
 const getInputModalities = (model) => {
@@ -281,9 +310,9 @@ const openEditProviderModal = (provider) => {
     base_url: provider.base_url || '',
     embedding_base_url: provider.embedding_base_url || '',
     rerank_base_url: provider.rerank_base_url || '',
-    models_endpoint: provider.models_endpoint || '/models',
-    embedding_models_endpoint: provider.embedding_models_endpoint || '/embeddings/models',
-    rerank_models_endpoint: provider.rerank_models_endpoint || '',
+    models_endpoint: provider.models_endpoint ?? '',
+    embedding_models_endpoint: provider.embedding_models_endpoint ?? '',
+    rerank_models_endpoint: provider.rerank_models_endpoint ?? '',
     api_key_env: provider.api_key_env || '',
     api_key: provider.api_key || '',
     capabilities: provider.capabilities?.length ? provider.capabilities : ['chat'],
@@ -419,6 +448,36 @@ const normalizeModel = (model = {}) => ({
   supported_parameters: model.supported_parameters || [],
   extra: model.extra || {}
 })
+
+const testModelConnection = async (providerId, model) => {
+  const spec = buildModelSpec(providerId, model.id)
+  if (modelTestLoadingBySpec.value[spec]) return
+
+  modelTestLoadingBySpec.value = { ...modelTestLoadingBySpec.value, [spec]: true }
+  try {
+    const result = await modelProviderApi.getModelStatusBySpec(spec)
+    const status = result.data || { spec, status: 'error', message: '检查失败' }
+    modelTestResultBySpec.value = { ...modelTestResultBySpec.value, [spec]: status }
+
+    if (status.status === 'available') {
+      message.success(`${getModelDisplayName(model)} 连接正常`)
+    } else if (status.status === 'unsupported') {
+      message.warning(status.message || '暂不支持测试该类型模型')
+    } else if (status.status === 'unavailable') {
+      message.warning(status.message || '模型连接不可用')
+    } else {
+      message.error(status.message || '模型连接测试失败')
+    }
+  } catch (error) {
+    modelTestResultBySpec.value = {
+      ...modelTestResultBySpec.value,
+      [spec]: { spec, status: 'error', message: error.message || '检查失败' }
+    }
+    message.error(error.message || '模型连接测试失败')
+  } finally {
+    modelTestLoadingBySpec.value = { ...modelTestLoadingBySpec.value, [spec]: false }
+  }
+}
 
 const addModelFromRemote = async (providerId, remoteModel) => {
   const provider = providers.value.find((p) => p.provider_id === providerId)
@@ -827,8 +886,10 @@ defineExpose({
                   v-if="model.source === 'manual'"
                   class="type-tag manual"
                   title="管理员手动添加"
-                  >手动</span
+                  aria-label="管理员手动添加"
                 >
+                  <LayersPlus :size="12" />
+                </span>
               </span>
               <span class="col-context">{{ formatContextLength(model.context_length) }}</span>
               <span class="col-dim">
@@ -841,6 +902,16 @@ defineExpose({
                 <span v-else>{{ model.dimension || '-' }}</span>
               </span>
               <span class="col-ops">
+                <a-button
+                  size="small"
+                  class="model-test-button"
+                  :title="getModelTestTitle(currentProviderForModels.provider_id, model)"
+                  :loading="modelTestLoadingBySpec[buildModelSpec(currentProviderForModels.provider_id, model.id)]"
+                  :disabled="modelTestLoadingBySpec[buildModelSpec(currentProviderForModels.provider_id, model.id)]"
+                  @click="testModelConnection(currentProviderForModels.provider_id, model)"
+                >
+                  测试
+                </a-button>
                 <a-button size="small" class="lucide-icon-btn" @click="openModelConfigModal(model)">
                   <Settings2 :size="13" />
                 </a-button>
@@ -1063,7 +1134,7 @@ defineExpose({
 .table-head,
 .table-row {
   display: grid;
-  grid-template-columns: 1fr 80px 70px 60px 110px;
+  grid-template-columns: 1fr 80px 70px 60px 150px;
   gap: 8px;
   align-items: center;
 }
@@ -1132,6 +1203,10 @@ defineExpose({
   display: flex;
   gap: 4px;
   justify-content: flex-end;
+}
+
+.model-test-button {
+  padding: 0 8px;
 }
 
 .type-tag {

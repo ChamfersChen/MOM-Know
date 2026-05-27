@@ -41,8 +41,24 @@ BUILTIN_PROVIDERS: list[dict[str, Any]] = [
         "provider_id": "alibaba",
         "display_name": "DashScope",
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "embedding_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings",
+        "rerank_base_url": "https://dashscope.aliyuncs.com/compatible-api/v1/reranks",
         "api_key_env": "DASHSCOPE_API_KEY",
+        "capabilities": ["chat", "embedding", "rerank"],
         "models_endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/models",
+        "enabled_models": [
+            {
+                "id": "text-embedding-v4",
+                "type": "embedding",
+                "display_name": "text-embedding-v4",
+                "dimension": 1024,
+            },
+            {
+                "id": "qwen3-rerank",
+                "type": "rerank",
+                "display_name": "qwen3-rerank",
+            },
+        ],
     },
     {
         "provider_id": "alibaba-coding-plan-cn",

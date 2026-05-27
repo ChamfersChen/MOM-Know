@@ -157,6 +157,20 @@ def test_builtin_siliconflow_provider_includes_default_runnable_models():
     assert "base_url_override" not in models["Pro/BAAI/bge-reranker-v2-m3"]
 
 
+def test_builtin_dashscope_provider_includes_default_embedding_and_rerank_models():
+    provider = next(item for item in BUILTIN_PROVIDERS if item["provider_id"] == "alibaba")
+    models = {model["id"]: model for model in provider["enabled_models"]}
+
+    assert provider["capabilities"] == ["chat", "embedding", "rerank"]
+    assert provider["embedding_base_url"] == "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings"
+    assert provider["rerank_base_url"] == "https://dashscope.aliyuncs.com/compatible-api/v1/reranks"
+    assert "embedding_models_endpoint" not in provider
+    assert "rerank_models_endpoint" not in provider
+    assert models["text-embedding-v4"]["type"] == "embedding"
+    assert models["text-embedding-v4"]["dimension"] == 2048
+    assert models["qwen3-rerank"]["type"] == "rerank"
+
+
 def testcheck_credential_status_disabled_provider_always_ok():
     """未启用的 provider 无论凭证如何配置，状态始终为 ok。"""
     class Provider:

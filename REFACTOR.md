@@ -26,7 +26,7 @@
 - [ ] add model retry times to agent context config
 - [ ] 添加用户级别的 Skills 的安装
 - [ ] 子智能体的优化，参考 PR 的方案。
-- [ ] 附件上传能够支持转换为 PDF
+- [ ] 附件上传能够支持转换为 PDF，待办：查看 OCR 模型的状态，样式优化，保存的文件名不对
 - [ ] 参考 PR，实现内置 Dashscope 的 Embedding 和 rerank 的方法
 - [ ] 优化知识库的 API 接口设计，使用 /{db_id}/xxx 的形式，整合 mindmap / eval 接口
 - [x] allow multi-hop qa generate

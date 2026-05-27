@@ -387,10 +387,14 @@ async def test_model_status_by_spec(spec: str) -> dict:
                 "model_type": "embedding",
             }
         if info.model_type == "rerank":
+            from yuxi.models.rerank import get_reranker
+
+            model = get_reranker(spec)
+            success, message = await model.test_connection()
             return {
                 "spec": spec,
-                "status": "unsupported",
-                "message": "暂不支持 rerank 模型在线连接测试",
+                "status": "available" if success else "unavailable",
+                "message": "连接正常" if success else message,
                 "model_type": "rerank",
             }
 

@@ -91,7 +91,12 @@ class BaseEmbeddingModel(ABC):
 
     async def test_connection(self) -> tuple[bool, str]:
         try:
-            await self.aencode(["Hello world"])
+            embeddings = await self.aencode(["Hello world"])
+            if self.dimension not in (None, ""):
+                actual_dimension = len(embeddings[0]) if embeddings else 0
+                expected_dimension = int(self.dimension)
+                if actual_dimension != expected_dimension:
+                    return False, f"Embedding 维度不一致：配置 {expected_dimension}，实际 {actual_dimension}"
             return True, "连接正常"
         except Exception as e:
             error_msg = str(e)

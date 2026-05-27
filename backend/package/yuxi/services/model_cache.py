@@ -161,7 +161,7 @@ class ModelCache:
 
             for model in provider.enabled_models or []:
                 model_type = model.get("type", "chat")
-                base_url = self._get_base_url_for_type(provider, model_type)
+                base_url = model.get("base_url_override") or self._get_base_url_for_type(provider, model_type)
 
                 info = ModelInfo(
                     provider_id=provider.provider_id,

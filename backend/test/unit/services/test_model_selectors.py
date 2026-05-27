@@ -47,6 +47,40 @@ def test_select_embedding_model_loads_model_from_cache(monkeypatch):
     assert model.dimension == 1024
 
 
+@pytest.mark.asyncio
+async def test_embedding_connection_checks_configured_dimension(monkeypatch):
+    model = OtherEmbedding(
+        model="namespace/embedding-model",
+        base_url="https://example.com/v1/embeddings",
+        api_key="test-key",
+        dimension=3,
+    )
+
+    async def fake_aencode(_messages):
+        return [[0.1, 0.2, 0.3]]
+
+    monkeypatch.setattr(model, "aencode", fake_aencode)
+
+    assert await model.test_connection() == (True, "连接正常")
+
+
+@pytest.mark.asyncio
+async def test_embedding_connection_reports_dimension_mismatch(monkeypatch):
+    model = OtherEmbedding(
+        model="namespace/embedding-model",
+        base_url="https://example.com/v1/embeddings",
+        api_key="test-key",
+        dimension=4,
+    )
+
+    async def fake_aencode(_messages):
+        return [[0.1, 0.2, 0.3]]
+
+    monkeypatch.setattr(model, "aencode", fake_aencode)
+
+    assert await model.test_connection() == (False, "Embedding 维度不一致：配置 4，实际 3")
+
+
 def test_get_reranker_loads_model_from_cache(monkeypatch):
     monkeypatch.setattr(
         "yuxi.models.rerank.model_cache.get_model_info",
