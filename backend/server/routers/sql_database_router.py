@@ -84,7 +84,6 @@ async def create_graph(
         graph_base.delete_entity()
         await graph_base.database_meta_add_entity(
             datasource_group,
-            embed_model_name="siliconflow/BAAI/bge-m3",
             batch_size=20
         )
         return {"message": "图谱创建成功", "code": 0}

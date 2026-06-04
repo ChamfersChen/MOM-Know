@@ -4,19 +4,20 @@ from yuxi.storage.postgres.models_terminology import Terminology, TerminologyInf
 from yuxi.repositories.terminology_repository import TerminologyRepository
 from yuxi import config
 from yuxi.models.embed import OtherEmbedding
+from yuxi.knowledge import graph_base
 
 
 
 class TermService:
     def __init__(self):
         self.terminology_repository = TerminologyRepository()
-        config_dict = config.embed_model_names['siliconflow/BAAI/bge-m3'].model_dump()
-        config_dict["api_key"] = os.getenv(config_dict["api_key"]) or config_dict["api_key"]
-        self.embedder = OtherEmbedding(
-                model=config_dict.get("name"),
-                base_url=config_dict.get("base_url"),
-                api_key=config_dict.get("api_key"),
-            )
+        # config_dict = config.embed_model_names['siliconflow/BAAI/bge-m3'].model_dump()
+        # config_dict["api_key"] = os.getenv(config_dict["api_key"]) or config_dict["api_key"]
+        # self.embedder = OtherEmbedding(
+        #         model=config_dict.get("name"),
+        #         base_url=config_dict.get("base_url"),
+        #         api_key=config_dict.get("api_key"),
+        #     )
 
 
     async def get_all_terminology(self) -> dict[int, TerminologyInfo]:
@@ -66,7 +67,7 @@ class TermService:
         datasource_port = terminology.datasource_port
         enabled = terminology.enabled
         create_time = terminology.create_time
-        embedding = await self.embedder.aencode(word) # TODO : 需要根据术语名称生成embedding
+        embedding = await graph_base.aget_embedding(word) # TODO : 需要根据术语名称生成embedding
         term = await self.terminology_repository.create(
             {
                 "word":word,
@@ -83,7 +84,7 @@ class TermService:
         pid = term.id
         other_words = terminology.other_words
         for other_word in other_words:
-            embedding = await self.embedder.aencode(other_word) # TODO : 需要根据术语名称生成embedding
+            embedding = await graph_base.aget_embedding(other_word) # TODO : 需要根据术语名称生成embedding
             term = await self.terminology_repository.create(
                 {
                     "pid":pid,
@@ -118,7 +119,7 @@ class TermService:
         datasource_port = terminology.datasource_port
         enabled = terminology.enabled
         other_words = terminology.other_words
-        embedding = await self.embedder.aencode(word) # TODO : 需要根据术语名称生成embedding
+        embedding = await graph_base.aget_embedding(word) # TODO : 需要根据术语名称生成embedding
         term = await self.terminology_repository.update(
             {
                 "id":id,
@@ -134,7 +135,7 @@ class TermService:
         await self.terminology_repository.delete_by_pid(id)
         ret = TerminologyInfo(**term.__dict__)
         for other_word in other_words:
-            embedding = await self.embedder.aencode(other_word) # TODO : 需要根据术语名称生成embedding
+            embedding = await graph_base.aget_embedding(other_word) # TODO : 需要根据术语名称生成embedding
             term = await self.terminology_repository.create(
                 {
                     "pid":id,
@@ -152,7 +153,7 @@ class TermService:
 
 
     async def get_terms_with_query(self, query: str, ds_host: str, ds_port: int) -> list[Terminology]:
-        embedding = await self.embedder.aencode(query)
+        embedding = await graph_base.aget_embedding(query)
         return await self.terminology_repository.get_terms_with_embedding(embedding[0], ds_host, ds_port)
 
 

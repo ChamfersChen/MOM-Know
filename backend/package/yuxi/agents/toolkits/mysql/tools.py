@@ -1,10 +1,12 @@
+import json
+import httpx
+import traceback
+
 from copy import deepcopy
 from datetime import datetime
-import traceback
 from typing import Annotated, Any
-
+from langgraph.prebuilt.tool_node import ToolRuntime
 from pydantic import BaseModel, Field
-
 from .connection import (
     MySQLConnectionManager,
     QueryTimeoutError,
@@ -14,6 +16,9 @@ from .connection import (
 from .exceptions import MySQLConnectionError
 from .security import MySQLSecurityChecker
 
+from yuxi.config import java_config
+from yuxi.services.java_token_service import java_token_service
+from yuxi.services.java_token_service import java_token_service
 from yuxi.agents.toolkits.registry import tool
 from yuxi.utils import logger
 from yuxi.knowledge import graph_base
@@ -24,6 +29,100 @@ from yuxi.storage.postgres.models_sql_examples import SqlExampleInfo
 _connection_manager: MySQLConnectionManager | None = None
 host_set = set()
 port_set = set()
+
+async def init_tenant_organization_info(
+    runtime:ToolRuntime,
+):
+    runtime_context = runtime.context
+    user_id = getattr(runtime_context, "user_id", None)
+    if not user_id:
+        return False, "error: 无法获取当前用户信息", ""
+
+    try:
+        user_id = int(user_id)
+    except (ValueError, TypeError):
+        return False,  "error: "+f"用户 ID 格式错误: {user_id}", ""
+
+    error_message = "请求失败，请仔细查看工具返回的端点信息，确认路径、方法和参数格式是否正确。\n"
+    if not java_config.enabled:
+        return False, "error: MOM API 访问未启用，请联系管理员配置 MOM_ACCESS", ""
+
+    if not user_id:
+        return False, "error: 无法获取当前用户信息", ""
+
+    try:
+        user_id = int(user_id)
+    except (ValueError, TypeError):
+        return False, "error: " + f"用户 ID 格式错误: {user_id}", ""
+    # 从 Redis 获取 MOM Token
+    token_data = await java_token_service.get_token_by_user(user_id)
+    if not token_data:
+        return False, "error: MOM 系统认证未同步，请从 MOM 系统跳转登录后重试。用户尚未绑定 MOM 系统账号，或认证已过期。请在页面上方点击'前往同步'按钮。", ""
+
+    endpoint = "admin/modelFactory/organization/list"
+    method = "GET"
+    # 构建请求
+    url = f"{java_config.api_base_url}/{endpoint.lstrip('/')}"
+    headers = {
+        "Tenant-Id": token_data.tenant_id,
+        "Authorization": f"Bearer {token_data.access_token}",
+        "Accept": "application/json, text/plain, */*",
+    }
+
+    logger.info(f"MOM API 调用: {method} {url}, user_id={user_id}")
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.request(
+                method=method,
+                url=url,
+                headers=headers,
+            )
+
+        if response.status_code == 401:
+            await java_token_service.delete_token(user_id, token_data.tenant_id)
+            return False, "error: MOM 系统认证已过期，请从 MOM 系统重新跳转登录。Token 已失效，需用户重新从 MOM 系统跳转。", ""
+
+        if response.status_code >= 400:
+            error_detail = error_message
+            try:
+                error_data = response.json()
+                error_detail += error_data.get("msg", error_data.get("message", str(error_data)))
+            except Exception:
+                error_detail += response.text[:500]
+
+            logger.warning(f"MOM API 错误: {method} {url}, status={response.status_code}, detail={error_detail}")
+            return False, f"error: MOM API 请求失败 (HTTP {response.status_code})" + error_detail, ""
+
+        try:
+            tenant_info = f"当前用户的 tenant_id={token_data.tenant_id} 注意在查询数据库表信息时，使用 tenant_id 来过滤查询结果。\n\n"
+
+            result = response.json()
+
+            # 对 dsScope 字段进行解释
+            data = result.get('data', [])
+            organization_info = []
+            for d in data:
+                org_id = d.get('value')
+                org_name = d.get('label')
+                if org_id and org_name:
+                    organization_info.append(f"{org_name} (ID: {org_id})")
+            result_str = f"当前用户所属的组织列表:\n{'\n'.join(organization_info)}" if organization_info else "未找到用户所属的组织信息，请确认 MOM 系统中该用户是否有组织信息。\n\n"
+            result_str += "\n注意在查询数据库表信息时，使用组织ID来过滤查询结果。\n如果存在多个组织ID，需要询问用户查询哪个组织的表信息\n\n" if organization_info else ""
+            return True, tenant_info, result_str
+
+        except Exception as e:
+            logger.error(f"MOM API 返回值处理错误: {method} {url}, error={e}")
+            result = response.text
+            return False, f"error: MOM API 返回值处理错误: {str(e)}\n\n返回内容: {result}", ""   
+
+    except httpx.TimeoutException:
+        return False, "error: MOM API 请求超时，请稍后重试", ""
+    except httpx.ConnectError:
+        return False, "error: 无法连接 MOM 系统 ({java_config.api_base_url})，请检查网络或联系管理员", ""
+    except Exception as e:
+        logger.error(f"MOM API 调用异常: {e}", exc_info=True)
+        return False, f"error: MOM API 调用异常: {str(e)}\n\n{error_message}", ""
+
 
 def convert_structure(data):
     result = []
@@ -79,7 +178,6 @@ def get_connection_manager() -> MySQLConnectionManager:
 
 
 class ListDbModel(BaseModel):
-
     query: str = Field(description="改写后的用户问题", example="")
 
 
@@ -92,6 +190,7 @@ class ListDbModel(BaseModel):
 )
 async def mysql_list_tables_with_query(
     query: Annotated[str, "改写后的用户问题"],
+    runtime: ToolRuntime = None,
 ) -> str:
     """通过用户问题获取数据库中的所有表名
 
@@ -104,7 +203,12 @@ async def mysql_list_tables_with_query(
     logger.info(f">> 查询表名及说明 {query}")
     extras = mysql_list_tables_with_query.extras
     user_department = extras.get('user_department')
+    # 租户和组织信息提示
+    success, tenant_info, organization_info = await init_tenant_organization_info(runtime)
+    if not success:
+        return tenant_info + organization_info
     try:
+        # 表名称信息提示
         query_results = graph_base.query_node(query, threshold=0.5, hops=4, max_entities=25)
 
         # 处理节点
@@ -120,9 +224,7 @@ async def mysql_list_tables_with_query(
             port_set.add(n['port'])
 
         assert len(host_set) == 1 and len(port_set) == 1, "查询结果中包含多个数据库连接信息，无法确定使用哪个连接查询表名"
-        # loop = asyncio.new_event_loop()
-        # asyncio.set_event_loop(loop)
-        # databases = loop.run_until_complete(sql_database.get_databases())
+        
         databases = await sql_database.get_databases()
         unaccessible_databases = []
         for db_infos in databases.values():
@@ -155,7 +257,7 @@ async def mysql_list_tables_with_query(
 
         db_entity_info = "\n---\n".join(result)
 
-        # 处理关系
+        # 处理关系信息提示
         database_edge_info = []
         t2t_edges = [e for e in query_results['edges'] if e['type'] == 'Table2Table']
         for edge in t2t_edges:
@@ -170,7 +272,7 @@ async def mysql_list_tables_with_query(
         if database_edge_info:
             db_relation_info = f"\n===\n数据库之间存在以下关系: \n{'\n'.join(database_edge_info)}"
 
-        # 处理术语
+        # 处理术语信息提示
         db_term_info = ""
         host, port = deepcopy(host_set).pop(), deepcopy(port_set).pop()
         terms = await term_service.get_terms_with_query(query, ds_host=host, ds_port=port)
@@ -190,54 +292,17 @@ async def mysql_list_tables_with_query(
         sqls = await sql_example_service.get_with_query(query, ds_host=host, ds_port=port)
         sql_example_info = "---".join([f"\n- SQL示例: `{sql.sql}`，描述: {sql.description}" for sql in sqls])
         sql_example_info = f"\n===\n相关SQL示例:{sql_example_info}" if sql_example_info else ""
-        return f"{db_entity_info}{db_relation_info}{db_term_info}{sql_example_info}" if len(result) else "您所在的部门没有可以访问的数据库，请联系管理员，添加数据库。" # noqa E501
+
+        return (f"{tenant_info}{organization_info}{db_entity_info}{db_relation_info}{db_term_info}{sql_example_info}" if len(result)
+                 else "您所在的部门没有可以访问的数据库，请联系管理员，添加数据库。" )
+
     except Exception as e:
         error_msg = f"获取表名失败: {str(e)}"
         return error_msg
 
 class TableListModel(BaseModel):
     """获取表名列表的参数模型"""
-
     pass
-
-
-# @tool(
-#     category="mysql",
-#     tags=["数据库", "查询"],
-#     display_name="列出MySQL表",
-#     name_or_callable="mysql_list_tables",
-# )
-def mysql_list_tables() -> str:
-    """【查询表名及说明】获取数据库中的所有表名
-
-    这个工具用来列出当前数据库中所有的表名，帮助你了解数据库的结构。
-    """
-    global host_set, port_set
-    result = []
-    try:
-        databases = sql_database.get_databases()
-        for db_infos in databases.values():
-            for db_info in db_infos:
-                table_names = []
-                db_desc = db_info['description']
-                db_name = db_info['connection_info']['database']
-                tables_info = db_info['selected_tables']
-                db_host = db_info['connect_info']['host']
-                db_port = db_info['connect_info']['port']
-                if not db_host in host_set or not db_port in port_set: # noqa E501
-                    continue
-                if not tables_info.values():
-                    continue
-                for table_info in tables_info.values():
-                    table_name = f"{db_name}.{table_info['table_name']}: {table_info['table_comment']}"
-                    table_names.append(table_name)
-                result.append(f"数据库说明\n{db_name}: {db_desc}\n数据库中的表:\n{'\n'.join(table_names)}")
-
-        return "\n---\n".join(result)
-    except Exception as e:
-        error_msg = f"获取表名失败: {str(e)}"
-        return error_msg
-
 
 class TableDescribeModel(BaseModel):
     """获取表结构的参数模型"""
@@ -255,7 +320,8 @@ class TableDescribeModel(BaseModel):
 )
 async def mysql_describe_table(
         database_name: Annotated[str, "要查询的数据库名"],
-        table_name: Annotated[str, "要查询结构的表名"]
+        table_name: Annotated[str, "要查询结构的表名"],
+        runtime: ToolRuntime = None,
     ) -> str:
     """获取指定表的详细结构信息
 
@@ -267,6 +333,10 @@ async def mysql_describe_table(
     port = deepcopy(port_set).pop() if len(port_set) == 1 else None
     if not (host and port):
         return "数据库连接信息为空. 请先使用'列出MySQL表'工具获取表名，确保连接信息正确."
+    # 租户和组织信息提示
+    success, tenant_info, organization_info = await init_tenant_organization_info(runtime)
+    if not success:
+        return tenant_info + organization_info
     try:
         # 验证表名安全性
         if not MySQLSecurityChecker.validate_table_name(table_name):
@@ -344,7 +414,7 @@ async def mysql_describe_table(
                 logger.warning(f"Failed to get index info for table {table_name}: {e}")
 
             logger.info(f"Retrieved structure for table {table_name}")
-            return result
+            return f"{tenant_info}{organization_info}{result}"
 
     except Exception as e:
         error_msg = f"获取表 {table_name} 结构失败: {str(e)}"

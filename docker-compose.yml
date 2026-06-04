@@ -180,7 +180,7 @@ services:
     image: neo4j:5.26
     container_name: momai-graph
     ports:
-      - "7474:7474"
+      - "17474:7474"
       - "17687:17687"
     volumes:
       - ./docker/volumes/neo4j/data:/data

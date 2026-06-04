@@ -4,6 +4,7 @@ from yuxi.storage.postgres.models_sql_examples import SqlExample, SqlExampleInfo
 from yuxi.repositories.sql_example_repository import SqlExampleRepository
 from yuxi import config
 from yuxi.models.embed import OtherEmbedding
+from yuxi.knowledge import graph_base
 
 
 
@@ -39,7 +40,7 @@ class SqlExampleService:
         datasource_port = sql_example.datasource_port
         enabled = sql_example.enabled
         create_time = sql_example.create_time
-        embedding = await self.embedder.aencode(description) # TODO : 需要根据术语名称生成embedding
+        embedding = await graph_base.aget_embedding(description) # TODO : 需要根据术语名称生成embedding
         row = await self.sql_example_repository.create(
             {
                 "sql":sql,
@@ -71,7 +72,7 @@ class SqlExampleService:
         datasource_host = sql_example.datasource_host
         datasource_port = sql_example.datasource_port
         enabled = sql_example.enabled
-        embedding = await self.embedder.aencode(description) # TODO : 需要根据术语名称生成embedding
+        embedding = await graph_base.aget_embedding(description) # TODO : 需要根据术语名称生成embedding
         row = await self.sql_example_repository.update(
             {
                 "id":id,
@@ -88,7 +89,7 @@ class SqlExampleService:
 
 
     async def get_with_query(self, query: str, ds_host: str, ds_port: int) -> list[SqlExample]:
-        embedding = await self.embedder.aencode(query)
+        embedding = await graph_base.aget_embedding(query)
         return await self.sql_example_repository.get_with_embedding(embedding[0], ds_host, ds_port)
 
 

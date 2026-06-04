@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => {
         usePolling: true,
         ignored: ['**/node_modules/**', '**/dist/**'],
       },
-      host: '0.0.0.0',
+      host: 'localhost',
     }
   }
 })

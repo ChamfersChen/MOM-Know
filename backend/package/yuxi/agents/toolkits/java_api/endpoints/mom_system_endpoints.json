@@ -58,8 +58,7 @@
     "method": "GET",
     "description": "分页查询日程列表",
     "params": {
-      "current": "页码，从1开始",
-      "size": "每页数量，默认10"
+      "size": "每页数量，默认100"
     },
     "body": null,
     "response_note": "返回日程分页列表"

@@ -206,6 +206,7 @@ class OtherEmbedding(BaseEmbeddingModel):
         payload = self.build_payload(message)
         async with httpx.AsyncClient() as client:
             try:
+                logger.info(f"Other Embedding async request: {payload} to {self.base_url}")
                 response = await client.post(self.base_url, json=payload, headers=self.headers, timeout=60)
                 response.raise_for_status()
                 result = response.json()

@@ -219,6 +219,14 @@ DEFAULT_EMBED_MODELS: dict[str, EmbedModelInfo] = {
         api_key="DASHSCOPE_API_KEY",
         batch_size=10,
     ),
+    "orin/bge-m3-F16.gguf": EmbedModelInfo(
+        model_id="orin/bge-m3-F16.gguf",
+        name="bge-m3-F16.gguf",
+        dimension=1024,
+        base_url="http://192.168.137.101:7656/v1/embeddings",
+        api_key="OPENAI_API_KEY",
+        batch_size=10,
+    ),
 }
 
 

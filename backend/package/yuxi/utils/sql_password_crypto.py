@@ -21,7 +21,8 @@ class SQLPasswordCrypto:
 
     @staticmethod
     def _build_storage_key() -> bytes:
-        secret_seed = os.getenv("SQL_PASSWORD_ENCRYPTION_KEY") or os.getenv("JWT_SECRET_KEY") or "yuxi_know_secure_key"
+        secret_seed = os.getenv("JWT_SECRET_KEY")
+        assert secret_seed, "JWT_SECRET_KEY 环境变量未设置"
         digest = hashlib.sha256(secret_seed.encode("utf-8")).digest()
         return base64.urlsafe_b64encode(digest)
 

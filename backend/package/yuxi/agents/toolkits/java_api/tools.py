@@ -123,12 +123,6 @@ async def call_api(
     - 如果提示认证过期，需要通知用户从 MOM 系统重新跳转登录
 
     """
-    # def remove_none_fields(obj):
-    #     if isinstance(obj, dict):
-    #         return {k: remove_none_fields(v) for k, v in obj.items() if v is not None}
-    #     elif isinstance(obj, list):
-    #         return [remove_none_fields(i) for i in obj]
-    #     return obj
     def remove_none_fields(obj, remove_keys=None):
         """
         递归删除:

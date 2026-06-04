@@ -228,12 +228,12 @@ class UploadGraphService:
                 f"""
             MATCH (n:Entity)
             WHERE n.name IN [{param_placeholders}] AND n.embedding IS NULL
-            RETURN n.name AS name
+            RETURN n
             """,
                 params,
-            )
+            ) # 返回整个节点
 
-            return [record["name"] for record in result]
+            return [record for record in result]
 
         def _batch_set_embeddings(tx, entity_embedding_pairs):
             """批量设置实体的嵌入向量"""
@@ -282,7 +282,6 @@ class UploadGraphService:
                     all_entities.add(t_name)
 
             all_entities_list = list(all_entities)
-
             # 筛选出没有embedding的节点
             nodes_without_embedding = session.execute_read(_get_nodes_without_embedding, all_entities_list)
             if not nodes_without_embedding:
@@ -294,19 +293,21 @@ class UploadGraphService:
             # 批量处理实体
             max_batch_size = 1024  # 限制此部分的主要是内存大小 1024 * 1024 * 4 / 1024 / 1024 = 4GB
             total_entities = len(nodes_without_embedding)
-
+            
             for i in range(0, total_entities, max_batch_size):
                 batch_entities = nodes_without_embedding[i : i + max_batch_size]
+                batch_entity_names = [record['n']["name"] for record in batch_entities]
+                batch_entity_desc = [f"{record['n']['description']}" for record in batch_entities]
                 logger.debug(
                     f"Processing entities batch {i // max_batch_size + 1}/"
                     f"{(total_entities - 1) // max_batch_size + 1} ({len(batch_entities)} entities)"
                 )
 
                 # 批量获取嵌入向量
-                batch_embeddings = await self.aget_embedding(batch_entities, batch_size=batch_size)
+                batch_embeddings = await self.aget_embedding(batch_entity_desc, batch_size=batch_size)
 
                 # 将实体名称和嵌入向量配对
-                entity_embedding_pairs = list(zip(batch_entities, batch_embeddings))
+                entity_embedding_pairs = list(zip(batch_entity_names, batch_embeddings))
 
                 # 批量写入数据库
                 session.execute_write(_batch_set_embeddings, entity_embedding_pairs)
@@ -761,7 +762,6 @@ class UploadGraphService:
                     formatted_results["edges"].append(r)
                     formatted_results["triples"].append((h["name"], r["type"], t["name"]))
 
-                logger.debug(f"Query Results: {results}")
                 return formatted_results
 
             except Exception as e:
@@ -779,7 +779,6 @@ class UploadGraphService:
     async def database_meta_add_entity(self,
                                        databases_meta:list,
                                        kgdb_name="neo4j",
-                                       embed_model_name=None,
                                        batch_size=40):
         assert self.driver is not None, "Database is not connected"
         self.connection.status = "processing"
@@ -793,7 +792,7 @@ class UploadGraphService:
             h = {
                 "name": database_info["name"],
                 "database_name": database_info["name"],
-                "description": database_info["description"],
+                "description": f"Database name: {database_info['name']}\nDatabase description: {database_info['description']}",
                 "host": database_info['connect_info']['host'],
                 "port": database_info['connect_info']['port'],
 
@@ -804,7 +803,7 @@ class UploadGraphService:
                     continue
                 t = {
                     "name": table_info["tablename"],
-                    "description": table_info["total_description"],
+                    "description": f"Table name: {table_info['tablename']}\nTable description: {table_info["description"]}\nTable schema: {table_info['total_description']}",
                     "database_name": database_info["name"],
                     "table_name": table_info["tablename"],
                     "table_description": table_info["description"],
@@ -819,4 +818,5 @@ class UploadGraphService:
                 if h['name'] != t['name']:
                     triples.append({"h": h, "t": t, "r": "Database2Database"})
         if triples:
-            await self.txt_add_vector_entity(triples, kgdb_name, embed_model_name, batch_size)
+            self.embed_model_name = config.embed_model
+            await self.txt_add_vector_entity(triples, kgdb_name, batch_size)

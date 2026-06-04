@@ -153,6 +153,9 @@ const mainList = computed(() => {
         icon: LibraryBig,
         activeIcon: LibraryBig
       })
+    }
+  if (userStore.isSuperAdmin) {
+    if (!isLiteMode) {
       items.push({
         name: 'SQL数据库',
         path: '/sqldatabase',
@@ -160,6 +163,7 @@ const mainList = computed(() => {
         activeIcon: Database
       })
     }
+  }
 
     items.push({
       name: '扩展管理',

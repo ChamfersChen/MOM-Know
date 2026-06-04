@@ -241,33 +241,6 @@
                     </a-button>
                   </a-form-item>
                 </a-form>
-
-                <!-- OIDC 登录选项  -->
-                <div v-if="oidcChecking || oidcEnabled" class="third-party-login">
-                  <div class="divider">
-                    <span>或使用以下方式登录</span>
-                  </div>
-                  <div class="login-icons">
-                    <!-- 检查中显示骨架屏 -->
-                    <div v-if="oidcChecking" class="login-skeleton">
-                      <a-skeleton-button block size="large" :active="true" />
-                    </div>
-                    <!-- 检查完成后显示按钮 -->
-                    <a-button
-                      v-else
-                      type="default"
-                      size="large"
-                      block
-                      :loading="oidcLoading"
-                      @click="handleOIDCLogin"
-                    >
-                      <template #icon>
-                        <key-icon size="18" />
-                      </template>
-                      {{ oidcButtonText }}
-                    </a-button>
-                  </div>
-                </div>
               </div>
 
               <!-- 错误提示 -->
