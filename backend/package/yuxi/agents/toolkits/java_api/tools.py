@@ -96,7 +96,7 @@ class MomApiInput(BaseModel):
 
 
 @tool(
-    category="mom_api",
+    category="buildin",
     tags=["MOM系统", "API"],
     display_name="调用系统API",
     args_schema=MomApiInput,
@@ -160,17 +160,17 @@ async def call_api(
         )
 
     runtime_context = runtime.context
-    user_id = getattr(runtime_context, "user_id", None)
-    if not user_id:
+    uid = getattr(runtime_context, "uid", None)
+    if not uid:
         return json.dumps({"success": False, "error": "无法获取当前用户信息"}, ensure_ascii=False)
 
     try:
-        user_id = int(user_id)
+        uid = str(uid)
     except (ValueError, TypeError):
-        return json.dumps({"success": False, "error": f"用户 ID 格式错误: {user_id}"}, ensure_ascii=False)
+        return json.dumps({"success": False, "error": f"用户 ID 格式错误: {uid}"}, ensure_ascii=False)
 
     # 从 Redis 获取 MOM Token
-    token_data = await java_token_service.get_token_by_user(user_id)
+    token_data = await java_token_service.get_token_by_user(uid)
     if not token_data:
         return json.dumps(
             {
@@ -189,7 +189,7 @@ async def call_api(
         "Accept": "application/json, text/plain, */*",
     }
 
-    logger.info(f"MOM API 调用: {method} {url}, user_id={user_id}")
+    logger.info(f"MOM API 调用: {method} {url}, uid={uid}")
 
     try:
         if isinstance(body, str):
@@ -207,7 +207,7 @@ async def call_api(
             )
 
         if response.status_code == 401:
-            await java_token_service.delete_token(user_id, token_data.tenant_id)
+            await java_token_service.delete_token(uid, token_data.tenant_id)
             return json.dumps(
                 {
                     "success": False,
@@ -291,7 +291,7 @@ class ListMomEndpointsInput(BaseModel):
 
 
 @tool(
-    category="mom_api",
+    category="buildin",
     tags=["MOM系统", "API"],
     display_name="查询MOM系统端点列表",
     args_schema=ListMomEndpointsInput,
@@ -334,7 +334,7 @@ async def list_mom_endpoints(rewritten_query: str = "") -> str:
 
 
 @tool(
-    category="mes_api",
+    category="buildin",
     tags=["MES系统", "API"],
     display_name="查询MES系统中订单中心端点列表",
     args_schema=ListMomEndpointsInput,

@@ -7,6 +7,7 @@ export const useUserStore = defineStore('user', () => {
   const token = ref(localStorage.getItem('user_token') || '')
   const userId = ref(null)
   const username = ref('')
+  const userIdLogin = ref('')
   const uid = ref('')
   const phoneNumber = ref('')
   const avatar = ref('')
@@ -56,6 +57,7 @@ export const useUserStore = defineStore('user', () => {
       userId.value = data.user_id
       username.value = data.username
       uid.value = data.uid
+      userIdLogin.value = data.user_id_login
       phoneNumber.value = data.phone_number || ''
       avatar.value = data.avatar || ''
       userRole.value = data.role
@@ -154,6 +156,7 @@ export const useUserStore = defineStore('user', () => {
     username.value = ''
     uid.value = ''
     phoneNumber.value = ''
+    userIdLogin.value = ''
     avatar.value = ''
     userRole.value = ''
     departmentId.value = null
@@ -192,6 +195,7 @@ export const useUserStore = defineStore('user', () => {
       userId.value = data.user_id
       username.value = data.username
       uid.value = data.uid
+      userIdLogin.value = data.user_id_login
       phoneNumber.value = data.phone_number || ''
       avatar.value = data.avatar || ''
       userRole.value = data.role
@@ -410,6 +414,7 @@ export const useUserStore = defineStore('user', () => {
       username.value = userData.username
       uid.value = userData.uid
       phoneNumber.value = userData.phone_number || ''
+      userIdLogin.value = userData.user_id_login
       avatar.value = userData.avatar || ''
       userRole.value = userData.role
       departmentId.value = userData.department_id || null

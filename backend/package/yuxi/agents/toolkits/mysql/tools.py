@@ -21,7 +21,7 @@ from yuxi.services.java_token_service import java_token_service
 from yuxi.services.java_token_service import java_token_service
 from yuxi.agents.toolkits.registry import tool
 from yuxi.utils import logger
-from yuxi.knowledge import graph_base
+# from yuxi.knowledge import graph_base
 from yuxi.sql_database import sql_database, term_service, sql_example_service
 from yuxi.storage.postgres.models_sql_examples import SqlExampleInfo
 

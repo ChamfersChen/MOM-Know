@@ -135,7 +135,7 @@ async def test_api_key_auth_requires_valid_key(test_client):
     # Call protected endpoint with invalid API Key
     response = await test_client.get(
         PROTECTED_PATH,
-        headers={"Authorization": "Bearer yxkey_invalid_key_that_does_not_exist"},
+        headers={"Authorization": "Bearer key_invalid_key_that_does_not_exist"},
     )
     assert response.status_code == 401, response.text
 

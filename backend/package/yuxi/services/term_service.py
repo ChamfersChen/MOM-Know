@@ -4,7 +4,7 @@ from yuxi.storage.postgres.models_terminology import Terminology, TerminologyInf
 from yuxi.repositories.terminology_repository import TerminologyRepository
 from yuxi import config
 from yuxi.models.embed import OtherEmbedding
-from yuxi.knowledge import graph_base
+# from yuxi.knowledge import graph_base
 
 
 

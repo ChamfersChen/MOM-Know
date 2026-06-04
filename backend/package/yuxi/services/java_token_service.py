@@ -27,17 +27,17 @@ class JavaTokenService:
 
     KEY_PREFIX = "java_token"
 
-    def _get_key(self, user_id: int, tenant_id: str) -> str:
+    def _get_key(self, uid: str, tenant_id: str) -> str:
         """生成 Redis key"""
-        return f"{self.KEY_PREFIX}:{user_id}:{tenant_id}"
+        return f"{self.KEY_PREFIX}:{uid}:{tenant_id}"
 
-    async def save_token(self, user_id: int, token_data: JavaTokenData, ttl: int | None = None) -> bool:
+    async def save_token(self, uid: str, token_data: JavaTokenData, ttl: int | None = None) -> bool:
         """保存 Java Token 到 Redis"""
         if not java_config.enabled:
             logger.debug("Java 集成未启用，跳过保存 token")
             return True
 
-        key = self._get_key(user_id, token_data.tenant_id)
+        key = self._get_key(uid, token_data.tenant_id)
         ttl = ttl or java_config.token_ttl
 
         data = {
@@ -51,17 +51,17 @@ class JavaTokenService:
 
         success = await redis_client.set_json_async(key, data, ex=ttl)
         if success:
-            logger.info(f"Java token 已保存: user_id={user_id}, tenant_id={token_data.tenant_id}")
+            logger.info(f"Java token 已保存: uid={uid}, tenant_id={token_data.tenant_id}")
         else:
-            logger.error(f"Java token 保存失败: user_id={user_id}")
+            logger.error(f"Java token 保存失败: uid={uid}")
         return success
 
-    async def get_token(self, user_id: int, tenant_id: str) -> JavaTokenData | None:
+    async def get_token(self, uid: str, tenant_id: str) -> JavaTokenData | None:
         """获取 Java Token"""
         if not java_config.enabled:
             return None
 
-        key = self._get_key(user_id, tenant_id)
+        key = self._get_key(uid, tenant_id)
         data = await redis_client.get_json_async(key)
 
         if not data:
@@ -76,12 +76,12 @@ class JavaTokenService:
             expires_in=data.get("expires_in"),
         )
 
-    async def get_token_by_user(self, user_id: int) -> JavaTokenData | None:
+    async def get_token_by_user(self, uid: str) -> JavaTokenData | None:
         """根据 user_id 获取 Token（假设只有一个租户）"""
         if not java_config.enabled:
             return None
 
-        pattern = f"{self.KEY_PREFIX}:{user_id}:*"
+        pattern = f"{self.KEY_PREFIX}:{uid}:*"
         keys = redis_client.raw.keys(pattern)
 
         if not keys:
@@ -102,21 +102,21 @@ class JavaTokenService:
             expires_in=data.get("expires_in"),
         )
 
-    async def delete_token(self, user_id: int, tenant_id: str) -> bool:
+    async def delete_token(self, uid: str, tenant_id: str) -> bool:
         """删除 Java Token"""
-        key = self._get_key(user_id, tenant_id)
+        key = self._get_key(uid, tenant_id)
         result = await redis_client.delete_async(key)
-        logger.info(f"Java token 已删除: user_id={user_id}, tenant_id={tenant_id}")
+        logger.info(f"Java token 已删除: uid={uid}, tenant_id={tenant_id}")
         return result > 0
 
-    async def get_remaining_ttl(self, user_id: int, tenant_id: str) -> int:
+    async def get_remaining_ttl(self, uid: str, tenant_id: str) -> int:
         """获取 token 剩余有效期（秒）"""
-        key = self._get_key(user_id, tenant_id)
+        key = self._get_key(uid, tenant_id)
         return await redis_client.ttl_async(key)
 
-    async def validate_token(self, user_id: int, tenant_id: str) -> bool:
+    async def validate_token(self, uid: str, tenant_id: str) -> bool:
         """验证 token 有效性（通过调用 Java API）"""
-        token_data = await self.get_token(user_id, tenant_id)
+        token_data = await self.get_token(uid, tenant_id)
         if not token_data:
             return False
 
@@ -133,7 +133,7 @@ class JavaTokenService:
             if response.status_code == 200:
                 return True
             elif response.status_code == 401:
-                await self.delete_token(user_id, tenant_id)
+                await self.delete_token(uid, tenant_id)
                 return False
             else:
                 logger.warning(f"Java API 验证失败: status={response.status_code}")
@@ -141,16 +141,16 @@ class JavaTokenService:
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 401:
-                await self.delete_token(user_id, tenant_id)
+                await self.delete_token(uid, tenant_id)
             logger.error(f"Java API HTTP 错误: {e.response.status_code}")
             return False
         except Exception as e:
             logger.error(f"Java API 请求错误: {e}")
             return False
 
-    async def get_status(self, user_id: int, tenant_id: str) -> dict:
+    async def get_status(self, uid: str, tenant_id: str) -> dict:
         """获取 token 状态"""
-        token_data = await self.get_token(user_id, tenant_id)
+        token_data = await self.get_token(uid, tenant_id)
 
         if not token_data:
             return {
@@ -160,7 +160,7 @@ class JavaTokenService:
                 "expires_in": None,
             }
 
-        remaining_ttl = await self.get_remaining_ttl(user_id, tenant_id)
+        remaining_ttl = await self.get_remaining_ttl(uid, tenant_id)
 
         return {
             "bound": True,

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed, provide, watch } from 'vue'
+import { ref, onMounted, computed, provide, watch, reactive } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { GithubOutlined } from '@ant-design/icons-vue'
 import {
@@ -340,19 +340,6 @@ provide('settingsModal', {
             </a-tooltip>
             <span class="nav-text">{{ item.name }}</span>
           </RouterLink>
-          <div
-            v-if="userStore.isAdmin"
-            class="nav-item task-center"
-            :class="{ active: isDrawerOpen }"
-            @click="taskerStore.openDrawer()"
-          >
-            <a-tooltip placement="right">
-              <template #title>任务中心</template>
-              <a-badge :count="activeTaskCount" :overflow-count="99" class="task-center-badge" size="small">
-                <CircleCheck class="icon" size="22" />
-              </a-badge>
-            </a-tooltip>
-          </div>
         </div>
 
         <div class="fill">
@@ -372,19 +359,6 @@ provide('settingsModal', {
         </div>
 
         <div class="foo">
-          <!-- <div class="github nav-item" @click.stop>
-            <a-tooltip placement="right" :open="sidebarCollapsed ? undefined : false">
-              <template #title>欢迎 Star</template>
-              <a href="https://github.com/xerrors/Yuxi" target="_blank" class="github-link">
-                <GithubOutlined class="icon" />
-                <span class="nav-text">GitHub</span>
-                <span v-if="githubStars > 0" class="github-stars">
-                  <span class="star-count">{{ (githubStars / 1000).toFixed(1) }}k</span>
-                </span>
-              </a>
-            </a-tooltip>
-          </div> -->
-
           <div class="nav-item user-info" @click.stop>
             <UserInfoComponent :show-role="!sidebarCollapsed">
               <template v-if="userStore.isAdmin" #actions>
@@ -433,6 +407,7 @@ provide('settingsModal', {
       :initial-tab="settingsInitialTab"
       @close="() => (showSettingsModal = false)"
     />
+  </div>
   </div>
 </template>
 

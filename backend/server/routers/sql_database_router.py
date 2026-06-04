@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from server.utils.auth_middleware import get_admin_user
 
 from yuxi.storage.postgres.models_business import User
-from yuxi.knowledge import graph_base
+# from yuxi.knowledge import graph_base
 from yuxi.utils.logging_config import logger
 from yuxi.storage.postgres.models_terminology import TerminologyInfo
 from yuxi.storage.postgres.models_sql_examples import SqlExampleInfo

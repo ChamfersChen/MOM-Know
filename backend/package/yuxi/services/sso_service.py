@@ -18,8 +18,8 @@ from yuxi.services.java_token_service import java_token_service, JavaTokenData
 from yuxi.utils.datetime_utils import utc_now_naive
 from yuxi.utils.logging_config import logger
 
-from server.utils.auth_utils import AuthUtils
-from server.utils.common_utils import log_operation
+from yuxi.utils.auth_utils import AuthUtils
+from yuxi.services.operation_log_service import log_operation
 
 
 class SSOConfig(BaseModel):
@@ -58,7 +58,7 @@ sso_config = SSOConfig.from_env()
 class SSOUserInfo(BaseModel):
     """SSO 用户信息"""
 
-    user_id: str = Field(description="Java 系统的用户 ID")
+    uid: str = Field(description="Java 系统的用户 ID")
     username: str = Field(description="用户名")
     name: str | None = Field(default=None, description="姓名")
     avatar: str | None = Field(default=None, description="头像 URL")
@@ -103,7 +103,7 @@ async def verify_token_with_java_api(tenant_id: str, token: str) -> SSOUserInfo 
             return None
 
         return SSOUserInfo(
-            user_id=sys_user.get("userId", ""),
+            uid=sys_user.get("userId", ""),
             username=sys_user.get("username", ""),
             name=sys_user.get("name", ""),
             avatar=sys_user.get("avatar"),
@@ -128,13 +128,13 @@ async def find_user_by_sso_user_id(db, sso_user_id: str) -> User | None:
     """通过 SSO 用户 ID 查找用户"""
     internal_user_id = f"sso:{sso_user_id}"
 
-    result = await db.execute(select(User).filter(User.user_id == internal_user_id, User.is_deleted == 0))
+    result = await db.execute(select(User).filter(User.uid == internal_user_id, User.is_deleted == 0))
     user = result.scalar_one_or_none()
     if user:
         return user
 
     legacy_result = await db.execute(
-        select(User).filter(User.user_id.like(f"{internal_user_id}:%"), User.is_deleted == 0).order_by(User.id.asc())
+        select(User).filter(User.uid.like(f"{internal_user_id}:%"), User.is_deleted == 0).order_by(User.id.asc())
     )
     legacy_users = list(legacy_result.scalars().all())
     if legacy_users:
@@ -198,7 +198,7 @@ async def create_sso_user(db, user_info: SSOUserInfo, department_id: int | None 
             new_user = await user_repo.create(
                 {
                     "username": username,
-                    "user_id": user_id,
+                    "uid": user_id,
                     "phone_number": user_info.phone,
                     "avatar": user_info.avatar,
                     "password_hash": password_hash,
@@ -294,8 +294,8 @@ async def sso_login_handler(tenant_id: str, token: str, db, request=None) -> dic
             created_at=utc_now_naive().isoformat(),
             expires_in=None,
         )
-        await java_token_service.save_token(user.id, java_token_data)
-        logger.info(f"Java token 已保存到 Redis: user_id={user.id}, tenant_id={tenant_id}")
+        await java_token_service.save_token(user.uid, java_token_data)
+        logger.info(f"Java token 已保存到 Redis: uid={user.uid}, tenant_id={tenant_id}")
 
     # 保存 java_token_status 到 User 表
     user.java_token_status = java_token_status
@@ -305,8 +305,9 @@ async def sso_login_handler(tenant_id: str, token: str, db, request=None) -> dic
         "access_token": jwt_token,
         "token_type": "bearer",
         "user_id": user.id,
+        "uid": user.uid,
         "username": user.username,
-        "user_id_login": user.user_id,
+        "user_id_login": user.uid,
         "phone_number": user.phone_number,
         "avatar": user.avatar,
         "role": user.role,
