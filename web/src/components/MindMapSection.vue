@@ -15,32 +15,44 @@
 
       <!-- 空状态 -->
       <div v-else-if="!mindmapData" class="empty-state">
-        <Network :size="32" />
-        <p>暂无思维导图</p>
-        <a-button type="primary" size="small" @click="generateMindmap">
-          <template #icon><Sparkles :size="14" /></template>
-          生成思维导图
-        </a-button>
+        <div class="empty-icon">
+          <MapIcon :size="24" />
+        </div>
+        <p class="empty-title">暂无思维导图</p>
+        <p class="empty-description">从当前知识库内容生成结构化导图。</p>
+        <button
+          type="button"
+          class="lucide-icon-btn mindmap-primary-action"
+          @click="generateMindmap"
+        >
+          <Sparkles :size="14" />
+          <span>生成思维导图</span>
+        </button>
       </div>
 
       <!-- 思维导图显示 -->
       <div v-else class="mindmap-container">
         <div class="mindmap-toolbar">
           <a-space :size="8">
-            <a-button
-              type="text"
-              size="small"
+            <button
+              type="button"
+              class="lucide-icon-btn mindmap-toolbar-btn"
+              :disabled="generating"
               @click="refreshMindmap"
-              :loading="generating"
               title="重新生成"
             >
-              <template #icon><RefreshCw :size="14" /></template>
+              <RefreshCw :size="14" :class="{ spin: generating }" />
               <span class="toolbar-text">重新生成</span>
-            </a-button>
-            <a-button type="text" size="small" @click="fitView" title="适应视图">
-              <template #icon><Maximize2 :size="14" /></template>
+            </button>
+            <button
+              type="button"
+              class="lucide-icon-btn mindmap-toolbar-btn"
+              @click="fitView"
+              title="适应视图"
+            >
+              <Maximize2 :size="14" />
               <span class="toolbar-text">适应视图</span>
-            </a-button>
+            </button>
           </a-space>
         </div>
         <div class="mindmap-svg-container">
@@ -54,13 +66,13 @@
 <script setup>
 import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { RefreshCw, Network, Sparkles, Maximize2 } from 'lucide-vue-next'
-import { mindmapApi } from '@/apis/mindmap_api'
+import { RefreshCw, Map as MapIcon, Sparkles, Maximize2 } from 'lucide-vue-next'
+import { mindmapApi } from '@/apis/knowledge_api'
 import { Markmap } from 'markmap-view'
 import { Transformer } from 'markmap-lib'
 
 const props = defineProps({
-  databaseId: {
+  kbId: {
     type: String,
     required: true
   }
@@ -84,19 +96,26 @@ let markmapInstance = null
  * 加载思维导图
  */
 const loadMindmap = async () => {
-  if (!props.databaseId) return
+  if (!props.kbId) return
 
   try {
     loading.value = true
-    const response = await mindmapApi.getByDatabase(props.databaseId)
+    const response = await mindmapApi.getByDatabase(props.kbId)
 
-    if (response.mindmap) {
-      mindmapData.value = response.mindmap
+    const mindmap = response.mindmap || null
+    mindmapData.value = mindmap
+
+    if (markmapInstance) {
+      markmapInstance.destroy()
+      markmapInstance = null
+    }
+
+    if (mindmap) {
       await nextTick()
 
       // 延迟渲染，确保DOM完全更新
       setTimeout(() => {
-        renderMindmap(response.mindmap)
+        renderMindmap(mindmap)
       }, 100)
     }
   } catch (error) {
@@ -121,13 +140,13 @@ const loadMindmap = async () => {
  * 生成思维导图
  */
 const generateMindmap = async () => {
-  if (!props.databaseId) return
+  if (!props.kbId) return
 
   try {
     generating.value = true
 
     const response = await mindmapApi.generateMindmap(
-      props.databaseId,
+      props.kbId,
       [], // 使用所有文件
       '' // 无自定义提示
     )
@@ -257,7 +276,7 @@ defineExpose({
 
 // 监听数据库ID变化
 watch(
-  () => props.databaseId,
+  () => props.kbId,
   (newId) => {
     if (newId) {
       loadMindmap()
@@ -302,9 +321,11 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   background: var(--gray-0);
-  border-top: 1px solid var(--border-color);
+  border: 1px solid var(--gray-150);
+  border-radius: 8px;
   height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 
 .section-content {
@@ -323,17 +344,68 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 24px;
-  color: var(--text-secondary);
+  gap: 10px;
+  padding: 28px;
+  color: var(--gray-500);
   font-size: 13px;
-
-  svg {
-    color: var(--text-tertiary);
-  }
+  text-align: center;
 
   p {
     margin: 0;
+  }
+}
+
+.empty-icon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--gray-150);
+  border-radius: 12px;
+  background: var(--main-30);
+  color: var(--main-color);
+}
+
+.empty-title {
+  margin-top: 2px;
+  color: var(--gray-900);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.empty-description {
+  max-width: 280px;
+  color: var(--gray-500);
+  line-height: 1.5;
+}
+
+.mindmap-primary-action {
+  min-height: 32px;
+  margin-top: 4px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--main-600);
+  color: var(--main-0);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  appearance: none;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
+
+  &:hover,
+  &:focus-visible {
+    background: var(--main-700);
+    color: var(--main-0);
+    outline: none;
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px var(--main-200);
   }
 }
 
@@ -346,9 +418,9 @@ onUnmounted(() => {
 }
 
 .mindmap-toolbar {
-  padding: 8px 16px;
+  padding: 8px 12px;
   background: var(--gray-0);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--gray-150);
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -357,14 +429,53 @@ onUnmounted(() => {
     margin-left: 4px;
     font-size: 13px;
   }
+}
 
-  :deep(.ant-btn-text) {
-    display: flex;
-    align-items: center;
+.mindmap-toolbar-btn {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--gray-600);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  appearance: none;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
 
-    &:hover {
-      background: rgba(0, 0, 0, 0.04);
-    }
+  &:hover,
+  &:focus-visible {
+    background: var(--gray-50);
+    color: var(--main-color);
+    outline: none;
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px var(--main-100);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  &:disabled:hover {
+    background: transparent;
+    color: var(--gray-600);
+  }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 

@@ -23,7 +23,7 @@ x-api-worker-env: &api-worker-env
   SANDBOX_VIRTUAL_PATH_PREFIX: ${SANDBOX_VIRTUAL_PATH_PREFIX:-/home/gem/user-data}
   SANDBOX_EXEC_TIMEOUT_SECONDS: ${SANDBOX_EXEC_TIMEOUT_SECONDS:-180}
   SANDBOX_MAX_OUTPUT_BYTES: ${SANDBOX_MAX_OUTPUT_BYTES:-262144}
-  # LightRAG
+  # Model request timeouts
   EMBEDDING_TIMEOUT: ${EMBEDDING_TIMEOUT:-600}
   LLM_TIMEOUT: ${LLM_TIMEOUT:-600}
   # Agent run
@@ -44,12 +44,12 @@ services:
     volumes:
       - ./backend/server:/app/server
       - ./backend/package:/app/package
-      - ./saves:/app/saves
+      - ./docker/volumes/yuxi:/app/saves
+      - ./docker/volumes/models:/app/models
       - ./backend/test:/app/test
       - ./backend/scripts:/app/scripts
       - ./docker/sandbox_provisioner:/app/docker/sandbox_provisioner:ro
       - ./.env:/app/.env
-      - ${MODEL_DIR:-./models}:/models  # 使用默认值处理未定义的环境变量
       - /var/run/docker.sock:/var/run/docker.sock
       - nltk_data:/root/nltk_data  # 使用命名卷持久化NLTK数据，避免路径展开差异
     ports:
@@ -92,14 +92,14 @@ services:
     volumes:
       - ./backend/server:/app/server
       - ./backend/package:/app/package
-      - ./saves:/app/saves
+      - ./docker/volumes/yuxi:/app/saves
+      - ./docker/volumes/models:/app/models
       - ./backend/test:/app/test
       - ./backend/scripts:/app/scripts
       - ./docker/sandbox_provisioner:/app/docker/sandbox_provisioner:ro
       - ./.env:/app/.env
       - ./backend/pyproject.toml:/app/pyproject.toml
       - ./backend/uv.lock:/app/uv.lock
-      - ${MODEL_DIR:-./models}:/models
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - app-network
@@ -129,7 +129,7 @@ services:
     image: momai-sandbox-provisioner:0.6.1
     container_name: momai-sandbox-provisioner
     volumes:
-      - ./saves:/app/saves
+      - ./docker/volumes/yuxi:/app/saves
       - ./docker/sandbox_provisioner/app.py:/app/app.py:ro
       - ./docker/sandbox_provisioner/sandbox.env:/app/sandbox.env:ro
       - /var/run/docker.sock:/var/run/docker.sock

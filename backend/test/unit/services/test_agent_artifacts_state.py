@@ -4,13 +4,14 @@ from yuxi.agents.backends.sandbox import (
     sandbox_outputs_dir,
     sandbox_uploads_dir,
 )
+from yuxi.agents.buildin.chatbot.state import merge_subagent_runs
 from yuxi.agents.state import merge_artifacts
 from yuxi.agents.toolkits.buildin.tools import _normalize_presented_artifact_path
 from yuxi.services.chat_service import extract_agent_state
 
 
-def _runtime_with_thread(thread_id: str, user_id: str = "user-1"):
-    context = type("RuntimeContext", (), {"thread_id": thread_id, "user_id": user_id})()
+def _runtime_with_thread(thread_id: str, uid: str = "user-1"):
+    context = type("RuntimeContext", (), {"thread_id": thread_id, "uid": uid})()
     return type("RuntimeStub", (), {"context": context})()
 
 
@@ -22,6 +23,20 @@ def test_merge_artifacts_deduplicates_and_preserves_order():
         "/home/gem/user-data/outputs/a.md",
         "/home/gem/user-data/outputs/b.md",
     ]
+
+
+def test_merge_subagent_runs_updates_existing_run_by_id():
+    assert merge_subagent_runs(
+        [{"id": "run-1", "status": "completed", "result_preview": "old"}],
+        [
+            {"id": "run-1", "status": "failed", "error": "boom"},
+            {"id": "run-2", "status": "completed"},
+        ],
+    ) == [
+        {"id": "run-1", "status": "failed", "result_preview": "old", "error": "boom"},
+        {"id": "run-2", "status": "completed"},
+    ]
+
 
 
 def test_normalize_presented_artifact_path_accepts_host_path():
@@ -69,9 +84,11 @@ def test_extract_agent_state_includes_artifacts():
             "todos": [{"content": "done", "status": "completed"}],
             "files": {"/tmp/demo.txt": {"content": ["x"]}},
             "artifacts": ["/home/gem/user-data/outputs/demo.txt"],
+            "subagent_runs": [{"id": "tool-1", "status": "completed"}],
         }
     )
 
     assert state["todos"] == [{"content": "done", "status": "completed"}]
     assert state["files"] == {"/tmp/demo.txt": {"content": ["x"]}}
     assert state["artifacts"] == ["/home/gem/user-data/outputs/demo.txt"]
+    assert state["subagent_runs"] == [{"id": "tool-1", "status": "completed"}]

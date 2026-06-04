@@ -22,6 +22,13 @@ _SKILLS_ROOT = Path(__file__).resolve().parent
 
 BUILTIN_SKILLS: list[BuiltinSkillSpec] = [
     BuiltinSkillSpec(
+        slug="image-gen",
+        source_dir=_SKILLS_ROOT / "image-gen",
+        description="在 Agent 沙盒中生成图片并保存到 outputs，默认支持 Qwen-Image，也可接入其它图片生成接口。",
+        version="2026.06.02",
+        tool_dependencies=("present_artifacts",),
+    ),
+    BuiltinSkillSpec(
         slug="deep-reporter",
         source_dir=_SKILLS_ROOT / "deep-reporter",
         description="指导生成科研报告、行业调研和其他需要深度分析的结构化长报告。",

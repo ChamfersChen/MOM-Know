@@ -77,7 +77,8 @@ my-awesome-skill/
 
 ```markdown
 ---
-name: my-awesome-skill
+name: My Awesome Skill
+slug: my-awesome-skill
 description: 这是一个用于处理特定任务的技能
 ---
 
@@ -99,7 +100,8 @@ description: 这是一个用于处理特定任务的技能
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
-| `name` | 是 | Skill 名称，必须是小写字母、数字、短横线的组合（如 `my-skill`） |
+| `name` | 是 | Skill 展示名称，可使用更易读的名称（如 `Word / DOCX`） |
+| `slug` | 否 | Skill 唯一标识，必须是小写字母、数字、短横线的组合，且不能连续短横线（如 `my-skill`）。未填写时兼容旧格式，系统会使用 `name` 作为 slug，此时 `name` 也必须满足 slug 规则 |
 | `description` | 是 | Skill 的功能描述，会在 Agent 配置时展示 |
 
 ### 导入 Skill
@@ -160,15 +162,15 @@ Skills 之间可以建立依赖关系，形成一个松耦合的技能网络。
 **阶段一：会话启动**
 
 当 Agent 会话启动时，系统会：
-1. 读取 Agent 配置中的 `context.skills` 列表
-2. 递归展开 `skill_dependencies`，构建完整的可见技能集（`visible_skills`）
-3. 将可见技能列表注入到系统提示词中
+1. 在创建 Graph 前读取已过滤的 `context.skills` 列表
+2. 递归展开 `skill_dependencies`，派生 `_prompt_skills` 和 `_readable_skills`
+3. 将 `_prompt_skills` 对应的技能说明注入到系统提示词中
 
-这意味着：只要配置了某个 Skill，它的依赖 Skill 就会立即对 Agent 可见。
+这意味着：只要配置了某个 Skill，它的依赖 Skill 就会立即进入提示词和沙盒 `/home/gem/skills` 只读范围。
 
 **阶段二：技能激活**
 
-当 Agent 通过 `read_file` 工具读取 `/skills/<slug>/SKILL.md` 时，视为"激活"该技能。系统会：
+当 Agent 通过 `read_file` 工具读取 `/home/gem/skills/<slug>/SKILL.md` 时，视为"激活"该技能。系统会：
 1. 验证该技能在可见列表中
 2. 将其添加到 `activated_skills` 列表
 3. 后续的模型调用会使用激活列表来加载依赖
@@ -191,8 +193,8 @@ Skills 之间可以建立依赖关系，形成一个松耦合的技能网络。
 - **pro-skill**：依赖 `advanced-skill`
 
 当在 Agent 配置中只选择 `pro-skill` 时：
-1. 启动阶段：`visible_skills` = [`pro-skill`, `advanced-skill`, `base-skill`]（自动展开依赖链）
-2. Agent 首次调用任何 skill 时：所有三个 Skill 都可见
+1. 启动阶段：`_readable_skills` = [`pro-skill`, `advanced-skill`, `base-skill`]（自动展开依赖链）
+2. Agent 首次调用任何 skill 时：所有三个 Skill 都可读
 3. 当 Agent 读取 `pro-skill/SKILL.md` 时：触发激活，工具和 MCP 依赖被加载
 
 ## 权限管理
@@ -211,13 +213,13 @@ Skills 管理采用基于角色的权限控制：
 
 ### Agent 如何使用 Skills
 
-1. **提示词注入**：系统会在 Agent 的系统提示词开头自动插入可用 Skills 的描述
-2. **文件访问**：Skills 目录以只读方式挂载到 `/skills/<slug>/...`
+1. **提示词注入**：系统在每次模型请求时动态注入可用 Skills 的描述（请求级注入，避免污染 runtime context）
+2. **文件访问**：Skills 目录以只读方式挂载到 `/home/gem/skills/<slug>/...`
 3. **工具调用**：当 Agent 需要使用某个 Skill 时，会先读取对应的 SKILL.md 了解使用方法
 
 ### 文件操作限制
 
-运行时 `/skills` 路径有以下限制：
+运行时 `/home/gem/skills` 路径有以下限制：
 - **只读**：Agent 只能读取文件内容
 - **禁止写入**：不能创建、修改或删除文件
 - **路径安全**：所有路径都经过安全校验，防止目录穿越攻击
@@ -237,9 +239,10 @@ Skills 管理采用基于角色的权限控制：
 
 ### Skill 命名规范
 
-- 使用小写字母、数字和短横线
-- 具有描述性，如 `weather-query`、`sql-reporter`
-- 避免过长的名称
+- `slug` 使用小写字母、数字和短横线，不能连续短横线
+- `slug` 应具有描述性，如 `weather-query`、`sql-reporter`
+- `name` 用于展示，可比 `slug` 更自然，例如 `Word / DOCX`
+- 避免过长的 `name` 和 `slug`
 
 ### 依赖管理建议
 

@@ -5,7 +5,14 @@
   >
     <img :src="`data:image/jpeg;base64,${message.image_content}`" alt="用户上传的图片" />
   </div>
-  <div class="message-box" :class="[message.type, customClasses]">
+  <div
+    class="message-box"
+    :class="[
+      message.type,
+      customClasses,
+      { 'has-attachments': message.type === 'human' && messageAttachments.length }
+    ]"
+  >
     <!-- 用户消息 -->
     <div
       v-if="message.type === 'human'"
@@ -16,7 +23,9 @@
       <Check v-if="isCopied" size="14" />
       <Copy v-else size="14" />
     </div>
-    <p v-if="message.type === 'human'" class="message-text">{{ message.content }}</p>
+    <p v-if="message.type === 'human'" class="message-text">
+      <MentionTextRenderer :content="message.content" :display-labels="mentionDisplayLabels" />
+    </p>
 
     <p v-else-if="message.type === 'system'" class="message-text-system">{{ message.content }}</p>
 
@@ -94,6 +103,35 @@
     <!-- 自定义内容 -->
     <slot></slot>
   </div>
+
+  <div
+    v-if="message.type === 'human' && messageAttachments.length"
+    class="human-message-attachments"
+  >
+    <div
+      v-for="attachment in imageAttachments"
+      :key="attachment.fileId"
+      class="message-attachment-image"
+    >
+      <img :src="attachment.previewUrl" :alt="attachment.name" class="message-attachment-thumb" />
+    </div>
+
+    <div
+      v-for="attachment in fileAttachments"
+      :key="attachment.fileId"
+      class="message-attachment-file"
+    >
+      <div class="message-attachment-icon" :style="{ color: attachment.iconColor }">
+        <component :is="attachment.icon" />
+      </div>
+      <div class="message-attachment-body">
+        <div class="message-attachment-name" :title="attachment.name">
+          {{ attachment.name }}
+        </div>
+        <div class="message-attachment-meta">{{ attachment.meta }}</div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -103,10 +141,14 @@ import RefsComponent from '@/components/RefsComponent.vue'
 import { Copy, Check } from 'lucide-vue-next'
 import ToolCallsGroupComponent from '@/components/ToolCallsGroupComponent.vue'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
+import MentionTextRenderer from '@/components/common/MentionTextRenderer.vue'
 import { useAgentStore } from '@/stores/agent'
 import { useInfoStore } from '@/stores/info'
 import { storeToRefs } from 'pinia'
 import { MessageProcessor } from '@/utils/messageProcessor'
+import { normalizeAttachmentPreviews } from '@/utils/file_utils'
+import { buildMentionDisplayLabels } from '@/utils/mention_utils'
+import { enrichTaskToolCalls } from '@/components/ToolCallingResult/toolRegistry'
 
 const props = defineProps({
   // 消息角色：'user'|'assistant'|'sent'|'received'
@@ -137,6 +179,10 @@ const props = defineProps({
   hideToolCalls: {
     type: Boolean,
     default: false
+  },
+  mention: {
+    type: Object,
+    default: () => null
   },
   // 是否显示调试信息 (已废弃，使用 infoStore.debugMode)
   debugMode: {
@@ -216,7 +262,19 @@ const getErrorMessage = computed(() => {
 const agentStore = useAgentStore()
 const { availableKnowledgeBases } = storeToRefs(agentStore)
 const infoStore = useInfoStore()
-// 提取消息来源
+const messageAttachments = computed(() =>
+  normalizeAttachmentPreviews(props.message.extra_metadata?.attachments)
+)
+
+const imageAttachments = computed(() =>
+  messageAttachments.value.filter((attachment) => attachment.isImage && attachment.previewUrl)
+)
+const fileAttachments = computed(() =>
+  messageAttachments.value.filter((attachment) => !attachment.isImage || !attachment.previewUrl)
+)
+
+const mentionDisplayLabels = computed(() => buildMentionDisplayLabels(props.mention || {}))
+
 const messageSources = computed(() => {
   if (props.message.type === 'ai') {
     return MessageProcessor.extractSourcesFromMessage(props.message, availableKnowledgeBases.value)
@@ -224,50 +282,13 @@ const messageSources = computed(() => {
   return { knowledgeChunks: [], webSources: [] }
 })
 
-// 过滤有效的工具调用
-const validToolCalls = computed(() => {
-  if (!props.message.tool_calls || !Array.isArray(props.message.tool_calls)) {
-    return []
-  }
-
-  return props.message.tool_calls.filter((toolCall) => {
-    // 过滤掉无效的工具调用
-    return (
-      toolCall &&
-      (toolCall.id || toolCall.name || toolCall.function?.name) &&
-      (toolCall.args !== undefined ||
-        toolCall.function?.arguments !== undefined ||
-        toolCall.tool_call_result !== undefined)
-    )
-  })
-})
+const validToolCalls = computed(() => enrichTaskToolCalls(props.message.tool_calls))
 
 const parsedData = computed(() => {
-  // Start with default values from the prop to avoid mutation.
-  let content = props.message.content.trim() || ''
-  let reasoning_content = props.message.additional_kwargs?.reasoning_content || ''
-
-  if (reasoning_content) {
-    return {
-      content,
-      reasoning_content
-    }
-  }
-
-  // Regex to find <think>...</think> or an unclosed <think>... at the end of the string.
-  const thinkRegex = /<think>(.*?)<\/think>|<think>(.*?)$/s
-  const thinkMatch = content.match(thinkRegex)
-
-  if (thinkMatch) {
-    // The captured reasoning is in either group 1 (closed tag) or 2 (unclosed tag).
-    reasoning_content = (thinkMatch[1] || thinkMatch[2] || '').trim()
-    // Remove the entire matched <think> block from the original content.
-    content = content.replace(thinkMatch[0], '').trim()
-  }
-
+  const { content, reasoningContent } = MessageProcessor.parseAssistantMessageBody(props.message)
   return {
     content,
-    reasoning_content
+    reasoning_content: reasoningContent
   }
 })
 </script>
@@ -315,6 +336,11 @@ const parsedData = computed(() => {
     max-width: 100%;
     margin-bottom: 0;
     white-space: pre-line;
+  }
+
+  &.human.has-attachments,
+  &.sent.has-attachments {
+    margin-bottom: 0.375rem;
   }
 
   .message-copy-btn {
@@ -458,6 +484,78 @@ const parsedData = computed(() => {
     max-height: 200px;
     overflow-y: auto;
   }
+}
+
+.human-message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  align-self: flex-end;
+  max-width: 95%;
+  margin-bottom: 0.8rem;
+}
+
+.message-attachment-image {
+  width: 112px;
+  height: 112px;
+  overflow: hidden;
+  border: 1px solid var(--gray-200);
+  border-radius: 0.5rem;
+  background: var(--gray-0);
+}
+
+.message-attachment-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.message-attachment-file {
+  width: 220px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--gray-200);
+  border-radius: 0.625rem;
+  background: var(--gray-0);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.message-attachment-icon {
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 0.5rem;
+  color: var(--main-color);
+  background: var(--main-50);
+}
+
+.message-attachment-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.message-attachment-name {
+  overflow: hidden;
+  color: var(--gray-900);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-attachment-meta {
+  margin-top: 0.125rem;
+  color: var(--gray-500);
+  font-size: 0.75rem;
+  line-height: 1rem;
 }
 
 .retry-hint {

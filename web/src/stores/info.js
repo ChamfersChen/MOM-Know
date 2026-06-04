@@ -49,10 +49,6 @@ export const useInfoStore = defineStore('info', () => {
     isLoaded.value = true
   }
 
-  function setDebugMode(enabled) {
-    debugMode.value = enabled
-  }
-
   function toggleDebugMode() {
     debugMode.value = !debugMode.value
   }
@@ -83,27 +79,6 @@ export const useInfoStore = defineStore('info', () => {
     }
   }
 
-  async function reloadInfoConfig() {
-    try {
-      isLoading.value = true
-      const response = await brandApi.reloadInfoConfig()
-
-      if (response.success && response.data) {
-        setInfoConfig(response.data)
-        console.debug('信息配置重新加载成功:', response.data)
-        return response.data
-      } else {
-        console.warn('信息配置重新加载失败')
-        return null
-      }
-    } catch (error) {
-      console.error('重新加载信息配置时发生错误:', error)
-      return null
-    } finally {
-      isLoading.value = false
-    }
-  }
-
   return {
     // 状态
     infoConfig,
@@ -119,10 +94,7 @@ export const useInfoStore = defineStore('info', () => {
     actions,
 
     // 方法
-    setInfoConfig,
-    setDebugMode,
     toggleDebugMode,
-    loadInfoConfig,
-    reloadInfoConfig
+    loadInfoConfig
   }
 })

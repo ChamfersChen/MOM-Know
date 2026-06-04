@@ -41,9 +41,10 @@ from yuxi.agents.toolkits import buildin, mysql  # 触发 @tool 装饰器执行
 |------|------|
 | `calculator` | 计算器，支持加减乘除 |
 | `ask_user_question` | 向用户发起交互式提问 |
-| `query_knowledge_graph` | 查询知识图谱三元组 |
-| `text_to_img_qwen_image` | 使用 Qwen-Image 生成图片 |
+| `present_artifacts` | 展示 Agent 沙盒 outputs 目录下的产物文件 |
 | `tavily_search` | Tavily 网页搜索（需配置 `TAVILY_API_KEY`） |
+
+Qwen-Image 生成能力已迁移为内置 Skill `image-gen`。模型调用与图片下载在 Agent 沙盒中完成，生成后的图片保存到 `/home/gem/user-data/outputs/`，再通过 `present_artifacts` 展示。
 
 ### MySQL 工具 (mysql)
 
@@ -61,14 +62,16 @@ from yuxi.agents.toolkits import buildin, mysql  # 触发 @tool 装饰器执行
 from yuxi.agents.toolkits.kbs import get_common_kb_tools
 
 kb_tools = get_common_kb_tools()
-# 返回: [list_kbs, get_mindmap, query_kb]
+# 返回: [list_kbs, get_mindmap, query_kb, find_kb_document, open_kb_document]
 ```
 
 | 工具 | 说明 |
 |------|------|
 | `list_kbs` | 列出用户可访问的知识库 |
 | `get_mindmap` | 获取知识库的思维导图结构 |
-| `query_kb` | 在指定知识库中检索内容 |
+| `query_kb` | 在指定知识库中检索内容，返回结构化的 `resource_id`（即 `kb_id`）/`file_id`/`chunk` |
+| `find_kb_document` | 在已知文件内按关键词或正则定位内容 |
+| `open_kb_document` | 按 `file_id` 分段打开知识库文档（默认窗口 1800 行） |
 
 ## 工具组装
 
@@ -98,6 +101,6 @@ async def get_tools_from_context(self, context) -> list:
 
 ## Skills 集成
 
-Skills 与工具是两种不同的扩展机制。工具是具体的功能实现，而 Skills 是包含提示词、工具依赖和元数据的完整技能包。通过 `context.skills` 配置 Skills 时，对应的技能文件会被挂载到 `/skills/<slug>/...`，智能体可以通过读取 SKILL.md 来了解如何使用这些技能。
+Skills 与工具是两种不同的扩展机制。工具是具体的功能实现，而 Skills 是包含提示词、工具依赖和元数据的完整技能包。通过 `context.skills` 配置 Skills 时，对应的技能文件会被挂载到沙盒的 `/home/gem/skills/<slug>/...`，智能体可以通过读取 SKILL.md 来了解如何使用这些技能。
 
 关于 Skills 的详细机制，请参阅 [Skills 管理](./skills-management.md)。

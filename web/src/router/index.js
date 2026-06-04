@@ -65,38 +65,6 @@ const router = createRouter({
       ]
     },
     {
-      path: '/graph',
-      name: 'graph',
-      component: AppLayout,
-      children: [
-        {
-          path: '',
-          name: 'GraphComp',
-          component: () => import('../views/GraphView.vue'),
-          meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
-        }
-      ]
-    },
-    {
-      path: '/database',
-      name: 'database',
-      component: AppLayout,
-      children: [
-        {
-          path: '',
-          name: 'DatabaseComp',
-          component: () => import('../views/DataBaseView.vue'),
-          meta: { keepAlive: true, requiresAuth: true, requiresAdmin: true }
-        },
-        {
-          path: ':database_id',
-          name: 'DatabaseInfoComp',
-          component: () => import('../views/DataBaseInfoView.vue'),
-          meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
-        }
-      ]
-    },
-    {
       path: '/sqldatabase',
       name: 'SqlDatabase',
       component: AppLayout,
@@ -141,15 +109,15 @@ const router = createRouter({
       ]
     },
     {
-      path: '/model-config',
-      name: 'model-config',
+      path: '/model-manage',
+      name: 'model-manage',
       component: AppLayout,
       children: [
         {
           path: '',
-          name: 'ModelConfigComp',
-          component: () => import('../views/ModelConfigView.vue'),
-          meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
+          name: 'ModelManageComp',
+          component: () => import('../views/ModelManageView.vue'),
+          meta: { keepAlive: false, requiresAuth: true }
         }
       ]
     },
@@ -164,46 +132,41 @@ const router = createRouter({
           component: () => import('../views/ExtensionsView.vue'),
           meta: {
             keepAlive: false,
-            requiresAuth: true,
-            requiresAdmin: true
-          }
-        },
-        {
-          path: 'mcp/:name',
-          name: 'ExtensionMcpDetail',
-          component: () => import('../components/extensions/McpDetailView.vue'),
-          meta: {
-            keepAlive: false,
-            requiresAuth: true,
-            requiresAdmin: true
-          }
-        },
-        {
-          path: 'subagent/:name',
-          name: 'ExtensionSubagentDetail',
-          component: () => import('../components/extensions/SubagentDetailView.vue'),
-          meta: {
-            keepAlive: false,
-            requiresAuth: true,
-            requiresAdmin: true
-          }
-        },
-        {
-          path: 'skill/:slug',
-          name: 'ExtensionSkillDetail',
-          component: () => import('../components/extensions/SkillDetailView.vue'),
-          meta: {
-            keepAlive: false,
-            requiresAuth: true,
-            requiresAdmin: true
-          }
+            requiresAuth: true
+          },
+          children: [
+            {
+              path: 'knowledgebase/:kbId',
+              name: 'ExtensionKnowledgeBaseDetail',
+              component: () => import('../views/DataBaseInfoView.vue'),
+              meta: {
+                keepAlive: false,
+                requiresAuth: true,
+                requiresAdmin: true
+              }
+            },
+            {
+              path: 'mcp/:slug',
+              name: 'ExtensionMcpDetail',
+              component: () => import('../components/extensions/McpDetailView.vue'),
+              meta: {
+                keepAlive: false,
+                requiresAuth: true,
+                requiresAdmin: true
+              }
+            },
+            {
+              path: 'skill/:slug',
+              name: 'ExtensionSkillDetail',
+              component: () => import('../components/extensions/SkillDetailView.vue'),
+              meta: {
+                keepAlive: false,
+                requiresAuth: true
+              }
+            }
+          ]
         }
       ]
-    },
-    {
-      path: '/skills',
-      name: 'skills',
-      redirect: '/extensions'
     },
     {
       path: '/:pathMatch(.*)*',

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from yuxi.services.tool_service import get_tool_metadata
+from yuxi.agents.toolkits.service import get_tool_metadata
 from server.utils.auth_middleware import get_admin_user
 from yuxi.storage.postgres.models_business import User
 
@@ -21,5 +21,5 @@ async def get_tool_options(
     user: User = Depends(get_admin_user),
 ):
     """获取工具选项（前端下拉框用）"""
-    all_tools = get_tool_metadata(user=user)
-    return {"success": True, "data": [{"label": t["name"], "value": t["id"]} for t in all_tools]}
+    all_tools = get_tool_metadata()
+    return {"success": True, "data": [{"label": t["name"], "value": t["slug"]} for t in all_tools]}

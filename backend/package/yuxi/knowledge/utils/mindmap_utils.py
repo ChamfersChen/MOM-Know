@@ -4,6 +4,13 @@ import json
 import textwrap
 from typing import Any
 
+from fastapi import HTTPException
+
+from yuxi import config, knowledge_base
+from yuxi.models import select_model
+from yuxi.repositories.knowledge_base_repository import KnowledgeBaseRepository
+from yuxi.utils import logger
+
 MINDMAP_SYSTEM_PROMPT = """你是一个专业的知识整理助手。
 
 你的任务是分析用户提供的文件列表，生成一个层次分明的思维导图结构。
@@ -114,3 +121,115 @@ def parse_mindmap_content(content: str) -> dict[str, Any]:
     if not isinstance(mindmap_data, dict) or "content" not in mindmap_data:
         raise ValueError("思维导图结构不正确")
     return mindmap_data
+
+
+async def get_mindmap_database_files(kb_id: str) -> dict[str, Any]:
+    db_info = await knowledge_base.get_database_info(kb_id)
+    if not db_info:
+        raise HTTPException(status_code=404, detail=f"知识库 {kb_id} 不存在")
+
+    file_list = build_database_file_list(db_info.get("files", {}))
+    return {
+        "message": "success",
+        "kb_id": kb_id,
+        "slug": kb_id,
+        "db_name": db_info.get("name", ""),
+        "files": file_list,
+        "total": len(file_list),
+    }
+
+
+async def generate_database_mindmap(
+    kb_id: str, file_ids: list[str] | None = None, user_prompt: str = ""
+) -> dict[str, Any]:
+    db_info = await knowledge_base.get_database_info(kb_id)
+    if not db_info:
+        raise HTTPException(status_code=404, detail=f"知识库 {kb_id} 不存在")
+
+    db_name = db_info.get("name", "知识库")
+    all_files = db_info.get("files", {})
+    selected_file_ids = list(file_ids or all_files.keys())
+    if not selected_file_ids:
+        raise HTTPException(status_code=400, detail="知识库中没有文件")
+
+    original_count = len(selected_file_ids)
+    if len(selected_file_ids) > 20:
+        selected_file_ids = selected_file_ids[:20]
+        logger.info(f"文件数量超过限制，已从{original_count}个文件中选择前20个文件生成思维导图")
+
+    files_info = collect_mindmap_files(all_files, selected_file_ids)
+    if not files_info:
+        raise HTTPException(status_code=400, detail="选择的文件不存在")
+
+    logger.info(f"开始生成思维导图，知识库: {db_name}, 文件数量: {len(files_info)}")
+
+    model = select_model(model_spec=config.default_model)
+    messages = [
+        {"role": "system", "content": MINDMAP_SYSTEM_PROMPT},
+        {"role": "user", "content": build_mindmap_user_message(db_name, files_info, user_prompt)},
+    ]
+    response = await model.call(messages, stream=False)
+    content = response.content if hasattr(response, "content") else str(response)
+
+    try:
+        mindmap_data = parse_mindmap_content(content)
+    except ValueError as e:
+        logger.error(f"AI返回的JSON解析失败: {e}, 原始内容: {content}")
+        raise HTTPException(status_code=500, detail=f"AI返回格式错误: {str(e)}") from e
+
+    logger.info("思维导图生成成功")
+
+    try:
+        await KnowledgeBaseRepository().update(kb_id, {"mindmap": mindmap_data})
+        logger.info(f"思维导图已保存到知识库: {kb_id}")
+    except Exception as save_error:
+        logger.error(f"保存思维导图失败: {save_error}")
+
+    return {
+        "message": "success",
+        "mindmap": mindmap_data,
+        "kb_id": kb_id,
+        "slug": kb_id,
+        "db_name": db_name,
+        "file_count": len(files_info),
+        "original_file_count": original_count,
+        "truncated": len(files_info) < original_count,
+    }
+
+
+async def get_mindmap_databases_overview(uid: str) -> dict[str, Any]:
+    databases = await knowledge_base.get_databases_by_uid(uid)
+    db_list = []
+    for db_info in databases.get("databases", []):
+        kb_id = db_info.get("kb_id") or db_info.get("slug")
+        if not kb_id:
+            continue
+
+        detail_info = await knowledge_base.get_database_info(kb_id)
+        file_count = len(detail_info.get("files", {})) if detail_info else 0
+        db_list.append(
+            {
+                "kb_id": kb_id,
+                "slug": kb_id,
+                "name": db_info.get("name", ""),
+                "description": db_info.get("description", ""),
+                "kb_type": db_info.get("kb_type", ""),
+                "file_count": file_count,
+            }
+        )
+
+    return {"message": "success", "databases": db_list, "total": len(db_list)}
+
+
+async def get_database_mindmap_data(kb_id: str) -> dict[str, Any]:
+    kb = await KnowledgeBaseRepository().get_by_kb_id(kb_id)
+    if kb is None:
+        raise HTTPException(status_code=404, detail=f"知识库 {kb_id} 不存在")
+
+    return {
+        "message": "success",
+        "mindmap": kb.mindmap,
+        "kb_id": kb_id,
+        "slug": kb_id,
+        "db_name": kb.name,
+    }

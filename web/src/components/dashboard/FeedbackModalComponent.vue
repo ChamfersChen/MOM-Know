@@ -19,7 +19,7 @@
         <!-- 卡片头部：用户信息和反馈类型 -->
         <div class="card-header">
           <div class="user-info">
-            <a-avatar :src="feedback.avatar" :size="32" class="user-avatar">
+            <a-avatar :src="getFeedbackAvatarSrc(feedback)" :size="32" class="user-avatar">
               {{ feedback.username ? feedback.username.charAt(0).toUpperCase() : 'U' }}
             </a-avatar>
             <div class="user-details">
@@ -116,6 +116,7 @@ import { message } from 'ant-design-vue'
 import { LikeOutlined, DislikeOutlined, ClockCircleOutlined } from '@ant-design/icons-vue'
 import { dashboardApi } from '@/apis/dashboard_api'
 import { formatFullDateTime } from '@/utils/time'
+import { generatePixelAvatar } from '@/utils/pixelAvatar'
 
 // 常量配置
 const CONFIG = {
@@ -210,6 +211,8 @@ const loadFeedbacks = async () => {
     loadingFeedbacks.value = false
   }
 }
+
+const getFeedbackAvatarSrc = (feedback) => feedback.avatar || generatePixelAvatar(feedback.uid)
 
 // 格式化完整日期
 const formatFullDate = (dateString) => formatFullDateTime(dateString)
