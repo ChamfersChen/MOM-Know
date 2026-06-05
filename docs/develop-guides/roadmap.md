@@ -38,6 +38,7 @@
 ### 0.7.0 开发记录
 
 <!-- 0.7.0 的内容请放在这里 -->
+- 修复安全依赖预警：文档站锁定 Vite 6.4.3 并同步 esbuild 0.25.12，前端锁定 yaml 2.8.3；后端升级 aiohttp 与 Starlette 补丁版本，并移除未使用的 python-jose 依赖以消除 ecdsa 无补丁预警。
 - 收敛 MCP 创建与编辑入口：前端移除整段配置文本入口和模式切换器，仅保留表单字段提交；后端 MCP 创建/更新请求拒绝额外配置字段，避免绕过表单约束。
 - 调整内置 MCP 默认项：移除 `sequentialthinking` 的系统内置同步，启动同步时清理历史系统内置记录，保留用户手动创建的同名 MCP。
 - 图片生成能力迁移为 Skill：Qwen-Image 从内置 Python 生成工具迁移到内置 Skill `image-gen`，模型调用与图片下载在 Agent 沙盒中完成，生成结果保存到 outputs 并通过 `present_artifacts` 展示，为多图片生成模型接入复用同一产物展示链路。

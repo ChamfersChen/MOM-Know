@@ -61,14 +61,6 @@ def _normalize_path(path: str | None) -> str:
     return normalized.rstrip("/") if normalized not in {"/", SKILLS_PATH, USER_DATA_PATH} else normalized
 
 
-def _is_path_within(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-    except ValueError:
-        return False
-    return True
-
-
 def _resolve_local_user_data_path(thread_id: str, uid: str, path: str) -> Path:
     try:
         actual_path = resolve_virtual_path(thread_id, path, uid=uid)
@@ -78,11 +70,9 @@ def _resolve_local_user_data_path(thread_id: str, uid: str, path: str) -> Path:
             raise HTTPException(status_code=403, detail="Access denied") from exc
         raise
     resolved_path = actual_path.resolve()
-    allowed_roots = (
-        sandbox_user_data_dir(thread_id).resolve(),
-        sandbox_workspace_dir(thread_id, uid).resolve(),
-    )
-    if not any(_is_path_within(resolved_path, root) for root in allowed_roots):
+    user_data_root = sandbox_user_data_dir(thread_id).resolve()
+    workspace_root = sandbox_workspace_dir(thread_id, uid).resolve()
+    if not (resolved_path.is_relative_to(user_data_root) or resolved_path.is_relative_to(workspace_root)):
         raise HTTPException(status_code=403, detail="Access denied")
     return resolved_path
 
@@ -143,15 +133,18 @@ def _sort_entries(entries: list[dict]) -> list[dict]:
     )
 
 
-def _entry_for_local_path(thread_id: str, uid: str, path: Path) -> dict:
-    stat = path.stat()
-    is_dir = path.is_dir()
-    display_path = virtual_path_for_thread_file(thread_id, path, uid=uid)
+def _entry_for_local_path(thread_id: str, uid: str, path: Path, listing_root: Path) -> dict:
+    resolved_path = path.resolve()
+    if not resolved_path.is_relative_to(listing_root):
+        raise HTTPException(status_code=403, detail="Access denied")
+    stat = resolved_path.stat()
+    is_dir = resolved_path.is_dir()
+    display_path = virtual_path_for_thread_file(thread_id, resolved_path, uid=uid)
     if is_dir and not display_path.endswith("/"):
         display_path = f"{display_path}/"
     return {
         "path": display_path,
-        "name": path.name,
+        "name": resolved_path.name,
         "is_dir": is_dir,
         "size": 0 if is_dir else stat.st_size,
         "modified_at": utc_isoformat_from_timestamp(stat.st_mtime) or "",
@@ -160,9 +153,13 @@ def _entry_for_local_path(thread_id: str, uid: str, path: Path) -> dict:
 
 def _list_local_entries(thread_id: str, uid: str, actual_path) -> list[dict]:
     """List a local directory and remap children back into viewer virtual paths."""
+    listing_root = actual_path.resolve()
     entries: list[dict] = []
-    for child in sorted(actual_path.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower())):
-        entries.append(_entry_for_local_path(thread_id, uid, child))
+    for child in sorted(actual_path.iterdir(), key=lambda item: item.name.lower()):
+        resolved_child = child.resolve()
+        if not resolved_child.is_relative_to(listing_root):
+            continue
+        entries.append(_entry_for_local_path(thread_id, uid, resolved_child, listing_root))
     return entries
 
 

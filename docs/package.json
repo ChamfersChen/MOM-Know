@@ -7,5 +7,10 @@
   "dependencies": {
     "markdown-it-task-checkbox": "^1.0.6",
     "vitepress": "^1.6.4"
+  },
+  "pnpm": {
+    "overrides": {
+      "vitepress>vite": "6.4.3"
+    }
   }
 }

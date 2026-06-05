@@ -17,6 +17,7 @@ from dotenv import dotenv_values
 logger = logging.getLogger(__name__)
 
 SANDBOX_ENV_FILE = Path(__file__).parent / "sandbox.env"
+SAFE_PATH_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def canonical_backend_name(backend: str) -> str:
@@ -190,26 +191,21 @@ class LocalContainerProvisionerBackend:
         return normalized
 
     @staticmethod
-    def _validate_thread_id(thread_id: str) -> str:
-        candidate = str(thread_id or "").strip()
+    def _validate_path_segment(value: str, label: str) -> str:
+        candidate = str(value or "").strip()
         if not candidate:
-            raise ValueError("thread_id is required")
-        if any(ch in candidate for ch in ("/", "\\", "\x00")):
-            raise ValueError("thread_id must be a single safe path segment")
-        if candidate in {".", ".."} or ".." in candidate:
-            raise ValueError("thread_id contains invalid path traversal sequence")
+            raise ValueError(f"{label} is required")
+        if not SAFE_PATH_SEGMENT_RE.fullmatch(candidate):
+            raise ValueError(f"{label} must contain only letters, numbers, '-' or '_'")
         return candidate
 
     @staticmethod
+    def _validate_thread_id(thread_id: str) -> str:
+        return LocalContainerProvisionerBackend._validate_path_segment(thread_id, "thread_id")
+
+    @staticmethod
     def _validate_uid(uid: str) -> str:
-        candidate = str(uid or "").strip()
-        if not candidate:
-            raise ValueError("uid is required")
-        if any(ch in candidate for ch in ("/", "\\", "\x00")):
-            raise ValueError("uid must be a single safe path segment")
-        if ".." in candidate:
-            raise ValueError("uid contains invalid path traversal sequence")
-        return candidate
+        return LocalContainerProvisionerBackend._validate_path_segment(uid, "uid")
 
     @staticmethod
     def _sanitize_id(value: str) -> str:
@@ -394,7 +390,6 @@ class LocalContainerProvisionerBackend:
                 except Exception as exc:
                     logger.warning("Failed to delete stale sandbox %s before recreate: %s", sandbox_id, exc)
 
-            threads_root = Path(self._threads_host_path).resolve()
             shared_workspace = self._shared_workspace_host_path(safe_uid)
             shared_workspace.mkdir(parents=True, exist_ok=True)
             thread_uploads = self._thread_uploads_host_path(safe_file_thread_id)
@@ -703,7 +698,12 @@ class KubernetesProvisionerBackend:
             return False
         if str(annotations.get("skills-thread-id") or annotations.get("thread-id") or "").strip() != skills_thread_id:
             return False
-        return self._pod_has_expected_mounts(pod, file_thread_id=file_thread_id, skills_thread_id=skills_thread_id, uid=uid)
+        return self._pod_has_expected_mounts(
+            pod,
+            file_thread_id=file_thread_id,
+            skills_thread_id=skills_thread_id,
+            uid=uid,
+        )
 
     def create(
         self,
@@ -720,7 +720,9 @@ class KubernetesProvisionerBackend:
         with self._lock:
             safe_thread_id = LocalContainerProvisionerBackend._validate_thread_id(thread_id)
             safe_file_thread_id = LocalContainerProvisionerBackend._validate_thread_id(file_thread_id or safe_thread_id)
-            safe_skills_thread_id = LocalContainerProvisionerBackend._validate_thread_id(skills_thread_id or safe_thread_id)
+            safe_skills_thread_id = LocalContainerProvisionerBackend._validate_thread_id(
+                skills_thread_id or safe_thread_id
+            )
             safe_uid = LocalContainerProvisionerBackend._validate_uid(uid)
             discovered = self.discover(sandbox_id)
             if discovered is not None:

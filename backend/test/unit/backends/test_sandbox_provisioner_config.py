@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 
 MODULE_NAME = "sandbox_provisioner_app_for_test"
 
@@ -62,6 +64,23 @@ def test_normalize_env_converts_values_to_strings(monkeypatch):
     module = _load_module()
 
     assert module.normalize_env({"A": 1, "B": None, "": "ignored"}) == {"A": "1", "B": ""}
+
+
+def test_local_container_identity_validation_rejects_unsafe_path_segments(monkeypatch):
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    module = _load_module()
+    backend_cls = module.LocalContainerProvisionerBackend
+
+    assert backend_cls._validate_thread_id("thread-1_2") == "thread-1_2"
+    assert backend_cls._validate_uid("user-1_2") == "user-1_2"
+
+    for value in ["../escape", "thread/name", "thread name", "thread;rm", "thread.name"]:
+        with pytest.raises(ValueError):
+            backend_cls._validate_thread_id(value)
+
+    for value in ["../user", "user/name", "user name", "user;rm", "user.name"]:
+        with pytest.raises(ValueError):
+            backend_cls._validate_uid(value)
 
 
 def test_memory_backend_accepts_split_thread_ids(monkeypatch):
