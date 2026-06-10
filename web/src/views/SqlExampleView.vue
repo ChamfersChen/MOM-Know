@@ -1,28 +1,32 @@
 <template>
-  <div class="example-config-container">
-    <div class="page-header">
-      <div class="header-left">
-        <a-button @click="goBack">
-          <LeftOutlined /> 返回
-        </a-button>
-        <div class="page-title">
-          <CodeOutlined />
-          <span>SQL示例库</span>
-          <a-tag color="blue">{{ groupInfo }}</a-tag>
-        </div>
+  <div class="example-config-container layout-container">
+    <div class="config-header">
+      <div class="config-header-left">
+        <button class="detail-back-btn" @click="goBack">
+          <ArrowLeft :size="16" />
+          <span>返回</span>
+        </button>
+        <h1 class="config-header-title">SQL 示例库</h1>
+        <a-tag color="blue">{{ groupInfo }}</a-tag>
       </div>
-      <a-button type="primary" @click="handleAdd">
-        <PlusOutlined /> 添加示例
-      </a-button>
     </div>
 
-    <a-table
-      :columns="columns"
-      :data-source="examples"
-      :loading="loading"
-      :pagination="pagination"
-      row-key="id"
-    >
+    <PageShoulder v-model:search="searchQuery" search-placeholder="搜索问题描述或SQL...">
+      <template #actions>
+        <a-button type="primary" @click="handleAdd">
+          <PlusOutlined /> 添加示例
+        </a-button>
+      </template>
+    </PageShoulder>
+
+    <div class="config-content">
+      <a-table
+        :columns="columns"
+        :data-source="filteredExamples"
+        :loading="loading"
+        :pagination="pagination"
+        row-key="id"
+      >
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'enabled'">
           <a-switch 
@@ -120,21 +124,22 @@
         </a-form-item>
       </a-form>
     </a-modal>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
 import { 
   PlusOutlined, 
   EditOutlined, 
-  DeleteOutlined, 
-  LeftOutlined,
-  CodeOutlined 
+  DeleteOutlined
 } from '@ant-design/icons-vue'
+import { ArrowLeft } from 'lucide-vue-next'
 import { useDatabaseStore } from '@/stores/sql_database'
+import PageShoulder from '@/components/shared/PageShoulder.vue'
 
 const databaseStore = useDatabaseStore()
 const route = useRoute()
@@ -147,6 +152,20 @@ const groupInfo = computed(() => `${dbType.value} - ${host.value}:${port.value}`
 
 const loading = ref(false)
 const examples = ref([])
+const searchQuery = ref('')
+const filteredExamples = computed(() => {
+  if (!searchQuery.value) return examples.value
+  const q = searchQuery.value.toLowerCase()
+  return examples.value.filter(
+    (e) =>
+      (e.description && e.description.toLowerCase().includes(q)) ||
+      (e.sql && e.sql.toLowerCase().includes(q))
+  )
+})
+watch(filteredExamples, (val) => {
+  pagination.total = val.length
+  pagination.current = 1
+})
 const modalVisible = ref(false)
 const submitting = ref(false)
 const isEdit = ref(false)
@@ -366,30 +385,59 @@ onMounted(() => {
 
 <style lang="less" scoped>
 .example-config-container {
-  padding: 24px;
-  background: var(--gray-0, #fff);
-  min-height: calc(100vh - 64px);
+  background: var(--gray-0);
 
-  .page-header {
-    display: flex;
-    justify-content: space-between;
+  .detail-back-btn {
+    display: inline-flex;
     align-items: center;
-    margin-bottom: 24px;
+    gap: 6px;
+    border: none;
+    background: none;
+    color: var(--gray-500);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 4px 8px;
+    margin-left: -8px;
+    border-radius: 6px;
+    transition: color 0.15s, background 0.15s;
 
-    .header-left {
+    &:hover {
+      color: var(--gray-700);
+      background: var(--gray-50);
+    }
+  }
+
+  .config-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px var(--page-padding);
+    background-color: var(--light-60);
+    backdrop-filter: blur(10px);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    border-bottom: 1px solid var(--gray-100);
+
+    .config-header-left {
       display: flex;
       align-items: center;
-      gap: 16px;
-
-      .page-title {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 18px;
-        font-weight: 600;
-        color: var(--gray-800, #1f2937);
-      }
+      gap: 12px;
+      min-width: 0;
     }
+
+    .config-header-title {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--gray-2000);
+      white-space: nowrap;
+    }
+  }
+
+  .config-content {
+    padding: 16px var(--page-padding);
   }
 }
 </style>

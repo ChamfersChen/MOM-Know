@@ -149,19 +149,19 @@ const mainList = computed(() => {
       items.push({
         name: '知识库',
         path: '/database',
-        activePaths: ['/database', '/graph'],
         icon: LibraryBig,
         activeIcon: LibraryBig
       })
     }
   if (userStore.isSuperAdmin) {
     if (!isLiteMode) {
-      items.push({
-        name: 'SQL数据库',
-        path: '/sqldatabase',
-        icon: Database,
-        activeIcon: Database
-      })
+    items.push({
+      name: 'SQL数据库',
+      path: '/sqldatabase',
+      activePaths: ['/sqldatabase', '/graph'],
+      icon: Database,
+      activeIcon: Database
+    })
     }
   }
 

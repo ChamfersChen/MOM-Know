@@ -7,13 +7,13 @@
     </a-empty>
   </div>
   <div class="graph-container layout-container" v-else>
-    <PageHeader
-      title="知识库"
-      :active-key="knowledgeActiveView"
-      :tabs="knowledgeViewItems"
-      aria-label="知识库视图切换"
-      :show-border="true"
-    >
+      <PageHeader
+        title="SQL 数据库"
+        :active-key="sqlActiveView"
+        :tabs="sqlViewItems"
+        aria-label="SQL 数据库视图切换"
+        :show-border="true"
+      >
       <template #actions>
         <div class="db-selector">
           <div class="status-wrapper">
@@ -65,7 +65,7 @@
           </template>
         </a-input>
       </div>
-      <div class="graph-shoulder-right">
+      <!-- <div class="graph-shoulder-right">
         <a-button v-if="isNeo4j" type="primary" @click="state.showModal = true">
           <UploadOutlined /> 上传文件
         </a-button>
@@ -80,7 +80,7 @@
         >
           <SyncOutlined v-if="!state.indexing" /> 为{{ unindexedCount }}个节点添加索引
         </a-button>
-      </div>
+      </div> -->
     </div>
 
     <div class="container-outter">
@@ -219,9 +219,9 @@ import { useGraph } from '@/composables/useGraph'
 
 const configStore = useConfigStore()
 const cur_embed_model = computed(() => configStore.config?.embed_model)
-const knowledgeActiveView = 'graph'
-const knowledgeViewItems = [
-  { key: 'documents', label: '文档知识库', path: '/database' },
+const sqlActiveView = 'graph'
+const sqlViewItems = [
+  { key: 'datasource', label: '数据源', path: '/sqldatabase' },
   { key: 'graph', label: '知识图谱', path: '/graph' }
 ]
 const modelMatched = computed(

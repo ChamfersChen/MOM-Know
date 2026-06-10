@@ -33,10 +33,15 @@ class BaseEmbeddingModel(ABC):
             api_key: 请求API密钥
             batch_size: 模型推荐的批量向量化大小
         """
-        base_url = base_url or url
+        base_url:str = base_url or url
         self.model = model or name
         self.dimension = dimension
-        self.base_url = get_docker_safe_url(base_url)
+        url = base_url.rstrip('/')
+    
+        # 如果 URL 已经包含 /embeddings，则直接返回，否则加上 /embeddings
+        if not url.endswith('/embeddings'):
+            url += '/embeddings'
+        self.base_url = get_docker_safe_url(url)
         self.api_key = os.getenv(api_key, api_key)
         self.batch_size = int(batch_size or 40)
         self.embed_state = {}
@@ -206,7 +211,7 @@ class OtherEmbedding(BaseEmbeddingModel):
         payload = self.build_payload(message)
         async with httpx.AsyncClient() as client:
             try:
-                logger.info(f"Other Embedding async request: {payload} to {self.base_url}")
+                logger.info(f"Other Embedding async request: {len(payload)} items to {self.base_url}")
                 response = await client.post(self.base_url, json=payload, headers=self.headers, timeout=60)
                 response.raise_for_status()
                 result = response.json()
@@ -360,8 +365,8 @@ def select_embedding_model_v2(spec: str):
     if info.model_type != "embedding":
         raise ValueError(f"Model {spec} is not an embedding model (type={info.model_type})")
 
-    logger.info(f"Selecting v2 embedding model: {spec} (provider_type={info.provider_type})")
-
+    logger.info(f"Selecting v2 embedding model: {spec} (provider_type={info.provider_type}), base_url={info.base_url}")
+    
     if info.provider_type == "ollama":
         return OllamaEmbedding(
             model=info.model_id,

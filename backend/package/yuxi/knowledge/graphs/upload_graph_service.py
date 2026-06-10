@@ -819,4 +819,4 @@ class UploadGraphService:
                     triples.append({"h": h, "t": t, "r": "Database2Database"})
         if triples:
             self.embed_model_name = config.embed_model
-            await self.txt_add_vector_entity(triples, kgdb_name, batch_size)
+            await self.txt_add_vector_entity(triples, kgdb_name, batch_size = batch_size)

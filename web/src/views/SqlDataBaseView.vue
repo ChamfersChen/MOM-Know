@@ -1,11 +1,35 @@
 <template>
   <div class="database-container layout-container">
-    <HeaderComponent title="数据数据源" :loading="dbState.listLoading">
-      <template #actions>
-        <a-button type="primary" @click="handleCreateNewDatasource"> 创建数据源 </a-button>
-        <a-button @click="navigateToGraph"> 查看图谱 </a-button>
+    <PageHeader
+      title="SQL 数据库"
+      :active-key="sqlActiveView"
+      :tabs="sqlViewItems"
+      :loading="dbState.listLoading"
+      :show-border="true"
+      aria-label="SQL 数据库视图切换"
+    >
+    </PageHeader>
+
+    <PageShoulder v-model:search="searchQuery" search-placeholder="搜索数据源...">
+      <template #filters>
+        <a-select
+          v-model:value="typeFilter"
+          style="width: 120px"
+          placeholder="全部类型"
+          allow-clear
+        >
+          <a-select-option :value="null">全部类型</a-select-option>
+          <a-select-option v-for="t in supportedDbTypes" :key="t.type" :value="t.type">
+            {{ t.name }}
+          </a-select-option>
+        </a-select>
       </template>
-    </HeaderComponent>
+      <template #actions>
+        <a-button type="primary" @click="handleCreateNewDatasource">
+          <PlusOutlined /> 创建数据源
+        </a-button>
+      </template>
+    </PageShoulder>
 
     <a-modal
       :open="state.openNewDatabaseModel"
@@ -204,7 +228,7 @@
               size="small" 
               @click="uploadToNeo4j(group)"
             >
-              {{ selectedGraphGroupsStore.isGroupSelected(group) ? '重新导入' : '选择数据源并导入图谱' }}
+              {{ selectedGraphGroupsStore.isGroupSelected(group) ? '重新导入图谱' : '选择并导入图谱' }}
             </a-button>
           </div>
         </div>
@@ -260,7 +284,8 @@ import { useSelectedGraphGroupsStore } from '@/stores/selectedGraphGroups'
 import { LockOutlined, InfoCircleOutlined, PlusOutlined, CheckCircleFilled, ExclamationCircleFilled, DatabaseOutlined, FileTextOutlined, CloudServerOutlined, SettingOutlined, CodeOutlined } from '@ant-design/icons-vue'
 import { databaseApi } from '@/apis/sql_database_api'
 import { dsTypeWithImg } from '@/composables/ds-type'
-import HeaderComponent from '@/components/HeaderComponent.vue'
+import PageHeader from '@/components/shared/PageHeader.vue'
+import PageShoulder from '@/components/shared/PageShoulder.vue'
 import ModelSelectorComponent from '@/components/ModelSelectorComponent.vue'
 import EmbeddingModelSelector from '@/components/EmbeddingModelSelector.vue'
 import ShareConfigForm from '@/components/ShareConfigForm.vue'
@@ -277,16 +302,43 @@ const selectedGraphGroupsStore = useSelectedGraphGroupsStore()
 // 使用 store 的状态
 const { databases, state: dbState } = storeToRefs(databaseStore)
 
+const sqlActiveView = 'datasource'
+const sqlViewItems = [
+  { key: 'datasource', label: '数据源', path: '/sqldatabase' },
+  { key: 'graph', label: '知识图谱', path: '/graph' }
+]
+
+const searchQuery = ref('')
+const typeFilter = ref(null)
+
 const state = reactive({
   openNewDatabaseModel: false,
   currentStep: 0,
   importing: false
 })
 
+const filteredDatabases = computed(() => {
+  if (!searchQuery.value && !typeFilter.value) return databases.value
+  let list = databases.value
+  if (searchQuery.value) {
+    const q = searchQuery.value.toLowerCase()
+    list = list.filter(
+      (db) =>
+        db.name.toLowerCase().includes(q) ||
+        db.connect_info?.host?.toLowerCase().includes(q) ||
+        (db.description && db.description.toLowerCase().includes(q))
+    )
+  }
+  if (typeFilter.value) {
+    list = list.filter((db) => (db.db_type || '') === typeFilter.value)
+  }
+  return list
+})
+
 const groupedDatabases = computed(() => {
   const groups = {}
   
-  databases.value.forEach(db => {
+  filteredDatabases.value.forEach(db => {
     const dbType = db.db_type || 'unknown'
     const connectInfo = db.connect_info || {}
     const host = connectInfo.host || 'unknown'
@@ -501,10 +553,6 @@ const handleCreateDatabase = async () => {
 
 const navigateToDatabase = (databaseId) => {
   router.push({ path: `/sqldatabase/${databaseId}` })
-}
-
-const navigateToGraph = () => {
-  router.push({ path: '/graph' })
 }
 
 const navigateToSqlExample = (group) => {

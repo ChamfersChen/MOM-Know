@@ -423,7 +423,7 @@ const defaultSettings = () => {
 }
 
 const importKnowledgeBaseFromDB = async () => {
-  if (!databaseConnectionChecking) {return ;}
+  if (!databaseConnectionChecking.value) {return ;}
   try {
     console.log('数据库参数', databaseParams.value);
     const importData = await databaseApi.importKnowledgeBaseFromDB(databaseId.value, databaseParams.value);

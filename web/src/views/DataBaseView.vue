@@ -268,8 +268,7 @@ const { databases, state: dbState } = storeToRefs(databaseStore)
 
 const knowledgeActiveView = 'documents'
 const knowledgeViewItems = [
-  { key: 'documents', label: '文档知识库', path: '/database' },
-  { key: 'graph', label: '知识图谱', path: '/graph' }
+  { key: 'documents', label: '文档知识库', path: '/database' }
 ]
 
 const kbTypes = ['lightrag', 'milvus', 'dify']

@@ -2,8 +2,6 @@ import os
 
 from yuxi.storage.postgres.models_terminology import Terminology, TerminologyInfo
 from yuxi.repositories.terminology_repository import TerminologyRepository
-from yuxi import config
-from yuxi.models.embed import OtherEmbedding
 from yuxi.knowledge import graph_base
 
 
@@ -11,14 +9,6 @@ from yuxi.knowledge import graph_base
 class TermService:
     def __init__(self):
         self.terminology_repository = TerminologyRepository()
-        # config_dict = config.embed_model_names['siliconflow/BAAI/bge-m3'].model_dump()
-        # config_dict["api_key"] = os.getenv(config_dict["api_key"]) or config_dict["api_key"]
-        # self.embedder = OtherEmbedding(
-        #         model=config_dict.get("name"),
-        #         base_url=config_dict.get("base_url"),
-        #         api_key=config_dict.get("api_key"),
-        #     )
-
 
     async def get_all_terminology(self) -> dict[int, TerminologyInfo]:
         all_terms = await self.terminology_repository.get_all()
