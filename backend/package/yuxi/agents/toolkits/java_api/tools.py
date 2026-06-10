@@ -10,7 +10,6 @@ import os
 import httpx
 from langgraph.prebuilt.tool_node import ToolRuntime
 from pydantic import BaseModel, Field
-from typing import Annotated, Any
 from fuzzywuzzy import fuzz
 from typing import List
 
@@ -348,6 +347,35 @@ async def list_mes_order_endpoints(rewritten_query: str = "") -> str:
     返回内容包括：端点路径、HTTP 方法、参数格式说明、简要描述。
     """
     registry = _load_endpoint_registry(MES_ORDER_ENDPOINTS_PATH)
+    if not registry:
+        return json.dumps(
+            {"success": False, "error": "端点注册表为空或未配置"},
+            ensure_ascii=False,
+        )
+
+    if rewritten_query:
+        # 使用fuzzywuzzy算法进行模糊匹配，提升搜索体验
+        filtered = fuzzy_match_keywords(rewritten_query, registry, top_k=10)
+    else:
+        filtered = registry
+
+    if not filtered:
+        return json.dumps(
+            {
+                "success": False,
+                "error": f"未找到与 {rewritten_query} 相关的端点",
+            },
+            ensure_ascii=False,
+            )
+
+    return json.dumps(
+        {"success": True, "endpoints": filtered, "count": len(registry)},
+        ensure_ascii=False,
+        default=str,
+    )
+
+async def list_endpoints(rewritten_query: str, endpoint_json_filepath: str) -> str:
+    registry = _load_endpoint_registry(endpoint_json_filepath)
     if not registry:
         return json.dumps(
             {"success": False, "error": "端点注册表为空或未配置"},

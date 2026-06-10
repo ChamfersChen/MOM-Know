@@ -1,0 +1,58 @@
+[
+  {
+    "category": "系统管理",
+    "endpoint": "admin/user/info_out",
+    "method": "GET",
+    "description": "获取当前用户信息，包括用户名、角色、所属工厂等",
+    "params": null,
+    "body": null,
+    "response_note": "返回 userInfo 和 factoriesInfo"
+  },
+  {
+    "category": "系统管理",
+    "endpoint": "admin/modelFactory/organization/list",
+    "method": "GET",
+    "description": "获得当前用户可访问的组织列表",
+    "params": null,
+    "body": null,
+    "response_note": "返回可访问的组织列表"
+  },
+  {
+    "category": "MES系统",
+    "endpoint": "meswms/orderForAi/getScheduleTasks",
+    "method": "GET",
+    "description": "获得排产任务信息",
+    "params": {
+      "organizationId": "组织ID; 组织信息可以通过接口`admin/modelFactory/organization/list`获取"
+    },
+    "body": null,
+    "response_note": "排产任务信息列表"
+  },
+  {
+    "category": "MES系统",
+    "endpoint": "meswms/orderForAi/updateNotProduceSchedule",
+    "method": "PUT",
+    "description": "更新未生产订单的排产信息",
+    "params": null,
+    "body": [
+      {
+        "id":"未生产的任务ID, 可以通过接口`meswms/orderForAi/getScheduleTasks`的元素taskId获取",
+        "scheduleDate":"排产开始时间 (YYYY-MM-DD HH:mm:ss)",
+        "scheduleEndDate":"排产结束时间 (YYYY-MM-DD HH:mm:ss)"
+      }
+    ],
+    "response_note": "返回更新结果信息"
+  },
+  {
+    "category": "MES系统",
+    "endpoint": "meswms/orderForAi/deleteNotProduceSchedule",
+    "method": "DELETE",
+    "description": "删除未生产订单的排产任务",
+    "params": null,
+    "body": [
+      "未生产的任务ID, 可以通过接口`meswms/orderForAi/getScheduleTasks`的元素taskId获取"
+    ],
+    "response_note": "返回删除结果信息"
+  }
+]
+

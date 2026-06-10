@@ -1,0 +1,44 @@
+[
+  {
+    "category": "系统管理",
+    "endpoint": "admin/user/info_out",
+    "method": "GET",
+    "description": "获取当前用户信息，包括用户名、角色、所属工厂等",
+    "params": null,
+    "body": null,
+    "response_note": "返回 userInfo 和 factoriesInfo"
+  },
+  {
+    "category": "系统管理",
+    "endpoint": "admin/modelFactory/organization/list",
+    "method": "GET",
+    "description": "获得当前用户可访问的组织列表",
+    "params": null,
+    "body": null,
+    "response_note": "返回可访问的组织列表"
+  },
+  {
+    "category": "MES系统",
+    "endpoint": "meswms/orderForAi/getOrderInfo",
+    "method": "GET",
+    "description": "获取指定工厂的订单信息，包含订单数量、订单编码、产品名称、订单状态等",
+    "params": {
+      "organizationId": "组织ID; 组织信息可以通过接口`admin/modelFactory/organization/list`获取",
+      "orderIds": "订单IDs，用于筛选特定订单。多个订单ID由逗号(,)分隔, 可为空(\"\");"
+    },
+    "body": null,
+    "response_note": "返回没有生产的订单信息列表，包含订单数量、订单编码、产品名称、订单状态等信息"
+  },
+  {
+    "category": "MES系统",
+    "endpoint": "meswms/orderForAi/getProductionBomWithOrderId",
+    "method": "GET",
+    "description": "获取指定订单的生产BOM信息",
+    "params": {
+      "orderIds": "订单ID，用于筛选特定订单。通过接口`meswms/orderForAi/getOrderInfo`获取"
+    },
+    "body": null,
+    "response_note": "返回订单的生产BOM信息，包含物料ID、物料名称、物料数量、单位等信息"
+  }
+]
+

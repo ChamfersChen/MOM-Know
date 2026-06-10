@@ -31,54 +31,6 @@
   },
   {
     "category": "MES系统",
-    "endpoint": "meswms/orderForAi/getProductionBomWithOrderId",
-    "method": "GET",
-    "description": "获取指定订单的生产BOM信息",
-    "params": {
-      "orderIds": "订单ID，用于筛选特定订单。通过接口`meswms/orderForAi/getOrderInfo`获取"
-    },
-    "body": null,
-    "response_note": "返回订单的生产BOM信息，包含物料ID、物料名称、物料数量、单位等信息"
-  },
-  {
-    "category": "MES系统",
-    "endpoint": "meswms/orderForAi/getScheduleTasks",
-    "method": "GET",
-    "description": "获得排产任务信息",
-    "params": {
-      "organizationId": "组织ID; 组织信息可以通过接口`admin/modelFactory/organization/list`获取"
-    },
-    "body": null,
-    "response_note": "排产任务信息列表"
-  },
-  {
-    "category": "MES系统",
-    "endpoint": "meswms/orderForAi/updateNotProduceSchedule",
-    "method": "PUT",
-    "description": "更新未生产订单的排产信息",
-    "params": null,
-    "body": [
-      {
-        "id":"未生产的任务ID, 可以通过接口`meswms/orderForAi/getScheduleTasks`的元素taskId获取",
-        "scheduleDate":"排产开始时间 (YYYY-MM-DD HH:mm:ss)",
-        "scheduleEndDate":"排产结束时间 (YYYY-MM-DD HH:mm:ss)"
-      }
-    ],
-    "response_note": "返回更新结果信息"
-  },
-  {
-    "category": "MES系统",
-    "endpoint": "meswms/orderForAi/deleteNotProduceSchedule",
-    "method": "DELETE",
-    "description": "删除未生产订单的排产任务",
-    "params": null,
-    "body": [
-      "未生产的任务ID, 可以通过接口`meswms/orderForAi/getScheduleTasks`的元素taskId获取"
-    ],
-    "response_note": "返回删除结果信息"
-  },
-  {
-    "category": "MES系统",
     "endpoint": "meswms/orderForAi/unproducedOrders",
     "method": "GET",
     "description": "获取指定工厂的没有生产的订单信息，包含订单数量、订单编码、产品名称、订单状态等",
