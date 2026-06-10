@@ -278,7 +278,7 @@ services:
     image: pgvector/pgvector:pg16 # postgres:16
     container_name: momai-postgres
     ports:
-      - "15432:5432"
+      - "5432:5432"
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-pg123456}

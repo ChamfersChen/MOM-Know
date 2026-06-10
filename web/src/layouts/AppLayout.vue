@@ -180,7 +180,7 @@ const mainList = computed(() => {
     })
 
     items.push({
-      name: 'Dashboard',
+      name: '数据总览',
       path: '/dashboard',
       icon: BarChart3,
       activeIcon: BarChart3
@@ -351,19 +351,6 @@ provide('settingsModal', {
             </a-tooltip>
             <span class="nav-text">{{ item.name }}</span>
           </RouterLink>
-          <div
-            v-if="userStore.isAdmin"
-            class="nav-item task-center"
-            :class="{ active: isDrawerOpen }"
-            @click="taskerStore.openDrawer()"
-          >
-            <a-tooltip placement="right">
-              <template #title>任务中心</template>
-              <a-badge :count="activeTaskCount" :overflow-count="99" class="task-center-badge" size="small">
-                <CircleCheck class="icon" size="22" />
-              </a-badge>
-            </a-tooltip>
-          </div>
         </div>
 
         <div class="fill">

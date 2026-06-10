@@ -77,10 +77,11 @@ def get_tool_metadata(category: str = None, user=None) -> list[dict]:
     filtered_tools = []
     for t in _metadata_cache:
         tool_name = t.get("name", "").lower()
-        if user is not None and user.java_token_status != "valid":
-            if any(skip_word in tool_name.lower() for skip_word in skip_words):
-                logger.info(f"RuntimeConfigMiddleware: skipping tool '{tool_name}' due to invalid JAVA token")
-                continue
+        if user is not None and any(skip_word in tool_name.lower() for skip_word in skip_words):
+                if user.java_token_status != "valid" or user.role in ["user"]:
+                    logger.info(f">> RuntimeConfigMiddleware: skipping tool '{tool_name}' due to invalid JAVA token")
+                    continue
+        
         filtered_tools.append(t)
 
     if category:

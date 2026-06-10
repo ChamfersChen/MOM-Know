@@ -114,14 +114,14 @@ class BaseContext:
         },
     )
     
-    username: str | None = field(
-        default=None,
-        metadata={"name": "用户名称", "configurable": False, "description": "用来显示用户名称"},
-    )
-
     java_token_status: str | None = field(
         default=None,
         metadata={"name": "JAVA访问token状态", "configurable": False, "description": "用来显示用户的JAVA访问token状态"},
+    )
+
+    username: str | None = field(
+        default=None,
+        metadata={"name": "用户名称", "configurable": False, "description": "用来显示用户名称"},
     )
 
     department_id: int | None = field(

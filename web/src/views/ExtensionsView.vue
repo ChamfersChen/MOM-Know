@@ -48,7 +48,7 @@ const toolsRef = ref(null)
 const extensionTabs = [
   { key: 'tools', label: '工具' },
   { key: 'mcp', label: 'MCP' },
-  { key: 'subagents', label: 'Subagents' },
+  { key: 'subagents', label: '子智能体' },
   { key: 'skills', label: 'Skills' }
 ]
 

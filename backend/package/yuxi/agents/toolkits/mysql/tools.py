@@ -586,13 +586,13 @@ class StoreSQLResult(BaseModel):
     query: str = Field(..., description="用户问题")
     sql: str = Field(..., description="最终能够回答用户问题的SQL语句")
 
-@tool(
-    category="mysql",
-    tags=["数据库", "SQL"],
-    display_name="自动存储Query与SQL结果",
-    name_or_callable="store_query_result", description="自动存储Query与SQL结果",
-    args_schema=StoreSQLResult,
-)
+# @tool(
+#     category="mysql",
+#     tags=["数据库", "SQL"],
+#     display_name="自动存储Query与SQL结果",
+#     name_or_callable="store_query_result", description="自动存储Query与SQL结果",
+#     args_schema=StoreSQLResult,
+# )
 async def store_query_result(
     query: Annotated[str, "用户问题描述"], # noqa E501 TODO 可能存在同一个连接跨数据库表查询的问题，需要判断是否为一个连接
     sql: Annotated[str, "最终能够回答用户问题的SQL语句"],

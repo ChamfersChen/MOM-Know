@@ -49,11 +49,11 @@ class Config(BaseModel):
     # 模型配置
     # ============================================================
     default_model: str = Field(
-        default="siliconflow-cn:Qwen/Qwen3-8B",
+        default="MiMo:mimo-v2.5-pro",
         description="默认对话模型",
     )
     fast_model: str = Field(
-        default="siliconflow-cn:Qwen/Qwen3-8B",
+        default="MiMo:mimo-v2.5-pro",
         description="快速响应模型",
     )
     embed_model: str = Field(
@@ -65,7 +65,7 @@ class Config(BaseModel):
         description="默认 Re-Ranker 模型",
     )
     content_guard_llm_model: str = Field(
-        default="siliconflow-cn:Qwen/Qwen3-8B",
+        default="MiMo:mimo-v2.5-pro",
         description="内容审查LLM模型",
     )
 

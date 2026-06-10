@@ -727,7 +727,7 @@ async def stream_agent_chat(
     thread_id: str | None,
     meta: dict,
     image_content: str | None,
-    current_user,
+    current_user: User,
     db,
 ) -> AsyncIterator[bytes]:
     start_time = asyncio.get_event_loop().time()
@@ -818,6 +818,7 @@ async def stream_agent_chat(
     input_context["username"] = current_user.username
     input_context["department_id"] = current_user.department_id
     input_context["java_token_status"] = current_user.java_token_status
+    input_context["user_role"] = current_user.role
     langfuse_run = _build_langfuse_run_context(
         current_user=current_user,
         thread_id=thread_id,

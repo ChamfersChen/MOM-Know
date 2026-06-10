@@ -142,11 +142,12 @@ class RuntimeConfigMiddleware(AgentMiddleware):
         for tool_name in all_tool_names:
             if tool_name in selected_tool_names:
                 continue
-            if java_token_status != "valid":
-                if any(skip_word in tool_name.lower() for skip_word in skip_words):
+            if tool_name in tools_map:
+                # 针对特定工具（如包含 'mom' 或 'mysql' 的工具）
+                # 如果 JAVA token 无效, 则跳过加载该工具
+                if java_token_status != "valid" and any(skip_word in tool_name.lower() for skip_word in skip_words):
                     logger.info(f"RuntimeConfigMiddleware: skipping tool '{tool_name}' due to invalid JAVA token")
                     continue
-            if tool_name in tools_map:
                 selected_tools.append(tools_map[tool_name])
                 selected_tool_names.add(tool_name)
                 continue
