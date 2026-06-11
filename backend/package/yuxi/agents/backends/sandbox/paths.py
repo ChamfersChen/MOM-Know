@@ -63,15 +63,29 @@ def sandbox_workspace_agents_prompt_file(thread_id: str, uid: str) -> Path:
     return sandbox_workspace_dir(thread_id, uid) / WORKSPACE_AGENTS_DIR_NAME / WORKSPACE_AGENTS_PROMPT_FILE_NAME
 
 
+def _threads_root_dir() -> Path:
+    return (Path(conf.save_dir) / "threads").resolve(strict=False)
+
+
+def _resolve_threads_child_path(path: Path) -> Path:
+    root = _threads_root_dir()
+    resolved = path.resolve(strict=False)
+    if not resolved.is_relative_to(root):
+        raise ValueError("path resolved outside threads root")
+    return resolved
+
+
 def _chmod_writable(path: Path, *, dir: bool = False) -> None:
+    safe_path = _resolve_threads_child_path(path)
     mode = 0o777 if dir else 0o666
     try:
-        path.chmod(mode)
+        safe_path.chmod(mode)
     except OSError:
         pass
 
 
 def ensure_workspace_default_files(workspace_dir: Path) -> None:
+    workspace_dir = _resolve_threads_child_path(workspace_dir)
     agents_dir = workspace_dir / WORKSPACE_AGENTS_DIR_NAME
     agents_file = agents_dir / WORKSPACE_AGENTS_PROMPT_FILE_NAME
 
@@ -105,12 +119,12 @@ def sandbox_outputs_dir(thread_id: str) -> Path:
 
 
 def ensure_thread_dirs(thread_id: str, uid: str) -> None:
-    _global_user_data_dir(uid).mkdir(parents=True, exist_ok=True)
-    workspace_dir = sandbox_workspace_dir(thread_id, uid)
+    _resolve_threads_child_path(_global_user_data_dir(uid)).mkdir(parents=True, exist_ok=True)
+    workspace_dir = _resolve_threads_child_path(sandbox_workspace_dir(thread_id, uid))
     workspace_dir.mkdir(parents=True, exist_ok=True)
     ensure_workspace_default_files(workspace_dir)
-    sandbox_uploads_dir(thread_id).mkdir(parents=True, exist_ok=True)
-    sandbox_outputs_dir(thread_id).mkdir(parents=True, exist_ok=True)
+    _resolve_threads_child_path(sandbox_uploads_dir(thread_id)).mkdir(parents=True, exist_ok=True)
+    _resolve_threads_child_path(sandbox_outputs_dir(thread_id)).mkdir(parents=True, exist_ok=True)
 
 
 def _resolve_user_data_base_dir(thread_id: str, uid: str, relative_path: str) -> tuple[Path, Path]:

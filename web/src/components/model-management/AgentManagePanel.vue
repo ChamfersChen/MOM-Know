@@ -5,7 +5,7 @@ import {
   Plus,
   RefreshCw,
   Trash2,
-  Edit3,
+  SquarePen,
   Bot,
   Microscope,
   MoreVertical,
@@ -24,6 +24,7 @@ import { isBuiltinAgent, useAgentStore } from '@/stores/agent'
 import { useUserStore } from '@/stores/user'
 import PageShoulder from '@/components/shared/PageShoulder.vue'
 import InfoCard from '@/components/shared/InfoCard.vue'
+import FallbackAvatar from '@/components/common/FallbackAvatar.vue'
 import ExtensionCardGrid from '@/components/extensions/ExtensionCardGrid.vue'
 import { generatePixelAvatar } from '@/utils/pixelAvatar'
 import { MAX_IMAGE_UPLOAD_SIZE_BYTES, MAX_IMAGE_UPLOAD_SIZE_MB } from '@/utils/upload_limits'
@@ -103,6 +104,15 @@ const filteredAgents = computed(() => {
   })
 })
 
+const groupedAgents = computed(() => {
+  const agents = filteredAgents.value.filter((agent) => !agent.is_subagent)
+  const subagents = filteredAgents.value.filter((agent) => agent.is_subagent)
+  return [
+    { key: 'agents', title: '智能体', agents },
+    { key: 'subagents', title: '子智能体', agents: subagents }
+  ].filter((group) => group.agents.length > 0)
+})
+
 const agentStats = computed(() => ({
   total: managedAgents.value.length,
   builtin: managedAgents.value.filter(isBuiltinAgent).length,
@@ -141,17 +151,15 @@ const getAgentShareAllowedLevels = () => {
 
 const canManageAgent = (agent) => !!agent?.can_manage
 const agentModalTitle = computed(() => (editingAgentId.value ? '编辑智能体' : '新增智能体'))
-const getAgentIconSrc = (agent) => agent.icon || (agent.id ? generatePixelAvatar(agent.id) : '')
+const getAgentDefaultIconSrc = (agent) => (agent.id ? generatePixelAvatar(agent.id) : '')
 const getAgentTags = (agent) => [
   ...(!agent?.can_manage ? [{ name: '只读', color: 'default' }] : []),
-  ...(agent?.is_subagent ? [{ name: '子智能体', color: 'purple' }] : []),
   ...(agent?.backend_id ? [{ name: agent.backend_id, color: 'blue' }] : [])
 ]
-const agentPreviewIcon = computed(() => {
-  if (agentForm.icon?.trim()) return agentForm.icon.trim()
-  if (editingAgentId.value) return generatePixelAvatar(editingAgentId.value)
-  return ''
-})
+const agentPreviewDefaultIcon = computed(() =>
+  editingAgentId.value ? generatePixelAvatar(editingAgentId.value) : ''
+)
+const agentPreviewName = computed(() => agentForm.name || editingAgentId.value || '智能体')
 const selectedBackendOption = computed(() =>
   agentBackendOptions.value.find((backend) => backend.value === agentForm.backend_id)
 )
@@ -394,62 +402,81 @@ defineExpose({
       </template>
     </PageShoulder>
 
-    <ExtensionCardGrid :min-width="320">
-      <InfoCard
-        v-for="agent in filteredAgents"
-        :key="agent.id"
-        :title="agent.name"
-        :subtitle="agent.slug || agent.id"
-        :description="agent.description || '暂无描述'"
-        :default-icon="Bot"
-        :tags="getAgentTags(agent)"
-        class="config-card agent-card"
-        @click="canManageAgent(agent) && openEditAgentModal(agent)"
-      >
-        <template #icon>
-          <img
-            v-if="getAgentIconSrc(agent)"
-            class="agent-card-icon-image"
-            :src="getAgentIconSrc(agent)"
-            :alt="`${agent.name || '智能体'}图标`"
-          />
-        </template>
+    <div v-if="groupedAgents.length === 0" class="agent-empty-state">
+      <a-empty :image="false" :description="searchQuery ? '没有匹配的智能体' : '暂无智能体'" />
+    </div>
 
-        <template #status>
-          <a-dropdown v-if="canManageAgent(agent)" :trigger="['click']" placement="bottomRight">
-            <template #overlay>
-              <a-menu>
-                <a-menu-item key="edit" @click.stop="openEditAgentModal(agent)">
-                  <span class="agent-card-menu-item">
-                    <Edit3 :size="14" />
-                    编辑智能体
-                  </span>
-                </a-menu-item>
-                <a-menu-item
-                  key="delete"
-                  :disabled="isBuiltinAgent(agent)"
-                  @click.stop="deleteAgent(agent)"
-                >
-                  <span class="agent-card-menu-item" :class="{ danger: !isBuiltinAgent(agent) }">
-                    <Trash2 :size="14" />
-                    删除智能体
-                  </span>
-                </a-menu-item>
-              </a-menu>
+    <template v-else>
+      <section v-for="group in groupedAgents" :key="group.key" class="agent-group-section">
+        <div class="agent-group-header">
+          <span>{{ group.title }}</span>
+        </div>
+        <ExtensionCardGrid :min-width="320">
+          <InfoCard
+            v-for="agent in group.agents"
+            :key="agent.id"
+            :title="agent.name"
+            :subtitle="agent.slug || agent.id"
+            :description="agent.description || '暂无描述'"
+            :default-icon="Bot"
+            :tags="getAgentTags(agent)"
+            class="config-card agent-card"
+            @click="canManageAgent(agent) && openEditAgentModal(agent)"
+          >
+            <template #icon>
+              <FallbackAvatar
+                class="agent-card-icon-image"
+                :src="agent.icon"
+                :default-src="getAgentDefaultIconSrc(agent)"
+                :name="agent.name || agent.id"
+                :seed="agent.id || agent.name"
+                kind="agent"
+                :size="40"
+                shape="rounded"
+                :alt="`${agent.name || '智能体'}图标`"
+              />
             </template>
-            <a-button
-              type="text"
-              size="small"
-              class="agent-card-menu-trigger"
-              aria-label="智能体操作"
-              @click.stop
-            >
-              <MoreVertical :size="16" />
-            </a-button>
-          </a-dropdown>
-        </template>
-      </InfoCard>
-    </ExtensionCardGrid>
+
+            <template #status>
+              <a-dropdown v-if="canManageAgent(agent)" :trigger="['click']" placement="bottomRight">
+                <template #overlay>
+                  <a-menu>
+                    <a-menu-item key="edit" @click.stop="openEditAgentModal(agent)">
+                      <span class="agent-card-menu-item">
+                        <SquarePen :size="14" />
+                        编辑智能体
+                      </span>
+                    </a-menu-item>
+                    <a-menu-item
+                      key="delete"
+                      :disabled="isBuiltinAgent(agent)"
+                      @click.stop="deleteAgent(agent)"
+                    >
+                      <span
+                        class="agent-card-menu-item"
+                        :class="{ danger: !isBuiltinAgent(agent) }"
+                      >
+                        <Trash2 :size="14" />
+                        删除智能体
+                      </span>
+                    </a-menu-item>
+                  </a-menu>
+                </template>
+                <a-button
+                  type="text"
+                  size="small"
+                  class="agent-card-menu-trigger"
+                  aria-label="智能体操作"
+                  @click.stop
+                >
+                  <MoreVertical :size="16" />
+                </a-button>
+              </a-dropdown>
+            </template>
+          </InfoCard>
+        </ExtensionCardGrid>
+      </section>
+    </template>
 
     <!-- Agent Edit Modal -->
     <a-modal
@@ -512,13 +539,19 @@ defineExpose({
                       class="agent-icon-upload"
                       :class="{
                         uploading: agentIconUploading,
-                        'is-empty': !agentPreviewIcon
+                        'is-empty': !agentForm.icon && !editingAgentId && !agentForm.name.trim()
                       }"
                     >
-                      <img
-                        v-if="agentPreviewIcon"
-                        :src="agentPreviewIcon"
+                      <FallbackAvatar
+                        :src="agentForm.icon"
+                        :default-src="agentPreviewDefaultIcon"
+                        :name="agentPreviewName"
+                        :seed="editingAgentId || agentForm.slug || agentForm.name"
+                        kind="agent"
+                        :size="56"
+                        shape="rounded"
                         :alt="`${agentForm.name || '智能体'}图标`"
+                        class="agent-icon-preview-avatar"
                       />
                       <div class="agent-icon-mask">
                         <RefreshCw v-if="agentIconUploading" :size="16" class="spinning" />
@@ -617,11 +650,35 @@ defineExpose({
   min-height: 0;
 }
 
+.agent-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 100px 20px;
+  text-align: center;
+}
+
+.agent-group-section + .agent-group-section {
+  padding-top: 2px;
+}
+
+.agent-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px var(--page-padding) 0;
+  color: var(--gray-500);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  line-height: 18px;
+}
+
 .agent-card-icon-image {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  border: 0;
 }
 
 .agent-card-menu-trigger {
@@ -865,11 +922,10 @@ defineExpose({
     border-color 0.16s ease,
     box-shadow 0.16s ease;
 
-  img {
-    display: block;
+  .agent-icon-preview-avatar {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    border: 0;
   }
 
   &:hover,
@@ -930,8 +986,8 @@ defineExpose({
   background: transparent;
   color: var(--gray-900);
   caret-color: var(--main-700);
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 600;
   line-height: 1.35;
   transition:
     border-color 0.16s ease,
@@ -957,6 +1013,7 @@ defineExpose({
 
 .agent-inline-slug,
 .agent-inline-slug-input {
+  padding: 1px 4px;
   width: 220px;
   max-width: 100%;
   overflow: hidden;
@@ -967,9 +1024,8 @@ defineExpose({
 }
 
 .agent-inline-slug-input {
-  padding: 1px 4px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 2px;
   background: transparent;
 
   &::placeholder {

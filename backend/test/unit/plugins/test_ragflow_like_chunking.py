@@ -122,6 +122,32 @@ def test_book_chunking_hierarchical_merge() -> None:
     assert any("第一章" in ck["content"] for ck in chunks)
 
 
+def test_book_chunking_should_apply_overlength_protection() -> None:
+    content = "\n".join(
+        [
+            "第一章 总则",
+            "第一节 适用范围",
+            "超长正文" * 1200,
+            "第二节 基本原则",
+            "应当遵循最小改动原则。",
+        ]
+    )
+    max_chunk_tokens = 180
+
+    chunks = chunk_markdown(
+        markdown_content=content,
+        file_id="file_book_long",
+        filename="book.txt",
+        processing_params={
+            "chunk_preset_id": "book",
+            "chunk_parser_config": {"chunk_token_num": max_chunk_tokens, "delimiter": "\\n"},
+        },
+    )
+
+    assert len(chunks) > 1
+    assert max(count_tokens(ck["content"]) for ck in chunks) <= max_chunk_tokens
+
+
 def test_split_sentences_chinese_should_keep_quote_boundary() -> None:
     text = '他说：“你好。”然后问：“你在吗？”最后结束！'
     sentences = split_sentences_chinese(text)

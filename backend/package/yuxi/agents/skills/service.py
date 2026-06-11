@@ -22,6 +22,7 @@ from yuxi.agents.mcp.service import get_enabled_mcp_server_slugs
 from yuxi.agents.skills.repository import SkillRepository
 from yuxi.storage.postgres.models_business import Skill, User
 from yuxi.utils.logging_config import logger
+from yuxi.utils.share_config import SHARE_ACCESS_LEVELS, normalize_share_config
 
 SKILL_SLUG_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 SKILL_NAME_PATTERN = SKILL_SLUG_PATTERN
@@ -58,7 +59,7 @@ TEXT_FILE_EXTENSIONS = {
 
 BUILTIN_SKILL_OPERATOR = "builtin-system"
 SKILL_SOURCE_TYPES = {"builtin", "upload", "remote"}
-ACCESS_LEVELS = {"global", "department", "user"}
+ACCESS_LEVELS = SHARE_ACCESS_LEVELS
 ADMIN_ROLES = {"admin", "superadmin"}
 DEFAULT_SKILL_SHARE_CONFIG = {"access_level": "user", "department_ids": [], "user_uids": []}
 BUILTIN_SKILL_SHARE_CONFIG = {"access_level": "global", "department_ids": [], "user_uids": []}
@@ -103,17 +104,6 @@ def is_builtin_skill(item: Skill | dict) -> bool:
     return source_type == "builtin"
 
 
-def _normalize_department_ids(department_ids: list | None) -> list[int]:
-    normalized = []
-    for department_id in department_ids or []:
-        normalized.append(int(department_id))
-    return normalized
-
-
-def _normalize_user_uids(user_uids: list | None) -> list[str]:
-    return [uid for uid in (str(uid).strip() for uid in user_uids or []) if uid]
-
-
 def get_allowed_skill_access_levels(user: User) -> list[str]:
     if user.role in ADMIN_ROLES:
         return ["global", "department", "user"]
@@ -131,32 +121,16 @@ def normalize_skill_share_config(
     if source_type == "builtin":
         return BUILTIN_SKILL_SHARE_CONFIG.copy()
 
-    config = share_config or DEFAULT_SKILL_SHARE_CONFIG
-    access_level = config.get("access_level") or "user"
-    if access_level not in ACCESS_LEVELS:
-        raise ValueError("无效的 Skill 权限等级")
-    if allowed_access_levels is not None and access_level not in allowed_access_levels:
-        raise ValueError("当前用户无权使用该 Skill 共享范围")
-
-    if access_level == "global":
-        return {"access_level": "global", "department_ids": [], "user_uids": []}
-
-    if access_level == "department":
-        department_ids = _normalize_department_ids(config.get("department_ids"))
-        if operator_department_id is not None:
-            department_ids.append(int(operator_department_id))
-        department_ids = sorted(set(department_ids))
-        if not department_ids:
-            raise ValueError("部门共享至少需要选择一个部门")
-        return {"access_level": "department", "department_ids": department_ids, "user_uids": []}
-
-    user_uids = _normalize_user_uids(config.get("user_uids"))
-    if operator_uid:
-        user_uids.append(str(operator_uid))
-    user_uids = sorted(set(user_uids))
-    if not user_uids:
-        raise ValueError("指定人可访问至少需要选择一个用户")
-    return {"access_level": "user", "department_ids": [], "user_uids": user_uids}
+    return normalize_share_config(
+        share_config,
+        default_config=DEFAULT_SKILL_SHARE_CONFIG,
+        default_access_level="user",
+        invalid_access_level_message="无效的 Skill 权限等级",
+        user_uid=operator_uid,
+        department_id=operator_department_id,
+        allowed_access_levels=allowed_access_levels,
+        unauthorized_access_level_message="当前用户无权使用该 Skill 共享范围",
+    )
 
 
 def user_can_access_skill(user: User, skill: Skill, *, require_enabled: bool = True) -> bool:

@@ -1,46 +1,14 @@
 import { unref } from 'vue'
 import { agentApi } from '@/apis'
 import { handleChatError } from '@/utils/errorHandler'
+import { compareRunSeq, normalizeRunSeq, resolveRunResumeAfterSeq } from '@/utils/runStreamResume'
 
-const RUN_TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled', 'interrupted'])
+const RUN_INTERRUPTED_STATUS = 'interrupted'
+const RUN_TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
 const ACTIVE_RUN_STORAGE_TTL_MS = 60 * 60 * 1000
 const ACTIVE_RUN_CLIENT_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-const RUN_SEQ_PATTERN = /^\d+-\d+$/
 
 const getActiveRunStorageKey = (threadId) => `active_run:${threadId}`
-
-const normalizeRunSeq = (value) => {
-  if (value === undefined || value === null) return '0-0'
-  const text = String(value).trim()
-  return RUN_SEQ_PATTERN.test(text) ? text : '0-0'
-}
-
-const parseRunSeq = (value) => {
-  const text = normalizeRunSeq(value)
-  if (!text.includes('-')) {
-    return { major: 0n, minor: 0n }
-  }
-  const [majorRaw, minorRaw] = text.split('-', 2)
-
-  try {
-    const major = BigInt(majorRaw || '0')
-    const minor = BigInt(minorRaw || '0')
-    return { major, minor }
-  } catch {
-    return { major: 0n, minor: 0n }
-  }
-}
-
-const compareRunSeq = (incoming, current) => {
-  const left = parseRunSeq(incoming)
-  const right = parseRunSeq(current)
-
-  if (left.major > right.major) return 1
-  if (left.major < right.major) return -1
-  if (left.minor > right.minor) return 1
-  if (left.minor < right.minor) return -1
-  return 0
-}
 
 const getThreadIdFromObject = (value) => {
   if (!value || typeof value !== 'object') return ''
@@ -131,7 +99,9 @@ export function useAgentRunStream({
   fetchAgentState,
   resetOnGoingConv,
   onScrollToBottom,
-  streamSmoother
+  streamSmoother,
+  onInterruptDetected = null,
+  onTerminalDetected = null
 }) {
   const saveActiveRunSnapshot = (threadId, runId, lastSeq = '0-0') => {
     if (!threadId || !runId) return
@@ -171,26 +141,89 @@ export function useAgentRunStream({
     }
   }
 
+  const notifyInterruptDetected = (threadId, runId, run = null) => {
+    if (typeof onInterruptDetected !== 'function') return
+    onInterruptDetected({ threadId, runId, run })
+  }
+
+  const notifyTerminalDetected = (threadId, runId, touchedThreadIds) => {
+    if (typeof onTerminalDetected !== 'function') return
+    onTerminalDetected({ threadId, runId, touchedThreadIds: [...touchedThreadIds] })
+  }
+
+  const hasPendingInterruptForRun = (threadState, runId) => {
+    const pendingInterrupt = threadState?.pendingInterrupt
+    if (!pendingInterrupt?.questions?.length) return false
+    return !pendingInterrupt.parentRunId || pendingInterrupt.parentRunId === runId
+  }
+
+  const hasPendingInterruptInThreads = (threadIds, runId) => {
+    return [...threadIds].some((id) => hasPendingInterruptForRun(getThreadState(id), runId))
+  }
+
+  const clearPendingInterruptForRun = (threadId, runId) => {
+    const threadState = getThreadState(threadId)
+    if (hasPendingInterruptForRun(threadState, runId)) {
+      threadState.pendingInterrupt = null
+    }
+  }
+
   const finalizeRunStream = (
     threadId,
     runId,
     touchedThreadIds,
-    { delay = 200, scroll = false } = {}
+    { delay = 200, scroll = false, status = '' } = {}
   ) => {
     const ts = getThreadState(threadId)
     if (!ts || ts.activeRunId !== runId) return
+    const isInterrupted =
+      status === RUN_INTERRUPTED_STATUS && hasPendingInterruptInThreads(touchedThreadIds, runId)
     touchedThreadIds.forEach((id) => streamSmoother?.flushThread(id))
     ts.isStreaming = false
-    ts.activeRunId = null
+    if (isInterrupted) {
+      ts.activeRunId = runId
+      saveActiveRunSnapshot(threadId, runId, ts.runLastSeq)
+    } else {
+      ts.activeRunId = null
+      clearActiveRunSnapshot(threadId)
+      touchedThreadIds.forEach((id) => clearPendingInterruptForRun(id, runId))
+    }
     ts.lastRetryableJobTry = null
     ts.replyLoadingVisible = false
     ts.pendingRequestId = null
-    clearActiveRunSnapshot(threadId)
     fetchThreadMessages({ agentId: unref(currentAgentId), threadId, delay }).finally(() => {
       resetOnGoingConv(threadId)
       fetchAgentState(unref(currentAgentId), threadId)
       if (scroll) onScrollToBottom()
+      if (isInterrupted) {
+        notifyInterruptDetected(threadId, runId)
+      } else {
+        notifyTerminalDetected(threadId, runId, touchedThreadIds)
+      }
     })
+  }
+
+  const preserveInterruptedRun = async (threadId, run, snapshot = null) => {
+    const ts = getThreadState(threadId)
+    if (!ts || !run?.id) return false
+
+    streamSmoother?.flushThread(threadId)
+    ts.activeRunId = run.id
+    ts.runLastSeq = normalizeRunSeq(snapshot?.last_seq || ts.runLastSeq || '0-0')
+    ts.lastRetryableJobTry = null
+    ts.isStreaming = false
+    ts.replyLoadingVisible = false
+    ts.pendingRequestId = null
+    saveActiveRunSnapshot(threadId, run.id, ts.runLastSeq)
+
+    try {
+      await fetchThreadMessages({ agentId: unref(currentAgentId), threadId })
+    } catch (e) {
+      console.warn('Failed to refresh messages for interrupted run:', threadId, e)
+    }
+    fetchAgentState(unref(currentAgentId), threadId)
+    notifyInterruptDetected(threadId, run.id, run)
+    return true
   }
 
   const scheduleRunReconnect = (threadId, runId, delay = 500) => {
@@ -268,7 +301,12 @@ export function useAgentRunStream({
             })
             touchedThreadIds.add(routeThreadId)
             handleStreamChunk(
-              { ...chunk, run_id: chunk.run_id || data.run_id || runId, thread_id: routeThreadId },
+              {
+                ...chunk,
+                request_id: chunk.request_id || data.request_id,
+                run_id: chunk.run_id || data.run_id || runId,
+                thread_id: routeThreadId
+              },
               routeThreadId
             )
           })
@@ -283,6 +321,7 @@ export function useAgentRunStream({
           handleStreamChunk(
             {
               ...payload.chunk,
+              request_id: payload.chunk.request_id || data.request_id,
               run_id: payload.chunk.run_id || data.run_id || runId,
               thread_id: routeThreadId
             },
@@ -292,8 +331,10 @@ export function useAgentRunStream({
 
         if (event === 'end') {
           sawTerminalEvent = true
-          if (RUN_TERMINAL_STATUSES.has(terminalStatus)) {
-            finalizeRunStream(threadId, runId, touchedThreadIds)
+          if (terminalStatus === RUN_INTERRUPTED_STATUS) {
+            finalizeRunStream(threadId, runId, touchedThreadIds, { status: terminalStatus })
+          } else if (RUN_TERMINAL_STATUSES.has(terminalStatus)) {
+            finalizeRunStream(threadId, runId, touchedThreadIds, { status: terminalStatus })
           } else {
             touchedThreadIds.forEach((id) => streamSmoother?.flushThread(id))
             ts.isStreaming = false
@@ -310,8 +351,14 @@ export function useAgentRunStream({
         try {
           const runRes = await agentApi.getAgentRun(runId)
           const run = runRes?.run
-          if (run && RUN_TERMINAL_STATUSES.has(run.status)) {
-            finalizeRunStream(threadId, runId, touchedThreadIds)
+          if (run?.status === RUN_INTERRUPTED_STATUS) {
+            if (hasPendingInterruptInThreads(touchedThreadIds, run.id)) {
+              await preserveInterruptedRun(threadId, run)
+            } else {
+              finalizeRunStream(threadId, runId, touchedThreadIds, { status: run.status })
+            }
+          } else if (run && RUN_TERMINAL_STATUSES.has(run.status)) {
+            finalizeRunStream(threadId, runId, touchedThreadIds, { status: run.status })
           } else {
             scheduleRunReconnect(threadId, runId)
           }
@@ -348,7 +395,37 @@ export function useAgentRunStream({
   const resumeActiveRunForThread = async (threadId) => {
     if (!threadId) return
     const ts = getThreadState(threadId)
-    if (!ts || ts.runStreamAbortController) return
+    if (!ts) return
+
+    if (ts.runStreamAbortController) {
+      if (!ts.activeRunId) return
+      try {
+        const runRes = await agentApi.getAgentRun(ts.activeRunId)
+        const run = runRes?.run
+        if (run?.status === RUN_INTERRUPTED_STATUS) {
+          stopRunStreamSubscription(threadId)
+          const snapshot = loadActiveRunSnapshot(threadId)
+          if (hasPendingInterruptForRun(ts, run.id)) {
+            await preserveInterruptedRun(threadId, run, snapshot)
+          } else {
+            resetOnGoingConv(threadId)
+            await startRunStream(threadId, run.id, '0-0')
+          }
+        } else if (run && RUN_TERMINAL_STATUSES.has(run.status)) {
+          stopRunStreamSubscription(threadId)
+          ts.activeRunId = null
+          ts.isStreaming = false
+          ts.replyLoadingVisible = false
+          ts.pendingRequestId = null
+          clearPendingInterruptForRun(threadId, run.id)
+          clearActiveRunSnapshot(threadId)
+          notifyTerminalDetected(threadId, run.id, new Set([threadId]))
+        }
+      } catch (e) {
+        console.warn('Failed to refresh active run while stream is open:', threadId, e)
+      }
+      return
+    }
 
     const snapshot = loadActiveRunSnapshot(threadId)
     if (snapshot?.run_id) {
@@ -358,8 +435,22 @@ export function useAgentRunStream({
         try {
           const runRes = await agentApi.getAgentRun(snapshot.run_id)
           const run = runRes?.run
-          if (run && !RUN_TERMINAL_STATUSES.has(run.status)) {
-            await startRunStream(threadId, run.id, snapshot.last_seq || '0-0')
+          if (run?.status === RUN_INTERRUPTED_STATUS) {
+            // 仅当本地仍持有该中断时才据快照恢复；否则不能仅凭快照重放旧中断
+            // （可能已被回复），交由下方 active_run 做权威判定。
+            if (hasPendingInterruptForRun(ts, run.id)) {
+              await preserveInterruptedRun(threadId, run, snapshot)
+              return
+            }
+          } else if (run && !RUN_TERMINAL_STATUSES.has(run.status)) {
+            const afterSeq = resolveRunResumeAfterSeq({
+              snapshot,
+              threadState: ts
+            })
+            if (afterSeq === '0-0') {
+              resetOnGoingConv(threadId)
+            }
+            await startRunStream(threadId, run.id, afterSeq)
             return
           }
         } catch {
@@ -372,7 +463,17 @@ export function useAgentRunStream({
     try {
       const active = await agentApi.getThreadActiveRun(threadId)
       const run = active?.run
+      if (run?.status === RUN_INTERRUPTED_STATUS) {
+        if (hasPendingInterruptForRun(ts, run.id)) {
+          await preserveInterruptedRun(threadId, run)
+          return
+        }
+        resetOnGoingConv(threadId)
+        await startRunStream(threadId, run.id, '0-0')
+        return
+      }
       if (run && !RUN_TERMINAL_STATUSES.has(run.status)) {
+        resetOnGoingConv(threadId)
         await startRunStream(threadId, run.id, '0-0')
         return
       }
@@ -385,7 +486,9 @@ export function useAgentRunStream({
     ts.isStreaming = false
     ts.replyLoadingVisible = false
     ts.pendingRequestId = null
+    ts.pendingInterrupt = null
     clearActiveRunSnapshot(threadId)
+    notifyTerminalDetected(threadId, null, new Set([threadId]))
   }
 
   return {

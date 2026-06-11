@@ -194,12 +194,14 @@ async def resolve_thread_artifact_view(
         raise HTTPException(status_code=400, detail="artifact path is not a file")
 
     resolved_path = actual_path.resolve()
-    allowed_roots = (
-        sandbox_workspace_dir(thread_id, uid).resolve(),
-        sandbox_uploads_dir(thread_id).resolve(),
-        sandbox_outputs_dir(thread_id).resolve(),
-    )
-    if not any(_is_path_within(resolved_path, root) for root in allowed_roots):
+    workspace_root = sandbox_workspace_dir(thread_id, uid).resolve()
+    uploads_root = sandbox_uploads_dir(thread_id).resolve()
+    outputs_root = sandbox_outputs_dir(thread_id).resolve()
+    if not (
+        resolved_path.is_relative_to(workspace_root)
+        or resolved_path.is_relative_to(uploads_root)
+        or resolved_path.is_relative_to(outputs_root)
+    ):
         raise HTTPException(status_code=403, detail="access denied")
 
     return resolved_path
@@ -258,11 +260,3 @@ def _next_available_artifact_path(target_dir: Path, filename: str) -> Path:
         if index >= 1000:
             # This is a safety check to prevent infinite loops in case of some unexpected issue with file naming.
             raise RuntimeError(f"Unable to find available filename for {filename} after 1000 attempts.")
-
-
-def _is_path_within(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-    except ValueError:
-        return False
-    return True

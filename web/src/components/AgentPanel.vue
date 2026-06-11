@@ -16,11 +16,7 @@
               :title="tab.path"
               @click="activatePreviewTab(tab.path)"
             >
-              <component
-                :is="getFileIcon(tab.path)"
-                class="preview-tab-icon"
-                :style="{ color: getFileIconColor(tab.path) }"
-              />
+              <FileTypeIcon :name="tab.path" :size="16" class="preview-tab-icon" />
               <span class="preview-tab-name">{{ tab.name }}</span>
             </button>
             <button
@@ -49,6 +45,14 @@
         </button>
         <button class="header-action-btn" title="刷新" aria-label="刷新" @click="emitRefresh">
           <RefreshCw :size="15" />
+        </button>
+        <button
+          class="header-action-btn"
+          title="关闭文件面板"
+          aria-label="关闭文件面板"
+          @click="emitClose"
+        >
+          <PanelRightClose :size="15" />
         </button>
       </div>
     </div>
@@ -133,11 +137,11 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { Download, Folders, RefreshCw, Trash2, X } from 'lucide-vue-next'
+import { Download, Folders, PanelRightClose, RefreshCw, Trash2, X } from 'lucide-vue-next'
 import { Modal, message } from 'ant-design-vue'
 import FileTreeComponent from '@/components/FileTreeComponent.vue'
 import AgentFilePreview from '@/components/AgentFilePreview.vue'
-import { getFileIcon, getFileIconColor } from '@/utils/file_utils'
+import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 import {
   deleteViewerFile,
   downloadViewerFile,
@@ -174,6 +178,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
+  'close',
   'refresh',
   'resize',
   'resizing',
@@ -545,6 +550,10 @@ const emitRefresh = () => {
   emit('refresh', props.threadId)
 }
 
+const emitClose = () => {
+  emit('close')
+}
+
 let resizePointerId = null
 let pendingClientX = 0
 let resizeFrameId = 0
@@ -667,7 +676,9 @@ watch(
 }
 
 .agent-panel {
+  width: 100%;
   height: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -676,6 +687,19 @@ watch(
 
   &.resizing {
     transition: none;
+  }
+
+  .panel-header {
+    border-bottom: 1px solid var(--gray-100);
+  }
+
+  :deep(.side-preview-shell) {
+    border: none;
+  }
+
+  :deep(.preview-header) {
+    min-height: 32px;
+    padding-top: 0;
   }
 }
 

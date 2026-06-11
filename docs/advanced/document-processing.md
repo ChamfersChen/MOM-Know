@@ -8,8 +8,9 @@ Yuxi 支持多种文档格式的智能解析，从简单的文本文件到复杂
 
 | 类型 | 格式 | 说明 |
 |------|------|------|
-| 文本 | .txt, .md, .html | 直接提取内容 |
+| 文本 | .txt, .md, .html, .htm | 直接提取内容 |
 | Word | .docx | 保留格式和结构 |
+| PowerPoint | .pptx | 保留主要文本结构 |
 | PDF | .pdf | 支持文本和图片 PDF |
 | 表格 | .csv, .xls, .xlsx | 识别表格结构 |
 | JSON | .json | 结构化数据 |
@@ -17,7 +18,7 @@ Yuxi 支持多种文档格式的智能解析，从简单的文本文件到复杂
 ### 图片文件
 
 对于图片文件，需要启用 OCR 才能提取文字：
-- .jpg, .jpeg, .png, .bmp, .tiff, .tif, .gif, .webp
+- .jpg, .jpeg, .png, .bmp, .tiff, .tif
 
 ### 压缩包
 

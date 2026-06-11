@@ -9,7 +9,6 @@ import {
   Settings2,
   Trash2,
   CheckCircle2,
-  Edit3,
   LayersPlus
 } from 'lucide-vue-next'
 
@@ -22,6 +21,7 @@ import ExtensionCardGrid from '@/components/extensions/ExtensionCardGrid.vue'
 const loading = ref(false)
 const remoteLoading = ref(false)
 const saving = ref(false)
+const togglingProviderId = ref(null)
 const providers = ref([])
 const searchQuery = ref('')
 const modelTestLoadingBySpec = ref({})
@@ -265,8 +265,7 @@ const loadProviders = async () => {
 function getProviderInfo(provider) {
   return [
     { label: 'Base URL', value: provider.base_url || '-' },
-    { label: '能力', value: provider.capabilities?.join(', ') || 'chat' },
-    { label: '已启用', value: `${provider.enabled_models?.length || 0} 个模型` }
+    { label: '能力', value: provider.capabilities?.join(', ') || 'chat' }
   ]
 }
 
@@ -401,6 +400,20 @@ const deleteProviderFromEdit = async () => {
   const provider = providers.value.find((p) => p.provider_id === editingProviderId.value)
   if (provider) {
     deleteProvider(provider)
+  }
+}
+
+const toggleProviderEnabled = async (provider, checked) => {
+  togglingProviderId.value = provider.provider_id
+  try {
+    await modelProviderApi.updateProvider(provider.provider_id, { is_enabled: checked })
+    message.success(checked ? '已启用' : '已停用')
+    await loadProviders()
+  } catch (error) {
+    message.error(error.message || '操作失败')
+    await loadProviders()
+  } finally {
+    togglingProviderId.value = null
   }
 }
 
@@ -637,7 +650,6 @@ defineExpose({
         :key="provider.provider_id"
         :title="provider.display_name"
         :subtitle="provider.provider_id"
-        :disabled="!provider.is_enabled"
         :default-icon="Globe"
         :info="getProviderInfo(provider)"
         :status="getProviderStatus(provider)"
@@ -654,16 +666,18 @@ defineExpose({
           <button class="view-models-btn" type="button" @click.stop="openModelsModal(provider)">
             <Settings2 :size="14" />
             管理模型
-          </button>
-          <a-tooltip title="编辑供应商">
-            <a-button
-              size="small"
-              class="lucide-icon-btn"
-              @click.stop="openEditProviderModal(provider)"
+            <span v-if="provider.enabled_models?.length" class="enabled-count"
+              >（已启用 {{ provider.enabled_models.length }} 个）</span
             >
-              <Edit3 :size="14" />
-            </a-button>
-          </a-tooltip>
+          </button>
+          <span class="provider-enable-switch" @click.stop>
+            <a-switch
+              size="small"
+              :checked="provider.is_enabled"
+              :loading="togglingProviderId === provider.provider_id"
+              @change="(checked) => toggleProviderEnabled(provider, checked)"
+            />
+          </span>
         </template>
       </InfoCard>
     </ExtensionCardGrid>
@@ -727,10 +741,9 @@ defineExpose({
             <span>Provider Type</span>
             <a-select v-model:value="providerForm.provider_type">
               <a-select-option value="openai">openai</a-select-option>
-              <a-select-option value="anthropic">anthropic</a-select-option>
+              <!-- <a-select-option value="anthropic">anthropic</a-select-option>
               <a-select-option value="gemini">gemini</a-select-option>
-              <a-select-option value="openrouter">openrouter</a-select-option>
-              <a-select-option value="lmstudio">lmstudio</a-select-option>
+              <a-select-option value="openrouter">openrouter</a-select-option> -->
             </a-select>
           </label>
         </div>
@@ -1077,6 +1090,11 @@ defineExpose({
 .model-provider-manage-panel {
   height: 100%;
   min-height: 0;
+
+  :deep(.info-card-icon img) {
+    width: 30px;
+    height: 30px;
+  }
 }
 
 .view-models-btn {
@@ -1096,6 +1114,17 @@ defineExpose({
   &:hover {
     background: var(--main-50);
   }
+}
+
+.provider-enable-switch {
+  display: inline-flex;
+  align-items: center;
+}
+
+.enabled-count {
+  color: var(--gray-500);
+  font-size: 12px;
+  font-weight: 400;
 }
 
 .spinning {

@@ -65,7 +65,9 @@
               :key="`v2-${providerId}`"
             >
               <template #title>
-                <span>{{ providerId }}</span>
+                <span :title="providerId">{{
+                  getProviderDisplayName(providerId, providerData)
+                }}</span>
               </template>
               <a-menu-item
                 v-for="model in providerData.models"
@@ -127,7 +129,13 @@ const filteredV2Models = computed(() => {
 
   return Object.entries(v2Models.value).reduce((result, [providerId, providerData]) => {
     const models = (providerData.models || []).filter((model) => {
-      return [providerId, model.spec, model.model_id, model.display_name].some((value) =>
+      return [
+        providerId,
+        getProviderDisplayName(providerId, providerData),
+        model.spec,
+        model.model_id,
+        model.display_name
+      ].some((value) =>
         String(value || '')
           .toLowerCase()
           .includes(keyword)
@@ -145,6 +153,15 @@ const filteredV2Models = computed(() => {
 const hasFilteredModels = computed(() => {
   return Object.values(filteredV2Models.value).some((providerData) => providerData.models?.length)
 })
+
+const getProviderDisplayName = (providerId, providerData = {}) => {
+  return (
+    providerData.provider_display_name ||
+    providerData.display_name ||
+    providerData.name ||
+    providerId
+  )
+}
 
 // 拉取 v2 模型列表
 const fetchV2Models = async () => {

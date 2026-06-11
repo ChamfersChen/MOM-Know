@@ -1,6 +1,6 @@
 {
   "name": "yuxi-web",
-  "version": "0.7.0.dev0",
+  "version": "0.7.0.beta3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -60,7 +60,8 @@
       "flatted": "3.4.2",
       "lodash": "4.18.1",
       "lodash-es": "4.18.1",
-      "undici": "6.24.0"
+      "undici": "6.24.0",
+      "yaml": "2.8.3"
     }
   },
   "packageManager": "pnpm@10.11.0"

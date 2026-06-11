@@ -71,10 +71,7 @@
                     </div>
                   </div>
 
-                  <a-form
-                    layout="vertical"
-                    class="extension-form inline-edit-form"
-                  >
+                  <a-form layout="vertical" class="extension-form inline-edit-form">
                     <section class="form-section">
                       <div class="form-section-title">
                         <span>基础信息</span>

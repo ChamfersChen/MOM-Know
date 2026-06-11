@@ -63,7 +63,7 @@
             </div>
           </template>
           <template v-if="column.key === 'agent_id'">
-            <a-tag color="blue">{{ record.agent_id }}</a-tag>
+            <a-tag color="blue">{{ resolveAgentName(record.agent_id) }}</a-tag>
           </template>
           <template v-if="column.key === 'satisfaction_rate'">
             <a-statistic
@@ -128,7 +128,7 @@ const performerColumns = [
     align: 'center'
   },
   {
-    title: '智能体ID',
+    title: '智能体',
     key: 'agent_id',
     width: '30%'
   },
@@ -160,6 +160,10 @@ const totalToolUsage = computed(() => {
 const topPerformers = computed(() => {
   return props.agentStats?.top_performing_agents || []
 })
+
+const agentNames = computed(() => props.agentStats?.agent_names || {})
+
+const resolveAgentName = (agentId) => agentNames.value[agentId] || agentId
 
 // 初始化对话数和工具调用数合并图表
 const initConversationToolChart = () => {
@@ -235,7 +239,7 @@ const initConversationToolChart = () => {
     },
     xAxis: {
       type: 'category',
-      data: topAgentIds,
+      data: topAgentIds.map(resolveAgentName),
       axisLine: {
         lineStyle: {
           color: getCSSVariable('--gray-200')

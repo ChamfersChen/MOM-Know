@@ -57,11 +57,11 @@ watch(activeTab, (tab) => {
   <div class="model-manage-view">
     <PageHeader
       v-model:active-key="activeTab"
-      title="模型管理"
+      title="智能体管理"
       :tabs="modelManageTabs"
       :loading="activeLoading"
       :show-border="true"
-      aria-label="模型管理视图切换"
+      aria-label="智能体管理视图切换"
     >
       <template #info>
         <div v-if="activeTab === 'agents'" class="summary-strip">

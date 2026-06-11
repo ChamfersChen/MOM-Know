@@ -60,7 +60,7 @@
                       @click="showEditDepartmentModal(record)"
                       class="action-btn lucide-icon-btn"
                     >
-                      <Pencil :size="14" />
+                      <SquarePen :size="14" />
                     </a-button>
                   </a-tooltip>
                   <a-tooltip title="删除部门">
@@ -178,7 +178,7 @@
 import { reactive, onMounted, watch } from 'vue'
 import { notification, message, Modal } from 'ant-design-vue'
 import { departmentApi, apiSuperAdminGet } from '@/apis'
-import { Delete as Trash2, Edit3 as Pencil, Plus, RefreshCw } from 'lucide-vue-next'
+import { Plus, RefreshCw, SquarePen, Trash2 } from 'lucide-vue-next'
 
 // 表格列定义
 const columns = [

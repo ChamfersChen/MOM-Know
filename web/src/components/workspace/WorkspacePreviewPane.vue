@@ -48,7 +48,6 @@ defineEmits(['close', 'save', 'switchVariant'])
 .workspace-preview-pane {
   min-width: 0;
   min-height: 0;
-  border-left: 1px solid var(--gray-100);
   background: var(--gray-0);
   overflow: hidden;
 }

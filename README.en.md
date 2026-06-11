@@ -8,7 +8,7 @@
 [![License](https://img.shields.io/github/license/bitcookies/winrar-keygen.svg?logo=github)](https://github.com/xerrors/Yuxi/blob/main/LICENSE)
 [![DeepWiki](https://img.shields.io/badge/DeepWiki-blue.svg)](https://deepwiki.com/xerrors/Yuxi)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/xerrors/Yuxi)
-[![demo](https://img.shields.io/badge/demo-00A1D6.svg?style=flat&logo=bilibili&logoColor=white)](https://www.bilibili.com/video/BV1DF14BTETq/)
+[![demo](https://img.shields.io/badge/demo-00A1D6.svg?style=flat&logo=bilibili&logoColor=white)](https://www.bilibili.com/video/BV1TZEx6NEit/)
 
 <a href="https://trendshift.io/repositories/24335" target="_blank"><img src="https://trendshift.io/api/badge/repositories/24335" alt="xerrors%2FYuxi | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
@@ -22,13 +22,15 @@
 
 ## Introduction
 
-Yuxi is an LLM-powered platform for building knowledge-base and knowledge-graph agents. It unifies **RAG retrieval**, **LightRAG knowledge graphs**, and **LangGraph multi-agent orchestration** into a single multi-tenant workspace: administrators configure knowledge bases, models, and permissions, while users chat — in a ChatGPT-like interface — with agents that can mount Skills, MCPs, sub-agents, and sandbox tools, and receive answers with cited sources, graph-based reasoning, and deliverable artifacts.
+Yuxi is an LLM-powered platform for building knowledge-base and knowledge-graph agents. It unifies **RAG retrieval**, **Milvus-backed in-knowledge-base graphs**, and **LangGraph multi-agent orchestration** into a single multi-tenant workspace: administrators configure knowledge bases, models, and permissions, while users chat — in a ChatGPT-like interface — with agents that can mount Skills, MCPs, sub-agents, and sandbox tools, and receive answers with cited sources, graph-based reasoning, and deliverable artifacts.
+
+Navigation: [Introduction](https://xerrors.github.io/Yuxi/) ｜ [Quick Start](https://xerrors.github.io/Yuxi/intro/quick-start) ｜ [Roadmap](https://xerrors.github.io/Yuxi/develop-guides/roadmap); for the latest updates, see the [changelog](https://xerrors.github.io/Yuxi/develop-guides/changelog).
 
 ## Core Features
 
 - 🤖 **Agent development** — Built on LangGraph, with sub-agents (SubAgents), Skills, MCPs, Tools, and middleware; long-running tasks run asynchronously on a background worker, backed by a sandbox file system for persisting, previewing, and downloading tool artifacts.
 - 📚 **Knowledge base (RAG)** — Multi-format document parsing (MinerU / PaddleX / OCR), configurable Embedding and Rerank models, knowledge base evaluation, in-app PDF / image preview, and retrieval sources backfilled as chat citations.
-- 🕸️ **Knowledge graph** — Graph construction and visualization based on LightRAG, with property graph support that feeds directly into agent reasoning.
+- 🕸️ **Knowledge graph** — Build, visualize, and retrieve entity-relation graphs inside Milvus knowledge bases, then fuse graph hits with chunk retrieval for agent reasoning.
 - 🏢 **Multi-tenancy & permissions** — User / department-level access control, unified model provider configuration, and API Key authentication for external system integration.
 - ⚙️ **Platform & engineering** — Vue + FastAPI architecture, ready-to-run Docker Compose deployment, dark mode, a lightweight LITE startup mode, and production-grade orchestration.
 
@@ -42,6 +44,9 @@ Yuxi is an LLM-powered platform for building knowledge-base and knowledge-graph 
 | Doc parsing | MinerU · PaddleX · RapidOCR |
 | Deployment | Docker Compose |
 
+
+![image-20260606190609377](https://xerrors.oss-cn-shanghai.aliyuncs.com/github/image-20260606190609377.png)
+
 ## Quick Start
 
 **Prerequisites**: [Docker](https://docs.docker.com/get-docker/) and Docker Compose installed, plus at least one OpenAI-compatible LLM API.
@@ -49,7 +54,7 @@ Yuxi is an LLM-powered platform for building knowledge-base and knowledge-graph 
 **1. Clone and initialize**
 
 ```bash
-git clone --branch v0.7.0.dev0 --depth 1 https://github.com/xerrors/Yuxi.git
+git clone --branch v0.7.0.beta3 --depth 1 https://github.com/xerrors/Yuxi.git
 cd Yuxi
 
 # Linux/macOS

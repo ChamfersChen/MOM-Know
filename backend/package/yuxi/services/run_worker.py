@@ -312,6 +312,7 @@ async def process_agent_run(ctx, run_id: str):
         "uid": user.uid,
         "has_image": bool(image_content),
         "attachment_file_ids": payload.get("attachment_file_ids") or [],
+        "model_spec": payload.get("model_spec"),
     }
 
     await mark_run_running(run_id)
@@ -516,7 +517,7 @@ class WorkerSettings:
     functions = [process_agent_run]
     max_tries = 2
     retry_jobs = True
-    job_timeout = 900
+    job_timeout = 3600
     keep_result = 60
     on_startup = _worker_startup
     on_shutdown = _worker_shutdown

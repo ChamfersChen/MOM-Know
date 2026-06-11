@@ -2,7 +2,7 @@
 # 触发各模块的 @tool 装饰器执行，自动注册工具
 from yuxi.config import java_config
 
-from . import buildin, debug, mysql
+from . import buildin, debug
 
 if java_config.enabled:
     from . import java_api
@@ -27,7 +27,6 @@ __all__ = [
     # 触发各模块的 @tool 装饰器执行，自动注册工具
     "buildin",
     "debug",
-    "mysql",
 ]
 
 if java_config.enabled:

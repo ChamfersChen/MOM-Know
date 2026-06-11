@@ -4,28 +4,32 @@
 
 ## 核心中间件
 
-### RuntimeConfigMiddleware
+### 运行时配置准备
 
-这是系统的默认中间件，负责在每次模型调用前注入运行时配置：
+当前版本不再使用单独的旧版运行时配置中间件。内置 Agent 在创建 Graph 前完成运行时配置准备：
 
-- 自动注入当前时间到系统提示词
-- 根据配置动态加载工具列表
-- 处理模型选择和加载
+- `prepare_agent_runtime_context`：按当前用户权限过滤工具、知识库、MCP 和 Skills，并派生 `_visible_knowledge_bases`、`_prompt_skills`、`_readable_skills`
+- `build_prompt_with_context`：基于 Context 生成系统提示词
+- `load_chat_model(context.model)`：加载主模型
+- `resolve_configured_runtime_tools(context)`：加载已配置的内置工具和 MCP 工具
 
-### inject_attachment_context
+### save_attachments_to_fs
 
 支持文件上传功能的中间件。如果智能体需要处理用户上传的文档，可以启用此中间件：
 
 ```python
-from yuxi.agents.middlewares import inject_attachment_context
+from yuxi.agents.middlewares import save_attachments_to_fs
+from yuxi.agents.middlewares.knowledge_base import KnowledgeBaseMiddleware
+from yuxi.agents.middlewares.skills import SkillsMiddleware
 
 async def get_graph(self):
     graph = create_agent(
         model=load_chat_model("..."),
         tools=tools,
         middleware=[
-            inject_attachment_context,  # 启用附件处理
-            context_aware_prompt,         # 其他中间件
+            save_attachments_to_fs,
+            KnowledgeBaseMiddleware(),
+            SkillsMiddleware(),
         ],
         checkpointer=await self._get_checkpointer(),
     )
@@ -37,7 +41,19 @@ async def get_graph(self):
 启用文件上传能力需要两步：
 
 1. 在智能体类中声明 `capabilities = ["file_upload"]`
-2. 添加上述中间件
+2. 在 Graph 的 `middleware` 列表中加入 `save_attachments_to_fs`
+
+### KnowledgeBaseMiddleware
+
+根据运行时 `_visible_knowledge_bases` 暴露知识库工具，包括 `list_kbs`、`query_kb`、`find_kb_document`、`open_kb_document` 和 `get_mindmap`。知识库可见范围已经在 Graph 创建前按当前用户和 Agent 配置过滤。
+
+### SkillsMiddleware
+
+负责 Skills 的请求级提示词注入、Skill 激活校验，以及激活后按需加载 `tool_dependencies` 和 `mcp_dependencies`。它读取 `prepare_agent_runtime_context` 派生出的 `_prompt_skills` 与 `_readable_skills`，不会把 Skills 提示永久写回 Context。
+
+### 子智能体与摘要
+
+主 Agent 在配置了子智能体时会挂载 Yuxi task middleware，用真实子 Agent graph 执行任务；子智能体自身不会继续挂载下一层子智能体。长对话压缩使用 DeepAgents 的 SummarizationMiddleware，由 Yuxi 的 `create_summary_middleware` 封装接入。
 
 ## 自定义中间件
 

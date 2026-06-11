@@ -701,7 +701,7 @@ const shareConfigDisplay = computed(() => {
     const names = userUids.map((uid) => getUserName(uid)).join('、') || '无'
     return {
       color: 'purple',
-      label: '指定人可访问',
+      label: '指定人',
       detail: `${userUids.length} 个用户可访问：${names}`
     }
   }

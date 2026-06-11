@@ -7,9 +7,10 @@ from yuxi.knowledge.factory import KnowledgeBaseFactory
 from yuxi.storage.postgres.models_business import User
 from yuxi.utils import logger
 from yuxi.utils.datetime_utils import utc_isoformat
+from yuxi.utils.share_config import SHARE_ACCESS_LEVELS, normalize_share_config
 
 DEFAULT_SHARE_CONFIG = {"access_level": "global", "department_ids": [], "user_uids": []}
-ACCESS_LEVELS = {"global", "department", "user"}
+ACCESS_LEVELS = SHARE_ACCESS_LEVELS
 
 
 class KnowledgeBaseManager:
@@ -160,39 +161,14 @@ class KnowledgeBaseManager:
         user_uid: str | None = None,
         department_id: int | str | None = None,
     ) -> dict:
-        config = share_config or {}
-        access_level = config.get("access_level") or "global"
-        if access_level not in ACCESS_LEVELS:
-            raise ValueError("无效的知识库权限等级")
-
-        if access_level == "global":
-            return DEFAULT_SHARE_CONFIG.copy()
-
-        if access_level == "department":
-            department_ids = self._normalize_department_ids(config.get("department_ids"))
-            if department_id is not None:
-                department_ids.append(int(department_id))
-            department_ids = sorted(set(department_ids))
-            if not department_ids:
-                raise ValueError("部门共享至少需要选择一个部门")
-            return {"access_level": "department", "department_ids": department_ids, "user_uids": []}
-
-        user_uids = self._normalize_user_uids(config.get("user_uids"))
-        if user_uid:
-            user_uids.append(str(user_uid))
-        user_uids = sorted(set(user_uids))
-        if not user_uids:
-            raise ValueError("指定人可访问至少需要选择一个用户")
-        return {"access_level": "user", "department_ids": [], "user_uids": user_uids}
-
-    def _normalize_department_ids(self, department_ids: list | None) -> list[int]:
-        normalized = []
-        for department_id in department_ids or []:
-            normalized.append(int(department_id))
-        return normalized
-
-    def _normalize_user_uids(self, user_uids: list | None) -> list[str]:
-        return [uid for uid in (str(uid).strip() for uid in user_uids or []) if uid]
+        return normalize_share_config(
+            share_config,
+            default_config=DEFAULT_SHARE_CONFIG,
+            default_access_level="global",
+            invalid_access_level_message="无效的知识库权限等级",
+            user_uid=user_uid,
+            department_id=department_id,
+        )
 
     async def get_databases(self) -> dict:
         """获取所有数据库信息"""

@@ -165,9 +165,7 @@ async def test_runtime_access_still_excludes_disabled_shared_skill(monkeypatch: 
 
 
 @pytest.mark.asyncio
-async def test_normal_user_skill_upload_draft_defaults_to_user_share(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+async def test_normal_user_skill_upload_draft_defaults_to_user_share(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(svc.sys_config, "save_dir", str(tmp_path))
 
     class FakeRepo:
@@ -278,6 +276,23 @@ def test_image_gen_builtin_skill_spec():
     assert image_gen["name"] == "image-gen"
     assert image_gen["tool_dependencies"] == ["present_artifacts"]
     assert (image_gen["source_dir"] / "SKILL.md").exists()
+
+
+def test_mysql_reporter_builtin_skill_spec_replaces_reporter_and_deep_reporter():
+    specs = {spec["slug"]: spec for spec in svc.list_builtin_skill_specs()}
+
+    assert "reporter" not in specs
+    assert "deep-reporter" not in specs
+    assert "mysql-reporter" in specs
+    mysql_reporter = specs["mysql-reporter"]
+    assert mysql_reporter["name"] == "mysql reporter"
+    assert mysql_reporter["tool_dependencies"] == []
+    assert mysql_reporter["mcp_dependencies"] == ["mcp-server-chart"]
+    assert (mysql_reporter["source_dir"] / "SKILL.md").exists()
+    for script_name in ("list_tables.py", "describe_table.py", "query.py"):
+        script_path = mysql_reporter["source_dir"] / "scripts" / script_name
+        assert script_path.exists()
+        assert script_path.read_text(encoding="utf-8").startswith("# /// script")
 
 
 def test_is_valid_skill_slug():
@@ -412,9 +427,7 @@ async def test_skill_upload_prepare_confirm_rewrites_conflicting_name(tmp_path: 
 
 
 @pytest.mark.asyncio
-async def test_skill_zip_import_uses_skill_md_name_not_zip_or_root_dir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+async def test_skill_zip_import_uses_skill_md_name_not_zip_or_root_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(svc.sys_config, "save_dir", str(tmp_path))
 
     class FakeRepo:
@@ -435,9 +448,7 @@ async def test_skill_zip_import_uses_skill_md_name_not_zip_or_root_dir(
 
     zip_bytes = _build_zip(
         {
-            "Bad--Archive-Name/SKILL.md": (
-                "---\nname: valid-skill\ndescription: this is valid\n---\n# Valid\n"
-            ),
+            "Bad--Archive-Name/SKILL.md": ("---\nname: valid-skill\ndescription: this is valid\n---\n# Valid\n"),
             "Bad--Archive-Name/prompts/system.md": "Use valid skill metadata.",
         }
     )
@@ -481,9 +492,7 @@ async def test_skill_zip_import_validates_skill_md_name_not_zip_filename(
 
     zip_bytes = _build_zip(
         {
-            "valid-archive/SKILL.md": (
-                "---\nname: invalid--skill\ndescription: invalid name\n---\n# Invalid\n"
-            ),
+            "valid-archive/SKILL.md": ("---\nname: invalid--skill\ndescription: invalid name\n---\n# Invalid\n"),
         }
     )
 

@@ -57,6 +57,7 @@ class AgentRunCreate(BaseModel):
     thread_id: str = Field(..., description="会话线程 ID")
     meta: dict = Field(default_factory=dict, description="可选，请求追踪信息，例如 request_id")
     image_content: str | None = Field(None, description="可选，base64 图片内容")
+    model_spec: str | None = Field(None, description="可选，对话级模型覆盖，优先级高于智能体配置")
     resume: Any | None = Field(None, description="可选，恢复 interrupted run 的输入")
     parent_run_id: str | None = Field(None, description="可选，被恢复的 run ID")
     resume_request_id: str | None = Field(None, description="可选，resume 幂等键")
@@ -258,6 +259,7 @@ async def create_agent_run(
         thread_id=payload.thread_id,
         meta=dict(payload.meta or {}),
         image_content=payload.image_content,
+        model_spec=payload.model_spec,
         current_uid=str(current_user.uid),
         db=db,
         resume=payload.resume,
@@ -284,12 +286,13 @@ async def cancel_agent_run(
 async def stream_run_events(
     run_id: str,
     after_seq: str = "0-0",
+    verbose: bool = Query(default=True, description="是否返回完整事件载荷；false 时仅返回 UI/客户端消费所需字段"),
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
     current_user: User = Depends(get_required_user),
 ):
     cursor = last_event_id or after_seq
     return StreamingResponse(
-        stream_agent_run_events(run_id=run_id, after_seq=cursor, current_uid=str(current_user.uid)),
+        stream_agent_run_events(run_id=run_id, after_seq=cursor, current_uid=str(current_user.uid), verbose=verbose),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )

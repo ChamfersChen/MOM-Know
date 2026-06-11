@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
-import { generatePixelAvatar } from '../pixelAvatar.js'
+import {
+  AVATAR_BACKGROUND_TOKENS,
+  generatePixelAvatar,
+  getAvatarColorIndex,
+  getAvatarFallbackStyle,
+  getAvatarInitials
+} from '../pixelAvatar.js'
 
-const decodeAvatarSvg = (avatar) => decodeURIComponent(avatar.replace('data:image/svg+xml,', ''))
+const DICEBEAR_GLYPHS_AVATAR_BASE_URL = 'https://api.dicebear.com/10.x/glyphs/svg'
 
 const run = () => {
   {
@@ -20,15 +26,22 @@ const run = () => {
 
   {
     const avatar = generatePixelAvatar('user-003')
-    assert.ok(avatar.startsWith('data:image/svg+xml,'), 'Should return an SVG data URL')
-    console.log('T3 Data URL prefix: PASS')
+    assert.equal(
+      avatar,
+      `${DICEBEAR_GLYPHS_AVATAR_BASE_URL}?seed=user-003`,
+      'Should return a DiceBear glyphs avatar URL'
+    )
+    console.log('T3 DiceBear URL: PASS')
   }
 
   {
-    const svg = decodeAvatarSvg(generatePixelAvatar('user-004'))
-    assert.ok(svg.includes('<svg'), 'Decoded output should contain an SVG tag')
-    assert.ok(svg.includes('<rect'), 'Decoded output should contain pixel rects')
-    console.log('T4 Decodable SVG: PASS')
+    const avatar = generatePixelAvatar(' user/中文 ')
+    assert.equal(
+      avatar,
+      `${DICEBEAR_GLYPHS_AVATAR_BASE_URL}?seed=user%2F%E4%B8%AD%E6%96%87`,
+      'Seed should be trimmed and URL encoded'
+    )
+    console.log('T4 Encoded seed: PASS')
   }
 
   {
@@ -45,7 +58,32 @@ const run = () => {
     console.log('T5 Missing ID fails: PASS')
   }
 
-  console.log('\nAll 5 pixel avatar tests passed!')
+  {
+    assert.equal(getAvatarInitials('张三丰', 'user'), '张三', 'Chinese initials use first two chars')
+    assert.equal(getAvatarInitials('Alice', 'user'), 'Al', 'ASCII initials use first two chars')
+    assert.equal(getAvatarInitials('', 'user'), '用户', 'User fallback should be localized')
+    assert.equal(getAvatarInitials('', 'agent'), '智能', 'Agent fallback should be localized')
+    console.log('T6 Initials: PASS')
+  }
+
+  {
+    const first = getAvatarColorIndex('user-001')
+    const second = getAvatarColorIndex('user-001')
+    const third = getAvatarColorIndex('user-002')
+    assert.equal(first, second, 'Same seed should select the same fallback color')
+    assert.notEqual(first, third, 'Different seeds should be able to select different colors')
+    assert.ok(first >= 0 && first < AVATAR_BACKGROUND_TOKENS.length, 'Color index should be valid')
+    console.log('T7 Stable fallback color: PASS')
+  }
+
+  {
+    const style = getAvatarFallbackStyle('agent-001')
+    assert.equal(typeof style.background, 'string', 'Fallback style should include background')
+    assert.equal(typeof style.color, 'string', 'Fallback style should include text color')
+    console.log('T8 Fallback style: PASS')
+  }
+
+  console.log('\nAll 8 pixel avatar tests passed!')
 }
 
 run()

@@ -27,10 +27,11 @@
       <template #actions>
         <a-button
           type="primary"
+          class="lucide-icon-btn"
           :disabled="!kbTypes.length"
           @click="state.openNewDatabaseModel = true"
         >
-          <PlusOutlined /> 新建知识库
+          <Plus :size="16" /> 新建知识库
         </a-button>
       </template>
     </PageShoulder>
@@ -182,21 +183,27 @@
     </div>
 
     <!-- 空状态显示 -->
-    <div v-else-if="!databases || databases.length === 0" class="empty-state">
-      <h3 class="empty-title">暂无知识库</h3>
-      <p class="empty-description">创建您的第一个知识库，开始管理文档和知识</p>
-      <a-button
-        type="primary"
-        size="large"
-        :disabled="!kbTypes.length"
-        @click="state.openNewDatabaseModel = true"
-      >
-        <template #icon>
-          <PlusOutlined />
-        </template>
-        创建知识库
-      </a-button>
-    </div>
+    <ResourceEmptyState
+      v-else-if="!databases || databases.length === 0"
+      title="暂无知识库"
+      description="创建知识库后，可以上传文件并配置检索、图谱和评估能力。"
+      :icon="getKbTypeIcon('milvus')"
+    >
+      <template #actions>
+        <a-button
+          type="primary"
+          size="large"
+          class="lucide-icon-btn"
+          :disabled="!kbTypes.length"
+          @click="state.openNewDatabaseModel = true"
+        >
+          <template #icon>
+            <Plus :size="16" />
+          </template>
+          创建知识库
+        </a-button>
+      </template>
+    </ResourceEmptyState>
 
     <!-- 数据库列表 -->
     <ExtensionCardGrid v-else>
@@ -224,11 +231,13 @@ import { useRouter, useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { useDatabaseStore } from '@/stores/database'
-import { PlusOutlined, QuestionCircleOutlined } from '@ant-design/icons-vue'
+import { QuestionCircleOutlined } from '@ant-design/icons-vue'
+import { Plus } from 'lucide-vue-next'
 import { message } from 'ant-design-vue'
 import { typeApi } from '@/apis/knowledge_api'
 import PageHeader from '@/components/shared/PageHeader.vue'
 import PageShoulder from '@/components/shared/PageShoulder.vue'
+import ResourceEmptyState from '@/components/shared/ResourceEmptyState.vue'
 import EmbeddingModelSelector from '@/components/EmbeddingModelSelector.vue'
 import ShareConfigForm from '@/components/ShareConfigForm.vue'
 import ExtensionCardGrid from '@/components/extensions/ExtensionCardGrid.vue'
@@ -734,38 +743,6 @@ defineExpose({
 
 .database-container {
   padding: 0;
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 100px 20px;
-  text-align: center;
-
-  .empty-title {
-    font-size: 20px;
-    font-weight: 600;
-    color: var(--gray-900);
-    margin: 0 0 12px 0;
-    letter-spacing: -0.02em;
-  }
-
-  .empty-description {
-    font-size: 14px;
-    color: var(--gray-600);
-    margin: 0 0 32px 0;
-    line-height: 1.5;
-    max-width: 320px;
-  }
-
-  .ant-btn {
-    height: 44px;
-    padding: 0 24px;
-    font-size: 15px;
-    font-weight: 500;
-  }
 }
 
 .loading-container {

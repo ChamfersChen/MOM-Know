@@ -25,19 +25,35 @@
 
 ## 供应商管理
 
-### 内置供应商
+### 内置供应商模板
 
-部分供应商默认启用，首次使用需配置 API 凭证：
+系统启动时会同步一组内置 provider 模板。模板只提供 Provider ID、Base URL、凭证环境变量和远端模型发现地址；实际是否可用仍取决于你是否配置凭证、启用供应商并添加模型。
 
-| 供应商 | Provider ID | 支持类型 | 备注 |
-|--------|-------------|----------|------|
-| SiliconFlow | `siliconflow-cn` | chat, embedding, rerank | 默认启用 |
-| OpenAI | `openai` | chat | |
-| DeepSeek | `deepseek` | chat | |
-| 阿里云百炼 | `alibaba` | chat | |
-| 智谱清言 | `zhipuai` | chat | |
-| MiniMax | `minimax-cn` | chat | |
-| OpenRouter | `openrouter` | chat, embedding | |
+| 供应商 | Provider ID | 支持类型 | 凭证环境变量 |
+|--------|-------------|----------|--------------|
+| OpenAI | `openai` | chat | `OPENAI_API_KEY` |
+| DeepSeek | `deepseek` | chat | `DEEPSEEK_API_KEY` |
+| DashScope | `alibaba` | chat, embedding, rerank | `DASHSCOPE_API_KEY` |
+| Aliyun Coding Plan | `alibaba-coding-plan-cn` | chat | `DASHSCOPE_API_KEY` |
+| Aliyun Coding Plan International | `alibaba-coding-plan` | chat | `DASHSCOPE_API_KEY` |
+| Zhipu BigModel | `zhipuai` | chat | `ZHIPUAI_API_KEY` |
+| Zhipu BigModel Coding Plan | `zhipuai-coding-plan` | chat | `ZHIPUAI_API_KEY` |
+| Z.AI | `zai` | chat | `ZAI_API_KEY` |
+| Z.AI Coding Plan | `zai-coding-plan` | chat | `ZAI_API_KEY` |
+| XiaomiMiMo Token Plan | `xiaomi-token-plan-cn` | chat | `XIAOMI_MIMO_TOKEN_PLAN_API_KEY` |
+| XiaomiMiMo | `xiaomi` | chat | `XIAOMI_MIMO_API_KEY` |
+| Kimi Code | `kimi-for-coding` | chat | `KIMI_CODE_API_KEY` |
+| Moonshot | `moonshotai-cn` | chat | `MOONSHOT_API_KEY` |
+| Moonshot International | `moonshotai` | chat | `MOONSHOT_API_KEY` |
+| MiniMax | `minimax-cn` | chat | `MINIMAX_API_KEY` |
+| MiniMax International | `minimax` | chat | `MINIMAX_API_KEY` |
+| OpenRouter | `openrouter` | chat, embedding | `OPENROUTER_API_KEY` |
+| ModelScope | `modelscope` | chat | `MODELSCOPE_ACCESS_TOKEN` |
+| OpenCode | `opencode` | chat | 无默认环境变量 |
+| SiliconFlow | `siliconflow-cn` | chat, embedding, rerank | `SILICONFLOW_API_KEY` |
+| SiliconFlow International | `siliconflow` | chat, embedding, rerank | `SILICONFLOW_GLOBAL_API_KEY` |
+
+其中 `alibaba`、`siliconflow-cn` 预置了部分 embedding / rerank 模型；其他供应商通常需要进入详情页通过「获取远程模型」或「手动添加」补充模型。
 
 ### 操作流程
 

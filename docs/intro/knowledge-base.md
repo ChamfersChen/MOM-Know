@@ -62,7 +62,7 @@ Milvus 文件从上传到可检索，经历三个阶段：
 
 - **全局共享**：所有用户可访问
 - **部门共享**：指定部门可访问，且必须包含当前用户所在部门
-- **指定人可访问**：仅创建者、管理员及被明确授权的人员可访问
+- **指定人**：仅创建者、管理员及被明确授权的人员可访问
 
 权限规则：
 
@@ -99,11 +99,11 @@ Neo4j 连接信息可以在 `.env` 中配置：
 
 ```bash
 # 1. 上传文件
-POST /api/knowledge/files/upload?db_id=<知识库ID>
+POST /api/knowledge/files/upload?kb_id=<知识库ID>
 # 返回 file_path 和 content_hash
 
 # 2. 解析并入库
-POST /api/knowledge/databases/{db_id}/documents
+POST /api/knowledge/databases/{kb_id}/documents
 # 返回 status=queued 和 task_id
 ```
 

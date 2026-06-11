@@ -105,6 +105,7 @@ export const agentApi = {
       thread_id: data.thread_id,
       meta: data.meta || {},
       image_content: data.image_content || null,
+      model_spec: data.model_spec || null,
       resume: data.resume ?? null,
       parent_run_id: data.parent_run_id || null,
       resume_request_id: data.resume_request_id || null
@@ -135,11 +136,11 @@ export const agentApi = {
    * 打开 Run 事件 SSE 连接（调用方负责关闭）
    * @param {string} runId - run ID
    * @param {string} afterSeq - 起始 seq/cursor
-   * @param {Object} options - { signal }
+   * @param {Object} options - { signal, verbose }
    * @returns {Promise<Response>}
    */
   streamAgentRunEvents: (runId, afterSeq = '0-0', options = {}) => {
-    const { signal } = options
+    const { signal, verbose = false } = options
     const headers = {
       ...useUserStore().getAuthHeaders()
     }
@@ -147,7 +148,8 @@ export const agentApi = {
     if (cursor && cursor !== '0-0') {
       headers['Last-Event-ID'] = cursor
     }
-    return fetch(`/api/agent/runs/${runId}/events`, {
+    const params = new URLSearchParams({ verbose: String(verbose) })
+    return fetch(`/api/agent/runs/${runId}/events?${params.toString()}`, {
       method: 'GET',
       headers,
       signal

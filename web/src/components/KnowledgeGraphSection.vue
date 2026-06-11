@@ -65,14 +65,49 @@
             </div>
           </template>
         </GraphCanvas>
-        <div
-          v-if="isMilvus && !graphBuildStatus?.locked && !graphBuildLoading"
-          class="graph-config-empty"
+        <ResourceEmptyState
+          v-if="showGraphConfigEmpty"
+          class="graph-empty-state"
+          title="暂无知识图谱"
+          description="配置抽取器后，才能从当前知识库构建实体与关系。"
+          :icon="Network"
+          full-height
         >
-          <div class="empty-title">尚未配置图谱抽取器</div>
-          <div class="empty-description">配置抽取器后才能从知识库 Chunk 构建实体与关系。</div>
-          <a-button type="primary" @click="openGraphConfig"> 配置抽取器 </a-button>
-        </div>
+          <template #actions>
+            <a-button type="primary" class="lucide-icon-btn" @click="openGraphConfig">
+              <Settings :size="16" />
+              配置抽取器
+            </a-button>
+          </template>
+        </ResourceEmptyState>
+        <ResourceEmptyState
+          v-else-if="showGraphDataEmpty"
+          class="graph-empty-state"
+          :title="graphDataEmptyTitle"
+          :description="graphDataEmptyDescription"
+          :icon="Network"
+          full-height
+        >
+          <template #actions>
+            <a-button v-if="searchInput.trim()" class="lucide-icon-btn" @click="clearGraphSearch">
+              <Search :size="16" />
+              清空搜索
+            </a-button>
+            <a-button
+              v-else-if="hasPendingGraphChunks && !isBuildActive"
+              type="primary"
+              class="lucide-icon-btn"
+              @click="startGraphBuild"
+            >
+              <Database :size="16" />
+              开始索引
+            </a-button>
+            <a-button v-else class="lucide-icon-btn" @click="loadGraph">
+              <RefreshCw :size="16" :class="{ spin: graph.fetching }" />
+              刷新图谱
+            </a-button>
+          </template>
+        </ResourceEmptyState>
 
         <!-- 详情浮动卡片 -->
         <GraphDetailPanel
@@ -320,11 +355,13 @@ import {
   Search,
   Loader2,
   Database,
+  Network,
   BrainCircuit,
   ScanText
 } from 'lucide-vue-next'
 import GraphCanvas from '@/components/GraphCanvas.vue'
 import GraphDetailPanel from '@/components/GraphDetailPanel.vue'
+import ResourceEmptyState from '@/components/shared/ResourceEmptyState.vue'
 import { getKbTypeLabel } from '@/utils/kb_utils'
 import { unifiedApi } from '@/apis/graph_api'
 import { graphBuildApi } from '@/apis/knowledge_api'
@@ -472,9 +509,31 @@ const graphConfigForm = reactive({
 })
 
 const graph = reactive(useGraph(graphRef))
+const graphLoaded = ref(false)
 
 // 计算属性：是否支持知识图谱
 const isGraphSupported = computed(() => GRAPH_SUPPORTED_KB_TYPES.has(kbType.value?.toLowerCase()))
+const hasGraphNodes = computed(() => graph.graphData.nodes.length > 0)
+const showGraphConfigEmpty = computed(
+  () => isMilvus.value && !graphBuildStatus.value?.locked && !graphBuildLoading.value
+)
+const showGraphDataEmpty = computed(
+  () =>
+    isMilvus.value &&
+    Boolean(graphBuildStatus.value?.locked) &&
+    graphLoaded.value &&
+    !graph.fetching &&
+    !hasGraphNodes.value
+)
+const graphDataEmptyTitle = computed(() =>
+  searchInput.value.trim() ? '未找到匹配实体' : '暂无知识图谱'
+)
+const graphDataEmptyDescription = computed(() => {
+  if (searchInput.value.trim()) return '换个关键词或调整图谱设置后再搜索。'
+  if (isBuildActive.value) return '图谱索引正在运行，完成后会展示实体与关系。'
+  if (hasPendingGraphChunks.value) return '当前还有待索引 Chunk，完成索引后会展示实体与关系。'
+  return '当前知识库还没有可展示的实体与关系。'
+})
 
 let pendingLoadTimer = null
 let graphStatusRequestSeq = 0
@@ -604,6 +663,7 @@ const resetGraphBuild = async () => {
       clear_config: true
     })
     message.success('图谱构建状态已重置')
+    graphLoaded.value = false
     graph.clearGraph()
     await loadGraphBuildStatus()
   } catch (e) {
@@ -618,6 +678,9 @@ const loadGraph = async () => {
   const requestSeq = ++graphLoadRequestSeq
   const currentDatabaseId = kbId.value
   graph.fetching = true
+  if (!hasGraphNodes.value) {
+    graphLoaded.value = false
+  }
   try {
     const res = await unifiedApi.getSubgraph({
       kb_id: currentDatabaseId,
@@ -641,6 +704,7 @@ const loadGraph = async () => {
   } finally {
     if (requestSeq === graphLoadRequestSeq) {
       graph.fetching = false
+      graphLoaded.value = true
     }
   }
 }
@@ -651,6 +715,11 @@ const applySettings = () => {
 }
 
 const onSearch = () => {
+  loadGraph()
+}
+
+const clearGraphSearch = () => {
+  searchInput.value = ''
   loadGraph()
 }
 
@@ -687,6 +756,7 @@ watch(
 watch(kbId, () => {
   graphStatusRequestSeq += 1
   graphLoadRequestSeq += 1
+  graphLoaded.value = false
   graph.clearGraph()
   graphBuildStatus.value = null
   if (isMilvus.value) {
@@ -699,6 +769,7 @@ watch(kbId, () => {
 
 watch(isGraphSupported, (supported) => {
   if (!supported) {
+    graphLoaded.value = false
     graph.clearGraph()
     graphBuildStatus.value = null
     return
@@ -741,30 +812,13 @@ onUnmounted(() => {
   position: relative;
 }
 
-.graph-config-empty {
+.graph-empty-state {
   position: absolute;
   inset: 0;
   z-index: 30;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
   pointer-events: none;
-  text-align: center;
 
-  .empty-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--gray-1000);
-  }
-
-  .empty-description {
-    font-size: 13px;
-    color: var(--gray-600);
-  }
-
-  :deep(.ant-btn) {
+  :deep(.resource-empty-state__actions) {
     pointer-events: auto;
   }
 }

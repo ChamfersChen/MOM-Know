@@ -31,7 +31,7 @@
                     </a-menu-item>
                     <a-menu-item
                       key="rename"
-                      :icon="h(Pencil, { size: 14 })"
+                      :icon="h(SquarePen, { size: 14 })"
                       @click.stop="renameChat(chat.id)"
                     >
                       重命名
@@ -74,7 +74,7 @@
 <script setup>
 import { computed, h, ref } from 'vue'
 import { message, Modal } from 'ant-design-vue'
-import { ChevronDown, MoreVertical, Pencil, Pin, PinOff, Trash2 } from 'lucide-vue-next'
+import { ChevronDown, MoreVertical, Pin, PinOff, SquarePen, Trash2 } from 'lucide-vue-next'
 import { parseToShanghai } from '@/utils/time'
 
 const props = defineProps({

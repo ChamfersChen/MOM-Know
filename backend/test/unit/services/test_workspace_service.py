@@ -63,6 +63,16 @@ def test_workspace_root_rejects_symlink_root(tmp_path: Path, monkeypatch) -> Non
     assert exc_info.value.status_code == 403
 
 
+def test_ensure_workspace_default_files_rejects_path_outside_threads_root(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(workspace_paths.conf, "save_dir", str(tmp_path / "saves"))
+
+    with pytest.raises(ValueError):
+        workspace_paths.ensure_workspace_default_files(tmp_path / "outside-workspace")
+
+
 @pytest.mark.asyncio
 async def test_read_workspace_file_content_returns_unsupported_for_non_utf8_text(
     tmp_path: Path,

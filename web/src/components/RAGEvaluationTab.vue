@@ -3,13 +3,19 @@
     <!-- 评估结果区域 -->
     <div class="evaluation-results">
       <template v-if="!selectedDataset">
-        <div class="empty-state">
-          <a-empty description="暂无可用评估基准，请前往基准管理">
-            <a-space>
-              <a-button @click="$emit('switch-to-benchmarks')"> 前往基准管理 </a-button>
-            </a-space>
-          </a-empty>
-        </div>
+        <ResourceEmptyState
+          class="rag-evaluation-empty"
+          title="暂无可用评估基准"
+          description="先上传或生成评估基准，再运行 RAG 评估。"
+          :icon="BarChart3"
+        >
+          <template #actions>
+            <a-button type="primary" class="lucide-icon-btn" @click="$emit('switch-to-benchmarks')">
+              <ClipboardList :size="16" />
+              前往基准管理
+            </a-button>
+          </template>
+        </ResourceEmptyState>
       </template>
       <template v-else>
         <div class="last-evaluation-section">
@@ -445,7 +451,8 @@ import { ref, reactive, onMounted, onUnmounted, computed, watch, h } from 'vue'
 import { message } from 'ant-design-vue'
 import { evaluationApi } from '@/apis/knowledge_api'
 import ModelSelectorComponent from '@/components/ModelSelectorComponent.vue'
-import { ChevronDown, RefreshCw, X } from 'lucide-vue-next'
+import { BarChart3, ChevronDown, ClipboardList, RefreshCw, X } from 'lucide-vue-next'
+import ResourceEmptyState from '@/components/shared/ResourceEmptyState.vue'
 import { useTaskerStore } from '@/stores/tasker'
 
 const props = defineProps({
@@ -1349,14 +1356,8 @@ onUnmounted(() => {
   }
 }
 
-.empty-state {
+.rag-evaluation-empty {
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--gray-0);
-  border-radius: 8px;
-  border: 1px solid var(--gray-200);
 }
 
 .progress-info {

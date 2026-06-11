@@ -87,6 +87,27 @@ const generating = ref(false)
 const mindmapData = ref(null)
 const mindmapSvg = ref(null)
 let markmapInstance = null
+let textMeasureContext = null
+
+const SVG_NS = 'http://www.w3.org/2000/svg'
+const MARKMAP_MAX_WIDTH = 200
+const MARKMAP_PADDING_X = 8
+const MARKMAP_LINE_HEIGHT = 20
+const MARKMAP_TEXT_BASELINE = 16
+const SAFARI_FALLBACK_FONT = '300 16px sans-serif'
+
+const useSvgTextFallback = (() => {
+  if (typeof navigator === 'undefined') return false
+
+  const userAgent = navigator.userAgent || ''
+  const vendor = navigator.vendor || ''
+  const isAppleWebKit = userAgent.includes('AppleWebKit')
+  const isDesktopChromium =
+    /(Chrome|Chromium|Edg|OPR)\//.test(userAgent) && !/(CriOS|FxiOS|EdgiOS)\//.test(userAgent)
+  const isAppleBrowser = vendor.includes('Apple') || /(Safari|iPhone|iPad|iPod)/.test(userAgent)
+
+  return isAppleWebKit && isAppleBrowser && !isDesktopChromium
+})()
 
 // ============================================================================
 // 方法
@@ -195,14 +216,174 @@ const jsonToMarkdown = (node, level = 0) => {
   return markdown
 }
 
+const ensureSvgViewportSize = () => {
+  const svg = mindmapSvg.value
+  const container = svg?.parentElement
+  if (!svg || !container) return false
+
+  const { width, height } = container.getBoundingClientRect()
+  if (width <= 0 || height <= 0) return false
+
+  svg.setAttribute('width', `${Math.round(width)}`)
+  svg.setAttribute('height', `${Math.round(height)}`)
+  return true
+}
+
+const createSvgElement = (tagName) => document.createElementNS(SVG_NS, tagName)
+
+const getNodeText = (html) => {
+  const element = document.createElement('div')
+  element.innerHTML = html || ''
+  return (element.textContent || '').replace(/\s+/g, ' ').trim()
+}
+
+const getTextMeasureContext = () => {
+  if (!textMeasureContext) {
+    const canvas = document.createElement('canvas')
+    textMeasureContext = canvas.getContext('2d')
+  }
+
+  if (textMeasureContext) {
+    const font = mindmapSvg.value ? getComputedStyle(mindmapSvg.value).font : ''
+    textMeasureContext.font = font || SAFARI_FALLBACK_FONT
+  }
+
+  return textMeasureContext
+}
+
+const splitTextTokens = (text) => text.match(/[A-Za-z0-9_.:/#-]+|\s+|./gu) || []
+
+const wrapSvgText = (text, maxWidth) => {
+  const context = getTextMeasureContext()
+  const measure = (value) => (context ? context.measureText(value).width : value.length * 8)
+  const lines = []
+  let currentLine = ''
+
+  for (const token of splitTextTokens(text)) {
+    const normalizedToken = /^\s+$/.test(token) ? ' ' : token
+    if (!currentLine && normalizedToken === ' ') continue
+
+    const nextLine = `${currentLine}${normalizedToken}`
+    if (!currentLine || measure(nextLine) <= maxWidth) {
+      currentLine = nextLine
+      continue
+    }
+
+    lines.push(currentLine.trimEnd())
+
+    if (measure(normalizedToken) <= maxWidth) {
+      currentLine = normalizedToken.trimStart()
+      continue
+    }
+
+    currentLine = ''
+    for (const char of [...normalizedToken]) {
+      const nextCharLine = `${currentLine}${char}`
+      if (!currentLine || measure(nextCharLine) <= maxWidth) {
+        currentLine = nextCharLine
+      } else {
+        lines.push(currentLine)
+        currentLine = char
+      }
+    }
+  }
+
+  if (currentLine) {
+    lines.push(currentLine.trimEnd())
+  }
+
+  return lines.length ? lines : [text]
+}
+
+const collectVisibleNodes = (node, nodes = []) => {
+  if (!node?.state?.rect) return nodes
+
+  nodes.push(node)
+  if (!node.payload?.fold) {
+    for (const child of node.children || []) {
+      collectVisibleNodes(child, nodes)
+    }
+  }
+
+  return nodes
+}
+
+const hideOriginalMarkmapText = (contentGroup) => {
+  contentGroup?.querySelectorAll('.markmap-foreign').forEach((element) => {
+    element.setAttribute('visibility', 'hidden')
+    element.style.setProperty('opacity', '0', 'important')
+    element.style.setProperty('visibility', 'hidden', 'important')
+    element.style.setProperty('pointer-events', 'none', 'important')
+  })
+}
+
+const syncSafariTextFallback = () => {
+  const svg = mindmapSvg.value
+  const contentGroup = markmapInstance?.g?.node?.()
+  const data = markmapInstance?.state?.data
+
+  if (!useSvgTextFallback || !svg || !contentGroup || !data) {
+    svg?.classList.remove('mindmap-safari-fallback')
+    return
+  }
+
+  svg.classList.add('mindmap-safari-fallback')
+  hideOriginalMarkmapText(contentGroup)
+  contentGroup.querySelectorAll('.mindmap-safari-text-layer').forEach((element) => element.remove())
+
+  const layer = createSvgElement('g')
+  layer.setAttribute('class', 'mindmap-safari-text-layer')
+
+  for (const node of collectVisibleNodes(data)) {
+    const text = getNodeText(node.content)
+    const rect = node.state.rect
+    if (!text || rect.width <= 0 || rect.height <= 0) continue
+
+    const label = createSvgElement('g')
+    label.setAttribute('class', 'mindmap-safari-label')
+    label.setAttribute('transform', `translate(${rect.x + MARKMAP_PADDING_X},${rect.y})`)
+
+    const textElement = createSvgElement('text')
+    textElement.setAttribute('xml:space', 'preserve')
+
+    wrapSvgText(text, MARKMAP_MAX_WIDTH).forEach((line, index) => {
+      const tspan = createSvgElement('tspan')
+      tspan.setAttribute('x', '0')
+      tspan.setAttribute('y', `${MARKMAP_TEXT_BASELINE + index * MARKMAP_LINE_HEIGHT}`)
+      tspan.textContent = line
+      textElement.append(tspan)
+    })
+
+    label.append(textElement)
+    layer.append(label)
+  }
+
+  contentGroup.append(layer)
+  hideOriginalMarkmapText(contentGroup)
+}
+
+const patchSafariTextFallback = () => {
+  if (!useSvgTextFallback || !markmapInstance) return
+
+  const originalRenderData = markmapInstance.renderData.bind(markmapInstance)
+  markmapInstance.renderData = async (...args) => {
+    const result = await originalRenderData(...args)
+    syncSafariTextFallback()
+    setTimeout(() => {
+      hideOriginalMarkmapText(markmapInstance?.g?.node?.())
+    }, 350)
+    return result
+  }
+}
+
 /**
  * 渲染思维导图
  */
-const renderMindmap = (data, retryCount = 0) => {
+const renderMindmap = async (data, retryCount = 0) => {
   if (!data) return
 
-  if (!mindmapSvg.value) {
-    // 如果SVG引用还没准备好，最多重试3次
+  if (!mindmapSvg.value || !ensureSvgViewportSize()) {
+    // 如果SVG或尺寸还没准备好，最多重试3次
     if (retryCount < 3) {
       setTimeout(() => {
         renderMindmap(data, retryCount + 1)
@@ -220,6 +401,7 @@ const renderMindmap = (data, retryCount = 0) => {
     if (markmapInstance) {
       markmapInstance.destroy()
     }
+    mindmapSvg.value.classList.remove('mindmap-safari-fallback')
 
     // 将JSON转换为Markdown
     const markdown = jsonToMarkdown(data)
@@ -231,19 +413,21 @@ const renderMindmap = (data, retryCount = 0) => {
     // 创建Markmap实例
     markmapInstance = Markmap.create(mindmapSvg.value, {
       duration: 300,
-      maxWidth: 200,
+      maxWidth: MARKMAP_MAX_WIDTH,
       nodeMinHeight: 24,
-      paddingX: 8,
+      paddingX: MARKMAP_PADDING_X,
       spacingVertical: 5,
       spacingHorizontal: 60
     })
+    patchSafariTextFallback()
 
-    markmapInstance.setData(root)
-    markmapInstance.fit()
+    await markmapInstance.setData(root)
+    await markmapInstance.fit()
 
     // 延迟再次适应，确保布局完全稳定
     setTimeout(() => {
       if (markmapInstance) {
+        syncSafariTextFallback()
         markmapInstance.fit()
       }
     }, 300)
@@ -258,6 +442,8 @@ const renderMindmap = (data, retryCount = 0) => {
  */
 const fitView = () => {
   if (markmapInstance) {
+    ensureSvgViewportSize()
+    syncSafariTextFallback()
     markmapInstance.fit()
   }
 }
@@ -296,6 +482,8 @@ onMounted(() => {
       if (container) {
         resizeObserver = new ResizeObserver(() => {
           if (markmapInstance) {
+            ensureSvgViewportSize()
+            syncSafariTextFallback()
             markmapInstance.fit()
           }
         })
@@ -497,5 +685,20 @@ onUnmounted(() => {
 :deep(.markmap) {
   width: 100% !important;
   height: 100% !important;
+}
+
+:deep(.mindmap-svg.mindmap-safari-fallback .markmap-foreign) {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none;
+}
+
+:deep(.mindmap-safari-text-layer) {
+  pointer-events: none;
+}
+
+:deep(.mindmap-safari-label) {
+  font: var(--markmap-font);
+  fill: var(--markmap-text-color);
 }
 </style>

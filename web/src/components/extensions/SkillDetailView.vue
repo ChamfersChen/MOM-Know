@@ -891,10 +891,6 @@ onMounted(() => {
     max-height: none;
   }
 
-  :deep(.skill-file-preview-content .file-edit-textarea) {
-    min-height: 100%;
-  }
-
   :deep(.skill-file-preview-content .file-content-pre.code-highlight code) {
     min-height: 100%;
   }

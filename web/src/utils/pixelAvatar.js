@@ -1,19 +1,11 @@
-const DEFAULT_SIZE = 64
-const GRID_SIZE = 5
-const MIRROR_COLUMNS = 3
-const DEFAULT_BACKGROUND = '#f3f4f6'
+const DICEBEAR_GLYPHS_AVATAR_BASE_URL = 'https://api.dicebear.com/10.x/glyphs/svg'
 
-const COLOR_PALETTE = [
-  '#265c96',
-  '#3996ae',
-  '#13c2c2',
-  '#52c41a',
-  '#faad14',
-  '#ff7a45',
-  '#ff4d4f',
-  '#9254de',
-  '#597ef7',
-  '#4f4f4f'
+export const AVATAR_BACKGROUND_TOKENS = [
+  { background: 'linear-gradient(135deg, var(--main-600), var(--color-info-500))', color: '#fff' },
+  { background: 'linear-gradient(135deg, var(--chart-palette-5), var(--chart-palette-9))', color: '#fff' },
+  { background: 'linear-gradient(135deg, var(--chart-palette-7), var(--chart-palette-3))', color: '#fff' },
+  { background: 'linear-gradient(135deg, var(--color-accent-500), var(--chart-palette-6))', color: '#fff' },
+  { background: 'linear-gradient(135deg, var(--chart-palette-4), var(--color-error-500))', color: '#fff' }
 ]
 
 const normalizeSeed = (id) => {
@@ -23,52 +15,26 @@ const normalizeSeed = (id) => {
   return String(id).trim()
 }
 
-const hashSeed = (seed) => {
-  let hash = 2166136261
-
-  for (let i = 0; i < seed.length; i += 1) {
-    hash ^= seed.charCodeAt(i)
-    hash = Math.imul(hash, 16777619)
-  }
-
-  return hash >>> 0
-}
-
-const buildCells = (hash) => {
-  const cells = []
-
-  for (let row = 0; row < GRID_SIZE; row += 1) {
-    for (let col = 0; col < MIRROR_COLUMNS; col += 1) {
-      const bitIndex = row * MIRROR_COLUMNS + col
-      const filled = ((hash >>> bitIndex) & 1) === 1
-
-      if (!filled) continue
-
-      cells.push([col, row])
-
-      const mirroredCol = GRID_SIZE - col - 1
-      if (mirroredCol !== col) {
-        cells.push([mirroredCol, row])
-      }
-    }
-  }
-
-  if (cells.length === 0) {
-    cells.push([2, 2])
-  }
-
-  return cells
-}
-
 export const generatePixelAvatar = (id) => {
   const seed = normalizeSeed(id)
-  const hash = hashSeed(seed)
-  const color = COLOR_PALETTE[(hash >>> 16) % COLOR_PALETTE.length]
-  const cells = buildCells(hash)
-    .map(([x, y]) => `<rect x="${x}" y="${y}" width="1" height="1"/>`)
-    .join('')
-
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${DEFAULT_SIZE}" height="${DEFAULT_SIZE}" viewBox="0 0 ${GRID_SIZE} ${GRID_SIZE}" shape-rendering="crispEdges"><rect width="${GRID_SIZE}" height="${GRID_SIZE}" fill="${DEFAULT_BACKGROUND}"/><g fill="${color}">${cells}</g></svg>`
-
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`
+  return `${DICEBEAR_GLYPHS_AVATAR_BASE_URL}?seed=${encodeURIComponent(seed)}`
 }
+
+export const getAvatarInitials = (name, kind = 'user') => {
+  const fallback = kind === 'agent' ? '智能' : '用户'
+  const normalizedName = String(name || '').trim()
+  if (!normalizedName) return fallback
+  return Array.from(normalizedName).slice(0, 2).join('')
+}
+
+export const getAvatarColorIndex = (seed) => {
+  const normalizedSeed = String(seed || '').trim()
+  const value = normalizedSeed || 'avatar'
+  let hash = 0
+  for (const char of value) {
+    hash = (hash * 31 + char.codePointAt(0)) >>> 0
+  }
+  return hash % AVATAR_BACKGROUND_TOKENS.length
+}
+
+export const getAvatarFallbackStyle = (seed) => AVATAR_BACKGROUND_TOKENS[getAvatarColorIndex(seed)]

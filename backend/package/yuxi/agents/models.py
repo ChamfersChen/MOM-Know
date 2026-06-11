@@ -6,6 +6,10 @@ from yuxi.utils import get_docker_safe_url
 from yuxi.utils.logging_config import logger
 
 
+def _requires_non_streaming_tool_calls(provider_id: str, model_id: str) -> bool:
+    return provider_id.startswith("siliconflow")
+
+
 def load_chat_model(fully_specified_name: str, **kwargs) -> BaseChatModel:
     if not fully_specified_name:
         raise ValueError("model spec 不能为空")
@@ -47,10 +51,14 @@ def load_chat_model(fully_specified_name: str, **kwargs) -> BaseChatModel:
 
     from langchain_openai import ChatOpenAI
 
+    openai_kwargs = dict(kwargs)
+    if _requires_non_streaming_tool_calls(info.provider_id, info.model_id):
+        openai_kwargs.setdefault("disable_streaming", "tool_calling")
+
     return ChatOpenAI(
         model=info.model_id,
         api_key=SecretStr(api_key),
         base_url=base_url,
         stream_usage=True,
-        **kwargs,
+        **openai_kwargs,
     )

@@ -221,7 +221,7 @@ const workspaceMainStyle = computed(() => {
   if (!showInlinePreview.value) return {}
   const listWidthPercent = 100 - previewWidthPercent.value
   return {
-    gridTemplateColumns: `minmax(0, ${listWidthPercent}%) 6px minmax(280px, ${previewWidthPercent.value}%)`
+    gridTemplateColumns: `minmax(0, ${listWidthPercent}%) 3px minmax(280px, ${previewWidthPercent.value}%)`
   }
 })
 
@@ -912,15 +912,13 @@ watch(useInlinePreview, (isInline, wasInline) => {
 }
 
 .workspace-preview-resizer {
-  width: 6px;
-  min-width: 6px;
-  border-left: 1px solid var(--gray-100);
-  border-right: 1px solid var(--gray-100);
-  background: var(--gray-25);
+  width: 2px;
+  min-width: 2px;
+  background: var(--gray-100);
   cursor: col-resize;
 
   &:hover {
-    background: var(--main-20);
+    background: var(--gray-200);
   }
 }
 

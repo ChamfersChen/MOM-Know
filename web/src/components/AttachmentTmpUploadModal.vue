@@ -22,8 +22,8 @@
 
     <div v-if="fileItems.length" class="attachment-list">
       <div v-for="item in fileItems" :key="item.localId" class="attachment-item">
-        <div class="attachment-file-icon" :style="{ color: getFileIconColor(item.fileName) }">
-          <component :is="getFileIcon(item.fileName)" />
+        <div class="attachment-file-icon">
+          <FileTypeIcon :name="item.fileName" :size="20" />
         </div>
 
         <div class="attachment-item-content">
@@ -42,7 +42,13 @@
 
           <div class="attachment-status-row">
             <div class="attachment-status-meta">
-              <a-tag :color="getStatusColor(item.status)">{{ getStatusLabel(item.status) }}</a-tag>
+              <a-tag
+                :color="getStatusColor(item.status)"
+                :bordered="false"
+                class="attachment-status-tag"
+              >
+                {{ getStatusLabel(item.status) }}
+              </a-tag>
               <span>{{ formatFileSize(item.fileSize) }}</span>
               <span v-if="item.error" class="attachment-error">{{ item.error }}</span>
               <span v-else-if="item.parseError" class="attachment-error">{{
@@ -152,7 +158,7 @@ import { message } from 'ant-design-vue'
 import { ChevronDown, ChevronUp, X } from 'lucide-vue-next'
 import { threadApi } from '@/apis'
 import { ocrApi } from '@/apis/system_api'
-import { getFileIcon, getFileIconColor } from '@/utils/file_utils'
+import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -560,15 +566,26 @@ const formatFileSize = (size) => {
   justify-content: space-between;
   gap: 8px;
   color: var(--gray-500);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .attachment-status-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
+}
+
+.attachment-status-tag {
+  min-height: 18px;
+  margin-inline-end: 0;
+  padding: 0 5px;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
 }
 
 .attachment-error {

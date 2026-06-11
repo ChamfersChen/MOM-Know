@@ -23,11 +23,24 @@
 
     <!-- 基准列表 -->
     <div class="benchmarks-list">
-      <div v-if="!loading && benchmarks.length === 0" class="empty-state">
-        <div class="empty-icon">📋</div>
-        <div class="empty-title">暂无评估基准</div>
-        <div class="empty-description">上传或生成评估基准开始使用</div>
-      </div>
+      <ResourceEmptyState
+        v-if="!loading && benchmarks.length === 0"
+        title="暂无评估基准"
+        description="上传数据集，或从当前知识库自动生成评估问题。"
+        :icon="ClipboardList"
+        size="compact"
+      >
+        <template #actions>
+          <a-button type="primary" class="lucide-icon-btn" @click="showUploadModal">
+            <template #icon><Upload :size="16" /></template>
+            上传基准
+          </a-button>
+          <a-button class="lucide-icon-btn" @click="showGenerateModal">
+            <template #icon><Bot :size="16" /></template>
+            自动生成
+          </a-button>
+        </template>
+      </ResourceEmptyState>
 
       <div v-else-if="loading" class="loading-state">
         <a-spin size="large" />
@@ -272,9 +285,19 @@
 <script setup>
 import { ref, reactive, onMounted, onUnmounted, computed, watch, h } from 'vue'
 import { message, Modal } from 'ant-design-vue'
-import { Bot, Download, MoreVertical, RefreshCw, Trash2, Upload, X } from 'lucide-vue-next'
+import {
+  Bot,
+  ClipboardList,
+  Download,
+  MoreVertical,
+  RefreshCw,
+  Trash2,
+  Upload,
+  X
+} from 'lucide-vue-next'
 import { evaluationApi } from '@/apis/knowledge_api'
 import { useTaskerStore } from '@/stores/tasker'
+import ResourceEmptyState from '@/components/shared/ResourceEmptyState.vue'
 import BenchmarkUploadModal from './modals/BenchmarkUploadModal.vue'
 import BenchmarkGenerateModal from './modals/BenchmarkGenerateModal.vue'
 
@@ -911,33 +934,6 @@ onUnmounted(() => {
     color: var(--color-primary-700);
     font-size: 13px;
     font-weight: 500;
-  }
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 300px;
-  text-align: center;
-
-  .empty-icon {
-    font-size: 48px;
-    margin-bottom: 16px;
-    opacity: 0.5;
-  }
-
-  .empty-title {
-    font-size: 18px;
-    font-weight: 500;
-    color: var(--gray-900);
-    margin-bottom: 8px;
-  }
-
-  .empty-description {
-    font-size: 14px;
-    color: var(--gray-600);
   }
 }
 

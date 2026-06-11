@@ -161,7 +161,7 @@ const baseShareModeOptions = [
   },
   {
     value: 'user',
-    title: '指定人可访问',
+    title: '指定人',
     description: '选中的用户可以访问',
     icon: Users
   }
