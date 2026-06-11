@@ -10,7 +10,6 @@ import os
 import httpx
 from langgraph.prebuilt.tool_node import ToolRuntime
 from pydantic import BaseModel, Field
-from typing import Annotated, Any
 from fuzzywuzzy import fuzz
 from typing import List
 
@@ -160,17 +159,17 @@ async def call_api(
         )
 
     runtime_context = runtime.context
-    uid = getattr(runtime_context, "uid", None)
-    if not uid:
+    user_id = getattr(runtime_context, "user_id", None)
+    if not user_id:
         return json.dumps({"success": False, "error": "无法获取当前用户信息"}, ensure_ascii=False)
 
     try:
-        uid = str(uid)
+        user_id = int(user_id)
     except (ValueError, TypeError):
-        return json.dumps({"success": False, "error": f"用户 ID 格式错误: {uid}"}, ensure_ascii=False)
+        return json.dumps({"success": False, "error": f"用户 ID 格式错误: {user_id}"}, ensure_ascii=False)
 
     # 从 Redis 获取 MOM Token
-    token_data = await java_token_service.get_token_by_user(uid)
+    token_data = await java_token_service.get_token_by_user(user_id)
     if not token_data:
         return json.dumps(
             {
@@ -189,7 +188,7 @@ async def call_api(
         "Accept": "application/json, text/plain, */*",
     }
 
-    logger.info(f"MOM API 调用: {method} {url}, uid={uid}")
+    logger.info(f"MOM API 调用: {method} {url}, user_id={user_id}")
 
     try:
         if isinstance(body, str):
@@ -207,7 +206,7 @@ async def call_api(
             )
 
         if response.status_code == 401:
-            await java_token_service.delete_token(uid, token_data.tenant_id)
+            await java_token_service.delete_token(user_id, token_data.tenant_id)
             return json.dumps(
                 {
                     "success": False,
@@ -281,73 +280,102 @@ async def call_api(
         )
 
 
-class ListMomEndpointsInput(BaseModel):
-    """查询系统端点列表的参数"""
+# class ListMomEndpointsInput(BaseModel):
+#     """查询系统端点列表的参数"""
 
-    rewritten_query: str = Field(
-        default="",
-        description="对原始用户问题进行的语义等价改写结果。用于提升模型对多样化表达的鲁棒性，或作为数据增强、问答一致性评估的输入。",
-    )
-
-
-@tool(
-    category="buildin",
-    tags=["MOM系统", "API"],
-    display_name="查询MOM系统端点列表",
-    args_schema=ListMomEndpointsInput,
-)
-async def list_mom_endpoints(rewritten_query: str = "") -> str:
-    """查询 MOM 系统 API 的可用端点列表及参数格式。
-    可以按分类筛选，也可以获取全部端点。
-
-    注意：如果先前对话中没有调用 list_mom_endpoints 工具，请先调用 list_mom_endpoints 工具查看完整端点列表。
-
-    返回内容包括：端点路径、HTTP 方法、参数格式说明、简要描述。
-    """
-    registry = _load_endpoint_registry(MOM_SYSTEM_ENDPOINTS_PATH)
-    if not registry:
-        return json.dumps(
-            {"success": False, "error": "端点注册表为空或未配置"},
-            ensure_ascii=False,
-        )
-
-    if rewritten_query:
-        # 使用fuzzywuzzy算法进行模糊匹配，提升搜索体验
-        filtered = fuzzy_match_keywords(rewritten_query, registry, top_k=10)
-    else:
-        filtered = registry
-
-    if not filtered:
-        return json.dumps(
-            {
-                "success": False,
-                "error": f"未找到与 {rewritten_query} 相关的端点",
-            },
-            ensure_ascii=False,
-            )
-
-    return json.dumps(
-        {"success": True, "endpoints": filtered, "count": len(registry)},
-        ensure_ascii=False,
-        default=str,
-    )
+#     rewritten_query: str = Field(
+#         default="",
+#         description="对原始用户问题进行的语义等价改写结果。用于提升模型对多样化表达的鲁棒性，或作为数据增强、问答一致性评估的输入。",
+#     )
 
 
-@tool(
-    category="buildin",
-    tags=["MES系统", "API"],
-    display_name="查询MES系统中订单中心端点列表",
-    args_schema=ListMomEndpointsInput,
-)
-async def list_mes_order_endpoints(rewritten_query: str = "") -> str:
-    """查询 MES 系统中订单中心 API 的可用端点列表及参数格式。
-    可以按分类筛选，也可以获取全部端点。
+# @tool(
+#     category="mom_api",
+#     tags=["MOM系统", "API"],
+#     display_name="查询MOM系统端点列表",
+#     args_schema=ListMomEndpointsInput,
+# )
+# async def list_mom_endpoints(rewritten_query: str = "") -> str:
+#     """查询 MOM 系统 API 的可用端点列表及参数格式。
+#     可以按分类筛选，也可以获取全部端点。
 
-    注意：如果先前对话中没有调用 list_mes_order_endpoints 工具，请先调用 list_mes_order_endpoints 工具查看完整端点列表。
+#     注意：如果先前对话中没有调用 list_mom_endpoints 工具，请先调用 list_mom_endpoints 工具查看完整端点列表。
 
-    返回内容包括：端点路径、HTTP 方法、参数格式说明、简要描述。
-    """
-    registry = _load_endpoint_registry(MES_ORDER_ENDPOINTS_PATH)
+#     返回内容包括：端点路径、HTTP 方法、参数格式说明、简要描述。
+#     """
+#     registry = _load_endpoint_registry(MOM_SYSTEM_ENDPOINTS_PATH)
+#     if not registry:
+#         return json.dumps(
+#             {"success": False, "error": "端点注册表为空或未配置"},
+#             ensure_ascii=False,
+#         )
+
+#     if rewritten_query:
+#         # 使用fuzzywuzzy算法进行模糊匹配，提升搜索体验
+#         filtered = fuzzy_match_keywords(rewritten_query, registry, top_k=10)
+#     else:
+#         filtered = registry
+
+#     if not filtered:
+#         return json.dumps(
+#             {
+#                 "success": False,
+#                 "error": f"未找到与 {rewritten_query} 相关的端点",
+#             },
+#             ensure_ascii=False,
+#             )
+
+#     return json.dumps(
+#         {"success": True, "endpoints": filtered, "count": len(registry)},
+#         ensure_ascii=False,
+#         default=str,
+#     )
+
+
+# @tool(
+#     category="mes_api",
+#     tags=["MES系统", "API"],
+#     display_name="查询MES系统中订单中心端点列表",
+#     args_schema=ListMomEndpointsInput,
+# )
+# async def list_mes_order_endpoints(rewritten_query: str = "") -> str:
+#     """查询 MES 系统中订单中心 API 的可用端点列表及参数格式。
+#     可以按分类筛选，也可以获取全部端点。
+
+#     注意：如果先前对话中没有调用 list_mes_order_endpoints 工具，请先调用 list_mes_order_endpoints 工具查看完整端点列表。
+
+#     返回内容包括：端点路径、HTTP 方法、参数格式说明、简要描述。
+#     """
+#     registry = _load_endpoint_registry(MES_ORDER_ENDPOINTS_PATH)
+#     if not registry:
+#         return json.dumps(
+#             {"success": False, "error": "端点注册表为空或未配置"},
+#             ensure_ascii=False,
+#         )
+
+#     if rewritten_query:
+#         # 使用fuzzywuzzy算法进行模糊匹配，提升搜索体验
+#         filtered = fuzzy_match_keywords(rewritten_query, registry, top_k=10)
+#     else:
+#         filtered = registry
+
+#     if not filtered:
+#         return json.dumps(
+#             {
+#                 "success": False,
+#                 "error": f"未找到与 {rewritten_query} 相关的端点",
+#             },
+#             ensure_ascii=False,
+#             )
+
+#     return json.dumps(
+#         {"success": True, "endpoints": filtered, "count": len(registry)},
+#         ensure_ascii=False,
+#         default=str,
+#     )
+
+async def list_endpoints(rewritten_query: str, endpoint_json_filepath: str) -> str:
+    registry = _load_endpoint_registry(endpoint_json_filepath)
     if not registry:
         return json.dumps(
             {"success": False, "error": "端点注册表为空或未配置"},
