@@ -311,6 +311,20 @@ services:
     networks:
       - app-network
     restart: unless-stopped
+
+  attu:
+    container_name: momai-attu
+    image: zilliz/attu:v2.2.8
+    environment:
+      MILVUS_URL: momai-milvus:19530
+    ports:
+      - "8082:3000"
+    depends_on:
+      - "milvus"
+    networks:
+      - app-network
+    restart: unless-stopped
+
 volumes:
   nltk_data:
   

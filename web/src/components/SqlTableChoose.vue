@@ -153,14 +153,7 @@
               </div>
             </template>
             <a-button class="main-btn" type="link" @click="handleReindexFile(record)">
-              <component
-                :is="getFileIcon(record.displayName || text)"
-                :style="{
-                  marginRight: '0',
-                  color: getFileIconColor(record.displayName || text),
-                  fontSize: '16px'
-                }"
-              />
+              <FileTypeIcon :name="record.displayName || text" :size="16" />
               {{ record.displayName || text }}
             </a-button>
           </a-popover>
@@ -917,9 +910,10 @@ const handleUpdateTableDescriptionConfirm =  async () => {
 
 
 // 导入工具函数
-import { getFileIcon, getFileIconColor, formatRelativeTime } from '@/utils/file_utils'
+import { formatRelativeTime } from '@/utils/file_utils'
 import { parseToShanghai } from '@/utils/time'
 import ChunkParamsConfig from '@/components/ChunkParamsConfig.vue'
+import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 </script>
 
 <style scoped>

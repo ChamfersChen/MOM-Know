@@ -159,14 +159,9 @@ async def call_api(
         )
 
     runtime_context = runtime.context
-    user_id = getattr(runtime_context, "user_id", None)
+    user_id = getattr(runtime_context, "uid", None)
     if not user_id:
         return json.dumps({"success": False, "error": "无法获取当前用户信息"}, ensure_ascii=False)
-
-    try:
-        user_id = int(user_id)
-    except (ValueError, TypeError):
-        return json.dumps({"success": False, "error": f"用户 ID 格式错误: {user_id}"}, ensure_ascii=False)
 
     # 从 Redis 获取 MOM Token
     token_data = await java_token_service.get_token_by_user(user_id)

@@ -180,11 +180,11 @@ async def resolve_java_token_status(user: User) -> str:
     if not user.java_tenant_id:
         return "not_bound"
 
-    token_data_redis = await java_token_service.get_token(user.id, user.java_tenant_id)
+    token_data_redis = await java_token_service.get_token(user.uid, user.java_tenant_id)
     if not token_data_redis:
         return "not_bound"
 
-    is_valid = await java_token_service.validate_token(user.id, user.java_tenant_id)
+    is_valid = await java_token_service.validate_token(user.uid, user.java_tenant_id)
     return "valid" if is_valid else "expired"
 
 
