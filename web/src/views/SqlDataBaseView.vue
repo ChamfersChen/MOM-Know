@@ -558,42 +558,42 @@ const handleCreateNewDatasource = () => {
 }
 
 const uploadToNeo4j = async (group) => {
-  console.log('>>> upload to neo4j for group: ', group)
+  console.log('>>> reindex for group: ', group)
   console.log('>>> databases: ', databaseStore.databases)
-  
+
   const action = selectedGraphGroupsStore.isGroupSelected(group) ? '重新导入' : '导入'
   const groupName = `${getDbTypeLabel(group.dbType)} - ${group.host}:${group.port}`
   const dbCount = group.databases.length
-  
+
   const totalSelectedTables = group.databases.reduce((sum, db) => {
     const tables = db.tables || {}
     const selected = Object.values(tables).filter(t => t.is_choose).length
     return sum + selected
   }, 0)
-  
+
   if (totalSelectedTables === 0) {
     message.warning('该分组下没有选择任何数据表，请先在数据源中选择需要导入的表后再进行导入')
     return
   }
-  
+
   Modal.confirm({
-    title: `${action}图谱`,
-    content: `即将${action}「${groupName}」分组下已选择的 ${totalSelectedTables} 张数据表导入 Neo4j 并创建知识图谱。该分组下共有 ${dbCount} 个数据源。`,
+    title: `${action}索引`,
+    content: `即将${action}「${groupName}」分组下已选择的 ${totalSelectedTables} 张数据表至 Milvus 向量库和 Neo4j 图谱。该分组下共有 ${dbCount} 个数据源。`,
     okText: '确认',
     cancelText: '取消',
     onOk: async () => {
       state.importing = true
       try {
-        const ret = await databaseApi.createGraph(group.databases)
+        const ret = await databaseApi.createGraph(group.databases.map(db => db.db_id))
         if (ret.code === 0) {
           selectedGraphGroupsStore.selectGroup(group)
-          message.success(`「${groupName}」已${action}图谱`)
+          message.success(`「${groupName}」${action}完成`)
         } else {
-          message.error('知识图谱创建失败')
+          message.error(ret.message || '重索引失败')
         }
       } catch (e) {
-        console.log('>>> upload to neo4j error: ', e)
-        message.error('知识图谱创建失败')
+        console.log('>>> reindex error: ', e)
+        message.error('重索引失败')
       } finally {
         state.importing = false
       }

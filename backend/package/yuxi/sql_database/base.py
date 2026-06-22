@@ -75,6 +75,7 @@ class ConnectorBase(ABC):
                 "db_type": db.db_type,
                 "connect_info": connect_info,
                 "share_config": db.share_config,
+                "is_activate": db.is_activate,
                 "related_db_ids": db.related_db_ids.split(";") if db.related_db_ids else [],
                 "created_at": utc_isoformat(db.created_at) if db.created_at else utc_isoformat(),
             }
@@ -143,6 +144,32 @@ class ConnectorBase(ABC):
         """知识库类型标识"""
         pass
 
+    @abstractmethod
+    def update_tables(self, db_id: str, table_info: dict) -> dict:
+        pass
+
+    @abstractmethod
+    async def get_tables(self) -> dict:
+        pass
+
+    @abstractmethod
+    def update_database(self,
+                        db_id: str,
+                        name: str,
+                        description: str,
+                        share_config:dict=None,
+                        related_db_ids: str=None) -> dict:
+        """
+        更新数据库
+
+        Args:
+            db_id: 数据库ID
+            name: 新名称
+            description: 新描述
+
+        Returns:
+            更新后的数据库信息
+        """
 
     @abstractmethod
     async def _create_connection(self) -> Any:
@@ -368,6 +395,7 @@ class ConnectorBase(ABC):
                 "related_db_ids": ";".join(meta.get("related_db_ids",[])),
             }
             if existing is None:
+                payload["is_activate"] = False
                 await db_repo.create(payload)
             else:
                 await db_repo.update(

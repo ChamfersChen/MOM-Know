@@ -74,23 +74,42 @@ async def get_databases(
         logger.error(f"获取数据库列表失败 {e}, {traceback.format_exc()}")
         return {"message": f"获取数据库列表失败 {e}", "databases": []}
 
-@sql_database_router.post("/databases/neo4j")
-async def create_graph(
-    datasource_group: list = Body(None),
+@sql_database_router.post("/databases/reupload")
+async def reupload(
+    datasource_group: list[str] = Body(None),
     current_user: User = Depends(get_admin_user)
     ):
-    """根据选择的数据源组，创建图谱并使用该数据源进行问答"""
+    """清空全部旧数据，根据选择的数据源组重新导入 Milvus + Neo4j 并激活。"""
+    if not datasource_group:
+        return {"message": "未选择数据源", "data": [], "code": 1}
+
+    # 1. 清空 Milvus（表/术语/SQL 示例）和 Neo4j
     try:
-        graph_base.delete_entity()
-        await graph_base.database_meta_add_entity(
-            datasource_group,
-            batch_size=20
-        )
-        return {"message": "图谱创建成功", "code": 0}
+        await sql_database.clear_all_sql_data()
     except Exception as e:
-        logger.error(f"图谱创建失败 {e}, {traceback.format_exc()}")
-        graph_base.delete_entity()
-        return {"message": f"图谱创建失败 {e}", "code": 1}
+        logger.error(f"清空 SQL 数据失败: {e}, {traceback.format_exc()}")
+        return {"message": f"清空 SQL 数据失败: {e}", "data": [], "code": 1}
+
+    # 2. 更新激活状态
+    from yuxi.repositories.sql_database_repository import SqlDatabaseRepository
+    repo = SqlDatabaseRepository()
+    await repo.deactivate_all_except(datasource_group)
+    for db_id in datasource_group:
+        await repo.update(db_id, {"is_activate": True})
+
+    # 3. 批量重索引
+    try:
+        await sql_database.batch_reindex_all(datasource_group)
+        results = [{"db_id": db_id, "status": "success", "message": "重索引完成"} for db_id in datasource_group]
+    except Exception as e:
+        logger.error(f"批量重索引失败: {e}, {traceback.format_exc()}")
+        results = [{"db_id": db_id, "status": "failed", "message": str(e)} for db_id in datasource_group]
+
+    sql_database.set_active_db_ids(datasource_group)
+
+    failed = [r for r in results if r["status"] == "failed"]
+    code = 1 if failed else 0
+    return {"message": f"完成 {len(results)} 个数据源重索引，{len(failed)} 个失败", "data": results, "code": code}
 
 
 @sql_database_router.post("/check_connection")
@@ -202,13 +221,51 @@ async def update_tables(
     current_user: User = Depends(get_admin_user)
     ):
     """更新数据库表信息"""
-
     try:
         info = await sql_database.update_tables(db_id, table_info)
-        return info
+        return {"message": "更新成功", "data": info, "code": 0}
     except Exception as e:
-        logger.error(f"Failed to get table info, {e}, {db_id=}, {traceback.format_exc()}")
-        return {"message": "Failed to get table info", "status": "failed"}
+        logger.error(f"更新数据库表失败 {e}, {db_id=}, {traceback.format_exc()}")
+        return {"message": f"更新失败: {e}", "code": 1}
+
+@sql_database_router.post("/tables/search")
+async def search_tables(
+    query: str = Body(...),
+    db_ids: list[str] | None = Body(None),
+    top_k: int = Body(10),
+    search_mode: str = Body("hybrid"),
+    is_choose_only: bool = Body(False),
+    similarity_threshold: float = Body(0.0),
+    vector_weight: float = Body(0.7),
+    bm25_weight: float = Body(0.3),
+    reranker_model: str | None = Body(None),
+    use_graph_retrieval: bool = Body(False),
+    graph_weight: float = Body(0.5),
+    search_terms: bool = Body(False),
+    search_sqls: bool = Body(False),
+    current_user: User = Depends(get_admin_user),
+):
+    """基于用户问题检索数据库表，并可同时检索相关术语和 SQL 示例。"""
+    try:
+        result = await sql_database.search_tables(
+            query=query,
+            db_ids=db_ids,
+            top_k=top_k,
+            search_mode=search_mode,
+            is_choose_only=is_choose_only,
+            similarity_threshold=similarity_threshold,
+            vector_weight=vector_weight,
+            bm25_weight=bm25_weight,
+            reranker_model=reranker_model,
+            use_graph_retrieval=use_graph_retrieval,
+            graph_weight=graph_weight,
+            search_terms=search_terms,
+            search_sqls=search_sqls,
+        )
+        return {"message": "success", "data": result, "code": 0}
+    except Exception as e:
+        logger.error(f"搜索数据库表失败 {e}, {traceback.format_exc()}")
+        return {"message": f"搜索失败: {e}", "data": {"tables": [], "terms": [], "sqls": []}, "code": 1}
 
 @sql_database_router.put("/database/{db_id}")
 async def update_database_info(
@@ -216,12 +273,14 @@ async def update_database_info(
     name: str = Body(...),
     description: str = Body(...),
     share_config: dict = Body(None),
-    related_db_ids: str = Body(None),
+    related_db_ids: str | list[str] = Body(None),
     current_user: User = Depends(get_admin_user),
 ):
     """更新知识库信息"""
     logger.debug(
-        f"[update_database_info] 接收到的参数: name={name}"
+        f"[update_database_info] db_id={db_id}, name={name}, "
+        f"description={description}, share_config={share_config}, "
+        f"related_db_ids={related_db_ids}"
     )
     try:
         database = await sql_database.update_database(
@@ -229,12 +288,12 @@ async def update_database_info(
             name,
             description,
             share_config=share_config,
-            related_db_ids=related_db_ids
+            related_db_ids=related_db_ids,
         )
-        return {"message": "更新成功", "database": database}
+        return {"message": "更新成功", "data": database, "code": 0}
     except Exception as e:
         logger.error(f"更新数据库失败 {e}, {traceback.format_exc()}")
-        raise HTTPException(status_code=400, detail=f"更新数据库失败: {e}")
+        return {"message": f"更新失败: {e}", "code": 1}
 
 
 class HostPostInfo(BaseModel):

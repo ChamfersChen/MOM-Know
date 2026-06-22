@@ -213,16 +213,12 @@ class MySQLConnector(ConnectorBase):
 
         asyncio.create_task(self._save_metadata())
 
-    def update_tables(self, db_id: str, table_info:dict) -> dict:
-        """
-        更新数据表
-
-        """
+    def update_tables(self, db_id: str, table_info: dict) -> dict:
         if db_id not in self.databases_meta:
             raise ValueError(f"数据库 {db_id} 不存在")
 
-        for table_id, table_info in table_info.items():
-            self.tables_meta[table_id] = table_info
+        for table_id, info in table_info.items():
+            self.tables_meta[table_id] = info
 
         asyncio.create_task(self._save_metadata())
 
@@ -498,7 +494,10 @@ class MySQLConnector(ConnectorBase):
             操作结果
         """
         if db_id in self.databases_meta:
-            self.get_connection(db_id).close()
+            try:
+                self.get_connection(db_id).close()
+            except Exception as exc:
+                logger.warning(f"关闭数据库连接失败 (db_id={db_id}): {exc}")
 
             from yuxi.repositories.sql_database_repository import SqlDatabaseRepository
             from yuxi.repositories.sql_database_tables_repository import SqlDatabaseTableRepository

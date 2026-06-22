@@ -155,7 +155,7 @@ export const databaseApi = {
    * @returns {Promise} - 更新结果
    */
   createGraph: async (params = {}) => {
-    return apiAdminPost(`/api/sql_database/databases/neo4j`, params)
+    return apiAdminPost(`/api/sql_database/databases/reupload`, params)
   },
 
   /**

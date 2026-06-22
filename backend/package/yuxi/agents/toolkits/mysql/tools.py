@@ -21,8 +21,7 @@ from yuxi.services.java_token_service import java_token_service
 from yuxi.services.java_token_service import java_token_service
 from yuxi.agents.toolkits.registry import tool
 from yuxi.utils import logger
-from yuxi.knowledge import graph_base
-from yuxi.sql_database import sql_database, term_service, sql_example_service
+from yuxi.sql_database import sql_database
 from yuxi.storage.postgres.models_sql_examples import SqlExampleInfo
 
 # 全局连接管理器实例
@@ -34,14 +33,9 @@ async def init_tenant_organization_info(
     runtime:ToolRuntime,
 ):
     runtime_context = runtime.context
-    user_id = getattr(runtime_context, "user_id", None)
+    user_id = getattr(runtime_context, "uid", None)
     if not user_id:
         return False, "error: 无法获取当前用户信息", ""
-
-    try:
-        user_id = int(user_id)
-    except (ValueError, TypeError):
-        return False,  "error: "+f"用户 ID 格式错误: {user_id}", ""
 
     error_message = "请求失败，请仔细查看工具返回的端点信息，确认路径、方法和参数格式是否正确。\n"
     if not java_config.enabled:
@@ -50,10 +44,6 @@ async def init_tenant_organization_info(
     if not user_id:
         return False, "error: 无法获取当前用户信息", ""
 
-    try:
-        user_id = int(user_id)
-    except (ValueError, TypeError):
-        return False, "error: " + f"用户 ID 格式错误: {user_id}", ""
     # 从 Redis 获取 MOM Token
     token_data = await java_token_service.get_token_by_user(user_id)
     if not token_data:
@@ -182,7 +172,7 @@ class ListDbModel(BaseModel):
 
 
 @tool(
-    category="mysql",
+    category="buildin",
     tags=["数据库", "查询"],
     display_name="列出MySQL表",
     name_or_callable="mysql_list_tables_with_query",
@@ -199,106 +189,119 @@ async def mysql_list_tables_with_query(
     global host_set, port_set
     host_set.clear()
     port_set.clear()
-    result = []
     logger.info(f">> 查询表名及说明 {query}")
     extras = mysql_list_tables_with_query.extras
     user_department = extras.get('user_department')
-    # 租户和组织信息提示
     success, tenant_info, organization_info = await init_tenant_organization_info(runtime)
     if not success:
         return tenant_info + organization_info
     try:
-        # 表名称信息提示
-        query_results = graph_base.query_node(query, threshold=0.5, hops=4, max_entities=25)
+        await sql_database.initialize()
+        query_results = await sql_database.search_tables(
+            query=query, search_terms=True, search_sqls=True,
+        )
 
-        # 处理节点
-        # tb_names = [n['name'] for n in query_results['nodes']]
-        tb_names = []
-        map_id_name = {}
-        map_id_port_ip = {}
-        for n in query_results['nodes']:
-            tb_names.append(n['name'])
-            map_id_name[n['id']] = n['name']
-            map_id_port_ip[n['id']] = f"{n['host']}:{n['port']}"
-            host_set.add(n['host'])
-            port_set.add(n['port'])
+        tables = query_results.get("tables", [])
+        terms = query_results.get("terms", [])
+        sqls = query_results.get("sqls", [])
 
-        assert len(host_set) == 1 and len(port_set) == 1, "查询结果中包含多个数据库连接信息，无法确定使用哪个连接查询表名"
-        
-        databases = await sql_database.get_databases()
-        unaccessible_databases = []
-        for db_infos in databases.values():
-            for db_info in db_infos:
-                table_names = []
-                db_desc = db_info['description']
-                db_name = db_info['name']
-                tables_info = db_info['tables']
-                db_host = db_info['connect_info']['host']
-                db_port = db_info['connect_info']['port']
-                if not db_host in host_set or not db_port in port_set: # noqa E501
-                    unaccessible_databases.append(f"{db_host}:{db_port}")
-                    continue
+        if not tables:
+            return f"{tenant_info}{organization_info}未找到相关的数据库表信息。"
 
-                if not db_info['share_config']['is_shared'] and user_department not in db_info['share_config']['accessible_departments']: # noqa E501
-                    unaccessible_databases.append(f"{db_host}:{db_port}")
-                    continue
+        # 按 db_id 分组，收集涉及的数据库
+        grouped: dict[str, list[dict]] = {}
+        db_ids_found: set[str] = set()
+        for t in tables:
+            db_id = t.get("db_id", "")
+            db_ids_found.add(db_id)
+            grouped.setdefault(db_id, []).append(t)
 
-                if not tables_info.values():
-                    continue
+        # 获取数据库元信息并检查权限
+        db_metas: dict[str, dict] = {}
+        for db_id in db_ids_found:
+            try:
+                info = await sql_database.get_database_info(db_id)
+                if info:
+                    db_metas[db_id] = info
+            except Exception:
+                pass
 
-                for table_info in tables_info.values():
-                    if f"{table_info['tablename']}" not in tb_names:
-                        continue
-
-                    table_name = f"`{table_info['tablename'].replace(".", "`.`")}`: {table_info['description']}"
-                    table_names.append(table_name)
-                if table_names:
-                    result.append(f"数据库说明\n`{db_name}`: {db_desc}\n数据库中的表:\n{'\n'.join(table_names)}")
-
-        db_entity_info = "\n---\n".join(result)
-
-        # 处理关系信息提示
-        database_edge_info = []
-        t2t_edges = [e for e in query_results['edges'] if e['type'] == 'Table2Table']
-        for edge in t2t_edges:
-            source_name = map_id_name[edge['source_id']]
-            target_name = map_id_name[edge['target_id']]
-
-            if source_name == target_name:
+        result_parts = []
+        for db_id, db_tables in grouped.items():
+            meta = db_metas.get(db_id)
+            if not meta:
                 continue
 
-            database_edge_info.append(f"`{source_name}` <--> `{target_name}`")
-        db_relation_info = ""
-        if database_edge_info:
-            db_relation_info = f"\n===\n数据库之间存在以下关系: \n{'\n'.join(database_edge_info)}"
+            share_config = meta.get("share_config") or {}
+            if not share_config.get("is_shared", True):
+                accessible = share_config.get("accessible_departments", [])
+                if user_department not in accessible:
+                    continue
 
-        # 处理术语信息提示
-        db_term_info = ""
-        host, port = deepcopy(host_set).pop(), deepcopy(port_set).pop()
-        terms = await term_service.get_terms_with_query(query, ds_host=host, ds_port=port)
-        terms_info = convert_structure(terms)
-        for term_info in terms_info:
-            term_name = term_info['name']
-            term_desc = term_info['description']
-            term_children = term_info['children']
-            if term_children:
-                db_term_info += f"\n- `{term_name}`: {term_desc}, 包含以下同义词: {', '.join(term_children)}"
-            else:
-                db_term_info += f"\n- `{term_name}`: {term_desc}"
-        if db_term_info:
-            db_term_info = f"\n===\n相关术语信息:{db_term_info}"
-        
-        # 处理SQL示例
-        sqls = await sql_example_service.get_with_query(query, ds_host=host, ds_port=port)
-        sql_example_info = "---".join([f"\n- SQL示例: `{sql.sql}`，描述: {sql.description}" for sql in sqls])
-        sql_example_info = f"\n===\n相关SQL示例:{sql_example_info}" if sql_example_info else ""
+            connect_info = meta.get("connect_info", {})
+            host = connect_info.get("host")
+            port = connect_info.get("port")
+            if host and port is not None:
+                host_set.add(host)
+                port_set.add(int(port))
 
-        return (f"{tenant_info}{organization_info}{db_entity_info}{db_relation_info}{db_term_info}{sql_example_info}" if len(result)
-                 else "您所在的部门没有可以访问的数据库，请联系管理员，添加数据库。" )
+            db_name = meta.get("name", "")
+            db_desc = meta.get("description", "")
+            table_lines = []
+            for t in db_tables:
+                name = t.get("table_name", "")
+                desc = t.get("content", "")
+                if name:
+                    table_lines.append(f"  - `{name}`: {desc}" if desc else f"  - `{name}`")
+            if table_lines:
+                part = f"数据库: {db_name}\n描述: {db_desc}\n表:\n" + "\n".join(table_lines)
+                result_parts.append(part)
+
+        if not result_parts:
+            return f"{tenant_info}{organization_info}您所在的部门没有权限访问这些数据库，请联系管理员。"
+
+        db_entity_info = "\n---\n".join(result_parts)
+
+        # 格式化术语（去重）
+        terms_text = ""
+        if terms:
+            seen_terms: dict[int, dict] = {}
+            for t in terms:
+                tid = t.get("id")
+                if tid and int(tid) not in seen_terms:
+                    seen_terms[int(tid)] = {
+                        "name": t.get("word", ""),
+                        "desc": t.get("description", ""),
+                        "children": t.get("other_words", []),
+                    }
+            if seen_terms:
+                lines = []
+                for t in seen_terms.values():
+                    if t["children"]:
+                        lines.append(f"- `{t['name']}`: {t['desc']}, 同义词: {', '.join(t['children'])}")
+                    else:
+                        lines.append(f"- `{t['name']}`: {t['desc']}")
+                terms_text = "\n===\n相关术语:\n" + "\n".join(lines)
+
+        # 格式化 SQL 示例
+        sqls_text = ""
+        if sqls:
+            lines = []
+            for s in sqls:
+                sql_str = s.get("sql", "")
+                sql_desc = s.get("description", "")
+                if sql_str:
+                    lines.append(f"- `{sql_str}` — {sql_desc}" if sql_desc else f"- `{sql_str}`")
+            if lines:
+                sqls_text = "\n===\n相关 SQL 示例:\n" + "\n".join(lines)
+
+        return f"{tenant_info}{organization_info}{db_entity_info}{terms_text}{sqls_text}"
 
     except Exception as e:
         error_msg = f"获取表名失败: {str(e)}"
+        logger.error(error_msg, exc_info=True)
         return error_msg
+
 
 class TableListModel(BaseModel):
     """获取表名列表的参数模型"""
@@ -312,7 +315,7 @@ class TableDescribeModel(BaseModel):
 
 
 @tool(
-    category="mysql",
+    category="buildin",
     tags=["数据库", "结构"],
     display_name="描述MySQL表结构",
     name_or_callable="mysql_describe_table", description="获得描述表",
@@ -431,7 +434,7 @@ class QueryModel(BaseModel):
 
 
 @tool(
-    category="mysql",
+    category="buildin",
     tags=["数据库", "SQL"],
     display_name="执行MySQL查询",
     name_or_callable="mysql_query", description="执行 SQL 查询",

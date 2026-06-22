@@ -486,6 +486,7 @@ class PostgresManager(metaclass=SingletonMeta):
             "CREATE UNIQUE INDEX IF NOT EXISTS ix_model_providers_provider_id ON model_providers(provider_id)",
             "CREATE INDEX IF NOT EXISTS ix_model_providers_is_enabled ON model_providers(is_enabled)",
             "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS java_token_status VARCHAR(32)",
+            "ALTER TABLE IF EXISTS sql_database ADD COLUMN IF NOT EXISTS is_activate BOOLEAN NOT NULL DEFAULT TRUE",
         ]
         async with self.async_engine.begin() as conn:
             for stmt in stmts:

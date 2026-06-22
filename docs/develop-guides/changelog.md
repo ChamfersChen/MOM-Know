@@ -18,6 +18,7 @@
 
 ### 开发记录
 
+- SQL 数据库检索优化：新增 Milvus 向量存储层 `yuxi/sql_database/vector_store/` 与 Neo4j 图谱层 `yuxi/sql_database/graphs/`。Milvus 层共享 `sql_tables` 集合，通过 `db_id` 区分所属数据库，支持向量/BM25/混合三种检索模式；Neo4j 层维护 Database / Table 节点及 HAS_TABLE / DEPENDS_ON 关系。`SqlDataBaseManager` 新增 `search_tables()`/`reindex_tables()` 方法，创建/删除/更新数据库时自动同步索引与图谱。修复 `update_database` 缺失 PostgreSQL 持久化、名称变更时未清理旧映射和重索引的问题；修复 `update_tables` 未同步向量存储和 mysql.py 变量名冲突的问题；统一两个更新接口的返回格式。
 - 发布版本号更新至 `0.7.0.beta2`，同步 package、Docker 镜像标签与快速开始分支引用。
 - 新增内置「深度研究」多智能体：编排器 Agent（`deep-research`，ChatbotAgent 后端）负责澄清、拆解、并行调度子智能体与综合成稿，配套两个子智能体 `research-explorer`（围绕单个子问题多轮检索网页/知识库并返回带引用发现）和 `fact-verifier`（对抗式核验关键论断、标注冲突与置信度）；完整研究方法论沉淀为新增内置 Skill `deep-research`（依赖 `tavily_search`），编排器运行时读取并据此调度。三者随 `lifespan` 启动通过 `AgentRepository.ensure_deep_research_agents` 幂等落库（已存在不覆盖管理员修改）。
 - 新增内置 `general-purpose` 通用任务子智能体：使用 `SubAgentBackend` 与空运行配置，作为 `task` 工具的通用委派目标，由启动初始化自动写入数据库。

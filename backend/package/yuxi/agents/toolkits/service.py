@@ -106,6 +106,8 @@ def get_tool_instances_by_category(category: str) -> list[Any]:
 async def resolve_configured_runtime_tools(context) -> list[Any]:
     from yuxi.agents.mcp.service import get_enabled_mcp_tools
 
+    username = context.username
+    user_department = context.department_id
     selected_tools = []
     selected_tool_names: set[str] = set()
     buildin_tools = {tool.name: tool for tool in get_tool_instances_by_category("buildin")}
@@ -114,6 +116,12 @@ async def resolve_configured_runtime_tools(context) -> list[Any]:
         if not isinstance(tool_name, str) or tool_name in selected_tool_names:
             continue
         tool = buildin_tools.get(tool_name)
+        if username and user_department:
+            logger.info(f"Set extras to Tool: {tool.name}")
+            tool.extras = {
+                "user_department": user_department,
+                "current_username": username,
+            }
         if tool is None:
             logger.warning(f"Configured buildin tool not found, skip: {tool_name}")
             continue
