@@ -18,23 +18,18 @@
 
         <div class="header-controls">
           <!-- 字符数/片段数显示在 segment 左边 -->
-          <span class="view-info">
-            {{
-              viewMode === 'chunks' ? chunkCount + ' 个片段' : formatTextLength(charCount) + ' 字符'
-            }}
-          </span>
+          <span v-if="viewInfoText" class="view-info">{{ viewInfoText }}</span>
 
           <!-- 视图模式切换 -->
-          <div class="view-controls" v-if="file && hasChunks">
+          <div class="view-controls" v-if="file && viewModeOptions.length > 1">
             <a-segmented v-model:value="viewMode" :options="viewModeOptions" />
           </div>
 
           <!-- 下载按钮下拉菜单 -->
           <a-dropdown trigger="click" v-if="file">
-            <a-button type="default" class="download-btn">
-              <template #icon><Download :size="16" /></template>
-              下载
-              <ChevronDown :size="16" style="margin-left: 4px" />
+            <a-button type="default" class="download-btn" title="下载" aria-label="下载">
+              <Download :size="16" />
+              <ChevronDown :size="14" />
             </a-button>
             <template #overlay>
               <a-menu @click="handleDownloadMenuClick">
@@ -63,26 +58,23 @@
     <div v-if="loading" class="loading-container">
       <a-spin tip="正在加载文档内容..." />
     </div>
-    <div v-else-if="file && (hasContent || hasSourcePreview)" class="file-detail-content">
+    <div v-else-if="file && hasAvailableView" class="file-detail-content">
       <div v-if="viewMode === 'source'" class="content-panel source-panel">
-        <div v-if="sourcePreviewLoading" class="loading-container">
+        <div v-if="sourcePreview.loading" class="loading-container">
           <a-spin tip="正在加载源文件预览..." />
         </div>
-        <div
-          v-else-if="sourcePreviewUrl && sourcePreviewType === 'image'"
-          class="source-preview-wrapper"
-        >
-          <img :src="sourcePreviewUrl" :alt="file?.filename || '源文件预览'" class="source-image" />
-        </div>
-        <iframe
-          v-else-if="sourcePreviewUrl && sourcePreviewType === 'pdf'"
-          :src="sourcePreviewUrl"
-          class="source-pdf"
-          :title="file?.filename || 'PDF 预览'"
+        <AgentFilePreview
+          v-else
+          :file="sourcePreviewFile"
+          :file-path="file?.filename || ''"
+          :show-header="false"
+          :show-download="false"
+          :show-inline-html-controls="true"
+          :full-height="true"
+          :borderless="true"
+          container-class="source-preview-container"
+          content-class="source-preview-content"
         />
-        <div v-else class="empty-content">
-          <p>暂无源文件预览</p>
-        </div>
       </div>
 
       <!-- Markdown 模式 -->
@@ -118,15 +110,23 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, h, ref, watch } from 'vue'
 import { useDatabaseStore } from '@/stores/database'
 import { message } from 'ant-design-vue'
 import { documentApi } from '@/apis/knowledge_api'
+import { getWorkspaceKnowledgeFileContent } from '@/apis/workspace_api'
 import { mergeChunks } from '@/utils/chunkUtils'
-import { getPreviewTypeByPath } from '@/utils/file_preview'
+import { getPreviewTypeByPath, normalizePreviewResponse } from '@/utils/file_preview'
+import {
+  canPreviewChunks,
+  canPreviewOriginal,
+  canPreviewParsed,
+  getDefaultDetailView
+} from '@/utils/knowledge_file_policy'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
-import { Download, ChevronDown, FileText, X } from 'lucide-vue-next'
+import AgentFilePreview from '@/components/AgentFilePreview.vue'
+import { Download, ChevronDown, FileSearch, FileText, Rows3, X } from 'lucide-vue-next'
 
 const store = useDatabaseStore()
 
@@ -140,13 +140,31 @@ const loading = computed(() => store.state.fileDetailLoading)
 
 const downloadingOriginal = ref(false)
 const downloadingMarkdown = ref(false)
-const sourcePreviewLoading = ref(false)
-const sourcePreviewUrl = ref('')
+const sourcePreview = ref({
+  loading: false,
+  url: '',
+  content: '',
+  type: '',
+  message: '',
+  supported: true
+})
 
 const revokeSourcePreviewUrl = () => {
-  if (sourcePreviewUrl.value) {
-    window.URL.revokeObjectURL(sourcePreviewUrl.value)
-    sourcePreviewUrl.value = ''
+  if (sourcePreview.value.url) {
+    window.URL.revokeObjectURL(sourcePreview.value.url)
+    sourcePreview.value.url = ''
+  }
+}
+
+const resetSourcePreview = () => {
+  revokeSourcePreviewUrl()
+  sourcePreview.value = {
+    loading: false,
+    url: '',
+    content: '',
+    type: '',
+    message: '',
+    supported: true
   }
 }
 
@@ -155,46 +173,87 @@ const viewMode = ref('markdown')
 const hasContent = computed(
   () => (file.value?.lines && file.value?.lines.length > 0) || file.value?.content
 )
-const sourcePreviewType = computed(() => getPreviewTypeByPath(file.value?.filename || ''))
-const hasSourcePreview = computed(() => ['image', 'pdf'].includes(sourcePreviewType.value))
+const sourcePreviewCandidateType = computed(() => getPreviewTypeByPath(file.value?.filename || ''))
+const sourcePreviewDisplayType = computed(() => sourcePreview.value.type || sourcePreviewCandidateType.value)
+const sourceContentLength = computed(() =>
+  typeof sourcePreview.value.content === 'string' ? sourcePreview.value.content.length : 0
+)
+const sourcePreviewFile = computed(() => {
+  if (!file.value) return null
+  return {
+    ...file.value,
+    content: sourcePreview.value.content,
+    previewType: sourcePreviewDisplayType.value,
+    previewUrl: sourcePreview.value.url,
+    supported: sourcePreview.value.supported,
+    message: sourcePreview.value.message
+  }
+})
+const hasSourcePreview = computed(() => canPreviewOriginal(file.value))
+const hasMarkdownPreview = computed(() => canPreviewParsed(file.value) || hasContent.value)
 // 是否有实际的分块数据
 const hasChunks = computed(() => mappedChunks.value && mappedChunks.value.length > 0)
+const hasChunkPreview = computed(() => canPreviewChunks(file.value) && hasChunks.value)
+const availableViewModes = computed(() => {
+  const modes = []
+  if (hasSourcePreview.value) modes.push('source')
+  if (hasMarkdownPreview.value) modes.push('markdown')
+  if (hasChunkPreview.value) modes.push('chunks')
+  return modes
+})
+const hasAvailableView = computed(() => availableViewModes.value.length > 0)
 
-const viewModeOptions = computed(() => {
-  const options = []
-  if (hasSourcePreview.value) {
-    options.push({ label: '源文件', value: 'source' })
-  }
-  options.push({ label: 'Markdown', value: 'markdown' })
-  // 只有当有实际的分块数据时才显示 Chunks 选项
-  if (hasChunks.value) {
-    options.push({ label: 'Chunks', value: 'chunks' })
-  }
-  return options
+const makeViewModeOption = (label, value, icon) => ({
+  label: h(
+    'span',
+    {
+      class: 'view-option-icon',
+      title: label,
+      'aria-label': label
+    },
+    [h(icon, { size: 15 })]
+  ),
+  value
 })
 
-// 监听文件变化，如果没有 chunks 则重置为 markdown
+const viewModeOptions = computed(() => {
+  const optionMap = {
+    source: makeViewModeOption('源文件', 'source', FileSearch),
+    markdown: makeViewModeOption('Markdown', 'markdown', FileText),
+    chunks: makeViewModeOption('Chunks', 'chunks', Rows3)
+  }
+  return availableViewModes.value.map((mode) => optionMap[mode])
+})
+
+// 切换文件时重置预览状态和默认视图；同一文件内容补齐时不打断当前视图。
 watch(file, (newFile, oldFile) => {
   if (newFile?.file_id !== oldFile?.file_id) {
-    revokeSourcePreviewUrl()
+    resetSourcePreview()
+    viewMode.value = getDefaultDetailView(newFile)
   }
 
   if (!newFile) {
-    revokeSourcePreviewUrl()
+    resetSourcePreview()
     return
-  }
-
-  if (!hasChunks.value) {
-    viewMode.value = hasSourcePreview.value ? 'source' : 'markdown'
   }
 })
 
 watch(
-  [visible, file],
-  async ([open, currentFile]) => {
-    if (!open || !currentFile || !hasSourcePreview.value) {
+  availableViewModes,
+  (modes) => {
+    if (modes.length > 0 && !modes.includes(viewMode.value)) {
+      viewMode.value = modes[0]
+    }
+  },
+  { immediate: true }
+)
+
+watch(
+  [visible, file, viewMode],
+  async ([open, currentFile, currentViewMode]) => {
+    if (!open || !currentFile || !hasSourcePreview.value || currentViewMode !== 'source') {
       if (!open || !hasSourcePreview.value) {
-        revokeSourcePreviewUrl()
+        resetSourcePreview()
       }
       return
     }
@@ -210,6 +269,18 @@ const mappedChunks = computed(() => mergeResult.value.chunks)
 const mergedContent = computed(() => file.value?.content || mergeResult.value.content || '')
 const charCount = computed(() => mergedContent.value.length)
 const chunkCount = computed(() => mappedChunks.value.length || file.value?.lines?.length || 0)
+const viewInfoText = computed(() => {
+  if (viewMode.value === 'chunks') {
+    return `${chunkCount.value} 个片段`
+  }
+  if (viewMode.value === 'source') {
+    if (sourcePreview.value.loading) return ''
+    if (sourceContentLength.value > 0) return `${formatTextLength(sourceContentLength.value)} 字符`
+    if (sourcePreview.value.url) return '源文件预览'
+    return ''
+  }
+  return `${formatTextLength(charCount.value)} 字符`
+})
 
 // 格式化文本长度
 function formatTextLength(length) {
@@ -224,7 +295,7 @@ function formatTextLength(length) {
 
 const afterOpenChange = (open) => {
   if (!open) {
-    revokeSourcePreviewUrl()
+    resetSourcePreview()
     store.selectedFile = null
     viewMode.value = 'markdown'
   }
@@ -232,19 +303,25 @@ const afterOpenChange = (open) => {
 
 const loadSourcePreview = async () => {
   if (!file.value?.file_id || !store.kbId || !hasSourcePreview.value) return
-  if (sourcePreviewUrl.value) return
+  if (sourcePreview.value.url || sourcePreview.value.content || sourcePreview.value.message) return
 
-  sourcePreviewLoading.value = true
+  sourcePreview.value.loading = true
   try {
-    const response = await documentApi.downloadDocument(store.kbId, file.value.file_id)
-    const blob = await response.blob()
+    const response = await getWorkspaceKnowledgeFileContent(store.kbId, file.value.file_id)
+    const preview = await normalizePreviewResponse(response)
     revokeSourcePreviewUrl()
-    sourcePreviewUrl.value = window.URL.createObjectURL(blob)
+    sourcePreview.value.type = preview.previewType || sourcePreviewCandidateType.value
+    sourcePreview.value.message = preview.message || ''
+    sourcePreview.value.supported = preview.supported !== false
+    sourcePreview.value.url = preview.previewUrl || ''
+    sourcePreview.value.content = preview.content || ''
   } catch (error) {
     console.error('加载源文件预览失败:', error)
-    message.error(error.message || '加载源文件预览失败')
+    sourcePreview.value.message = error.message || '加载源文件预览失败'
+    sourcePreview.value.supported = false
+    message.error(sourcePreview.value.message)
   } finally {
-    sourcePreviewLoading.value = false
+    sourcePreview.value.loading = false
   }
 }
 
@@ -381,32 +458,30 @@ const handleDownloadMarkdown = () => {
   min-height: 0;
 }
 
-.markdown-content {
+.source-panel {
+  overflow: hidden;
+}
+
+:deep(.source-preview-container) {
+  height: 100%;
+  max-height: none;
+}
+
+:deep(.source-preview-content) {
+  flex: 1 1 auto;
+  max-height: none;
+  min-height: 0;
+}
+
+:deep(.source-preview-content .html-preview),
+:deep(.source-preview-content .pdf-preview) {
+  display: block;
+  height: 100%;
   min-height: 100%;
 }
 
-.source-preview-wrapper {
-  height: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-}
-
-.source-image {
-  display: block;
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  border-radius: 8px;
-}
-
-.source-pdf {
-  width: 100%;
-  max-height: 100%;
-  height: calc(100% - 6px);
-  border: none;
-  border-radius: 8px;
-  background: var(--gray-25);
+.markdown-content {
+  min-height: 100%;
 }
 
 .loading-container {
@@ -484,7 +559,9 @@ const handleDownloadMarkdown = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   width: 100%;
+  min-width: 0;
 }
 
 /* 文件标题样式 */
@@ -492,9 +569,20 @@ const handleDownloadMarkdown = () => {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+
+  svg {
+    flex: 0 0 auto;
+  }
 }
 
 .file-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 600;
   font-size: 15px;
   color: var(--gray-900);
@@ -509,22 +597,27 @@ const handleDownloadMarkdown = () => {
 .header-controls {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  flex: 0 0 auto;
   margin-left: auto;
+  min-width: 0;
 }
 
 /* 下载按钮样式 */
 .download-btn {
   display: inline-flex;
   align-items: center;
-  padding: 4px 8px;
+  justify-content: center;
+  width: auto;
+  min-width: 48px;
+  padding: 0 10px;
   height: 28px;
-  font-size: 13px;
   line-height: 1;
   border-radius: 6px;
   gap: 4px;
 
   svg {
+    flex: 0 0 auto;
     vertical-align: middle;
   }
 }
@@ -534,6 +627,7 @@ const handleDownloadMarkdown = () => {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 28px;
   width: 28px;
   height: 28px;
   border: none;
@@ -553,10 +647,37 @@ const handleDownloadMarkdown = () => {
 .view-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex: 0 0 auto;
+
+  .ant-segmented {
+    padding: 2px;
+  }
+
+  .ant-segmented-item {
+    min-width: 30px;
+  }
+
+  .ant-segmented-item-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 24px;
+    min-height: 24px;
+    padding: 0 7px;
+    line-height: 24px;
+  }
+}
+
+.view-option-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
 }
 
 .view-info {
+  flex: 0 0 auto;
   font-size: 12px;
   color: var(--gray-500);
   white-space: nowrap;

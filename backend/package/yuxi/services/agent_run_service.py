@@ -7,12 +7,14 @@ import json
 import os
 import uuid
 from collections.abc import AsyncIterator
+from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from yuxi.agents.buildin import agent_manager
+from yuxi.agents.models import resolve_chat_model_spec
 from yuxi.models.providers.cache import model_cache
 from yuxi.repositories.agent_repository import AgentRepository
 from yuxi.repositories.agent_run_repository import TERMINAL_RUN_STATUSES, AgentRunRepository
@@ -37,16 +39,17 @@ SSE_POLL_INTERVAL_SECONDS = float(os.getenv("RUN_SSE_POLL_INTERVAL_SECONDS", "1.
 
 def _validate_model_spec(model_spec: str | None) -> str | None:
     """校验对话级模型覆盖：未提供则返回 None；非法模型直接 422，不静默回退。"""
-    if not model_spec:
+    normalized = model_spec.strip() if isinstance(model_spec, str) else None
+    if not normalized:
         return None
-    info = model_cache.get_model_info(model_spec)
+    info = model_cache.get_model_info(normalized)
     if not info or info.model_type != "chat":
-        raise HTTPException(status_code=422, detail=f"未找到可用聊天模型: '{model_spec}'")
-    return model_spec
+        raise HTTPException(status_code=422, detail=f"未找到可用聊天模型: '{normalized}'")
+    return normalized
 
 
-def _resolve_effective_model_spec(model_spec: str | None, agent_item, agent_backend) -> str | None:
-    """解析本次 chat run 实际使用的模型：显式覆盖优先，否则快照智能体当前配置。"""
+def _resolve_effective_model_spec(model_spec: str | None, agent_item, agent_backend) -> str:
+    """解析本次 chat run 实际使用的模型：显式覆盖优先，否则配置模型，最后系统默认模型。"""
     resolved_model_spec = _validate_model_spec(model_spec)
     if resolved_model_spec:
         return resolved_model_spec
@@ -56,7 +59,7 @@ def _resolve_effective_model_spec(model_spec: str | None, agent_item, agent_back
     config_context = config_json.get("context") if isinstance(config_json, dict) else {}
     if isinstance(config_context, dict):
         context.update_from_dict(config_context)
-    return getattr(context, "model", None)
+    return resolve_chat_model_spec(getattr(context, "model", None))
 
 
 def _build_run_response(run) -> dict:
@@ -233,7 +236,7 @@ def _compact_run_event_envelope(envelope: dict) -> dict | None:
     return compact
 
 
-async def create_agent_run_view(
+async def create_agent_run(
     *,
     query: str | None,
     agent_id: str,
@@ -246,7 +249,11 @@ async def create_agent_run_view(
     resume: object | None = None,
     parent_run_id: str | None = None,
     resume_request_id: str | None = None,
-) -> dict:
+    run_type: str | None = None,
+    parent_agent_run_id: str | None = None,
+    checkpoint_thread_id: str | None = None,
+    persist_input_message: bool = True,
+) -> tuple[Any, bool]:
     if not query and resume is None:
         raise HTTPException(status_code=422, detail="query 或 resume 不能为空")
 
@@ -273,15 +280,15 @@ async def create_agent_run_view(
     if not agent_backend:
         raise HTTPException(status_code=404, detail=f"智能体后端 {agent_item.backend_id} 不存在")
 
-    run_type = "resume" if resume is not None else "chat"
+    resolved_run_type = run_type or ("resume" if resume is not None else "chat")
     request_id = str(resume_request_id or (meta or {}).get("request_id") or uuid.uuid4())
     config = {"thread_id": thread_id, "agent_id": agent_id}
     run_repo = AgentRunRepository(db)
     # chat：快照本次实际模型；resume：沿用被恢复运行的原始模型，保证单次运行模型一致。
     resolved_model_spec = (
-        _resolve_effective_model_spec(model_spec, agent_item, agent_backend) if run_type == "chat" else None
+        _resolve_effective_model_spec(model_spec, agent_item, agent_backend) if resolved_run_type == "chat" else None
     )
-    if run_type == "resume":
+    if resolved_run_type == "resume":
         if not parent_run_id:
             raise HTTPException(status_code=422, detail="parent_run_id 不能为空")
         parent_run = await run_repo.get_run_for_user(parent_run_id, str(current_uid))
@@ -293,10 +300,10 @@ async def create_agent_run_view(
         if resume_request_id:
             existing_resume = await run_repo.get_resume_run(parent_run_id, resume_request_id)
             if existing_resume and existing_resume.uid == str(current_uid):
-                return _build_run_response(existing_resume)
+                return existing_resume, False
     existing = await run_repo.get_run_by_request_id(request_id)
     if existing and existing.uid == str(current_uid):
-        return _build_run_response(existing)
+        return existing, False
     if existing and existing.uid != str(current_uid):
         raise HTTPException(status_code=409, detail="request_id 冲突")
 
@@ -306,7 +313,8 @@ async def create_agent_run_view(
         "resume": resume,
         "parent_run_id": parent_run_id,
         "resume_request_id": resume_request_id,
-        "run_type": run_type,
+        "parent_agent_run_id": parent_agent_run_id,
+        "run_type": resolved_run_type,
         "config": config or {},
         "image_content": image_content,
         "model_spec": resolved_model_spec,
@@ -316,6 +324,8 @@ async def create_agent_run_view(
         "uid": str(current_uid),
         "request_id": request_id,
         "attachment_file_ids": (meta or {}).get("attachment_file_ids") or [],
+        "source": (meta or {}).get("source"),
+        "evaluation": (meta or {}).get("evaluation") or None,
         "created_at": utc_now_naive().isoformat(),
     }
     try:
@@ -328,47 +338,94 @@ async def create_agent_run_view(
             input_payload=input_payload,
             conversation_id=conversation.id,
             parent_run_id=parent_run_id,
-            run_type=run_type,
+            parent_agent_run_id=parent_agent_run_id,
+            run_type=resolved_run_type,
             resume_request_id=resume_request_id,
-            checkpoint_thread_id=thread_id,
+            checkpoint_thread_id=checkpoint_thread_id or thread_id,
         )
-        input_content = query or json.dumps(resume, ensure_ascii=False)
-        input_metadata = {
-            "request_id": request_id,
-            "run_id": run_id,
-            "run_type": run_type,
-            "parent_run_id": parent_run_id,
-            "resume": resume,
-            "attachments": [],
-            "model_spec": resolved_model_spec,
-        }
-        if run_type == "resume":
-            input_metadata["source"] = "ask_user_question_resume"
+        if persist_input_message:
+            input_content = query or json.dumps(resume, ensure_ascii=False)
+            input_metadata = {
+                "request_id": request_id,
+                "run_id": run_id,
+                "run_type": resolved_run_type,
+                "parent_run_id": parent_run_id,
+                "resume": resume,
+                "attachments": [],
+                "model_spec": resolved_model_spec,
+            }
+            if parent_agent_run_id:
+                input_metadata["parent_agent_run_id"] = parent_agent_run_id
+            if (meta or {}).get("source"):
+                input_metadata["source"] = (meta or {}).get("source")
+            if (meta or {}).get("evaluation"):
+                input_metadata["evaluation"] = (meta or {}).get("evaluation")
+            if resolved_run_type == "resume":
+                input_metadata["source"] = "ask_user_question_resume"
 
-        input_message = Message(
-            conversation_id=conversation.id,
-            role="user",
-            content=input_content,
-            message_type="resume" if run_type == "resume" else "text",
-            image_content=image_content,
-            run_id=run_id,
-            request_id=request_id,
-            delivery_status="complete",
-            extra_metadata=input_metadata,
-        )
-        db.add(input_message)
-        await db.flush()
-        await run_repo.set_input_message(run_id, input_message.id)
+            input_message = Message(
+                conversation_id=conversation.id,
+                role="user",
+                content=input_content,
+                message_type="resume"
+                if resolved_run_type == "resume"
+                else "multimodal_image"
+                if image_content
+                else "text",
+                image_content=image_content,
+                run_id=run_id,
+                request_id=request_id,
+                delivery_status="complete",
+                extra_metadata=input_metadata,
+            )
+            db.add(input_message)
+            await db.flush()
+            await run_repo.set_input_message(run_id, input_message.id)
         await db.commit()
     except IntegrityError:
         await db.rollback()
         existing = await run_repo.get_run_by_request_id(request_id)
         if existing and existing.uid == str(current_uid):
-            return _build_run_response(existing)
+            return existing, False
         raise HTTPException(status_code=409, detail="request_id 冲突")
 
+    return run, True
+
+
+async def enqueue_agent_run(run_id: str) -> None:
     queue = await get_arq_pool()
-    await queue.enqueue_job("process_agent_run", run.id, _job_id=f"run:{run.id}")
+    await queue.enqueue_job("process_agent_run", run_id, _job_id=f"run:{run_id}")
+
+
+async def create_agent_run_view(
+    *,
+    query: str | None,
+    agent_id: str,
+    thread_id: str,
+    meta: dict,
+    image_content: str | None,
+    current_uid: str,
+    db: AsyncSession,
+    model_spec: str | None = None,
+    resume: object | None = None,
+    parent_run_id: str | None = None,
+    resume_request_id: str | None = None,
+) -> dict:
+    run, created = await create_agent_run(
+        query=query,
+        agent_id=agent_id,
+        thread_id=thread_id,
+        meta=meta,
+        image_content=image_content,
+        current_uid=current_uid,
+        db=db,
+        model_spec=model_spec,
+        resume=resume,
+        parent_run_id=parent_run_id,
+        resume_request_id=resume_request_id,
+    )
+    if created:
+        await enqueue_agent_run(run.id)
 
     return _build_run_response(run)
 
@@ -381,14 +438,106 @@ async def get_agent_run_view(*, run_id: str, current_uid: str, db: AsyncSession)
     return {"run": run.to_dict()}
 
 
-async def cancel_agent_run_view(*, run_id: str, current_uid: str, db: AsyncSession) -> dict:
+def _select_output_message(messages: list[Message], *, output_message_id: int | None) -> Message | None:
+    """优先选用运行记录的输出消息，否则回退到最后一条 assistant 消息。"""
+    if output_message_id:
+        for message in messages:
+            if message.id == output_message_id and message.role == "assistant":
+                return message
+
+    for message in reversed(messages):
+        if message.role == "assistant":
+            return message
+    return None
+
+
+async def get_agent_run_result(*, run_id: str, current_uid: str, db: AsyncSession) -> dict:
+    """加载某个 run 的最终结果（状态/输出/Langfuse trace/错误），供 chat/eval/cron 等统一复用。"""
+    run = await AgentRunRepository(db).get_run_for_user(run_id, str(current_uid))
+    if not run:
+        return {
+            "status": "failed",
+            "agent_run_id": run_id,
+            "output": "",
+            "error": {"type": "run_not_found", "message": "运行任务不存在"},
+        }
+
+    messages: list[Message] = []
+    if run.conversation_id:
+        result = await db.execute(
+            select(Message)
+            .where(Message.conversation_id == run.conversation_id)
+            .order_by(Message.created_at.asc(), Message.id.asc())
+        )
+        messages = list(result.scalars().unique().all())
+
+    output_message = _select_output_message(messages, output_message_id=run.output_message_id)
+    output_metadata = (
+        output_message.extra_metadata if output_message and isinstance(output_message.extra_metadata, dict) else {}
+    )
+
+    payload: dict[str, Any] = {
+        "status": run.status,
+        "output": output_message.content if output_message else "",
+        "agent_slug": run.agent_id,
+        "thread_id": run.thread_id,
+        "conversation_id": run.conversation_id,
+        "agent_run_id": run.id,
+        "request_id": run.request_id,
+        "final_message_id": output_message.id if output_message else None,
+        "langfuse_trace_id": output_metadata.get("langfuse_trace_id"),
+    }
+    if run.error_type or run.error_message:
+        payload["error"] = {"type": run.error_type, "message": run.error_message}
+    return payload
+
+
+async def get_agent_run_result_view(*, run_id: str, current_uid: str, db: AsyncSession) -> dict:
+    return await get_agent_run_result(run_id=run_id, current_uid=current_uid, db=db)
+
+
+async def load_agent_run_result(*, run_id: str, current_uid: str) -> dict:
+    """自开独立会话读取 run 结果，用于流结束/后台调用等请求会话已不可用的场景。"""
+    async with pg_manager.get_async_session_context() as db:
+        return await get_agent_run_result(run_id=run_id, current_uid=current_uid, db=db)
+
+
+async def await_agent_run_result(*, run_id: str, current_uid: str) -> dict:
+    """阻塞至 run 终结并返回最终结果，供 cron 等 in-process 调用。
+
+    复用有限事件流 ``stream_agent_run_events``：它在 run 终结或超时后自然结束，
+    因此排空即等待，无需额外轮询。等待上限继承事件流内部的 ``SSE_MAX_CONNECTION_MINUTES``。
+    """
+    async for _ in stream_agent_run_events(run_id=run_id, after_seq="0-0", current_uid=current_uid, verbose=False):
+        pass
+    return await load_agent_run_result(run_id=run_id, current_uid=current_uid)
+
+
+async def request_cancel_agent_run(
+    *,
+    run_id: str,
+    current_uid: str,
+    db: AsyncSession,
+    cascade_children: bool = False,
+):
     repo = AgentRunRepository(db)
     run = await repo.get_run_for_user(run_id, str(current_uid))
     if not run:
         raise HTTPException(status_code=404, detail="运行任务不存在")
 
+    if cascade_children:
+        child_runs = await repo.list_active_child_runs_for_user(run_id, str(current_uid))
+        for child_run in child_runs:
+            await repo.request_cancel(child_run.id)
+            await publish_cancel_signal(child_run.id)
+
     run = await repo.request_cancel(run_id)
     await publish_cancel_signal(run_id)
+    return run
+
+
+async def cancel_agent_run_view(*, run_id: str, current_uid: str, db: AsyncSession) -> dict:
+    run = await request_cancel_agent_run(run_id=run_id, current_uid=current_uid, db=db)
     return {"run": run.to_dict() if run else None}
 
 

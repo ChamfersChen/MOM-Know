@@ -123,6 +123,9 @@ const route = useRoute()
 const router = useRouter()
 
 const activeTaskCount = computed(() => activeCountRef.value || 0)
+const activeConversationThreadId = computed(() => {
+  return route.path.startsWith('/agent') ? currentThreadId.value : null
+})
 const organizationName = computed(() => infoStore.organization.name || infoStore.branding.name || 'LCMOM')
 
 // 下面是导航菜单部分，添加智能体项
@@ -133,7 +136,8 @@ const mainList = computed(() => {
       path: '/agent',
       icon: MessageCirclePlus,
       activeIcon: MessageCirclePlus,
-      action: true
+      action: true,
+      exactActive: true
     }
   ]
 
@@ -181,6 +185,9 @@ const mainList = computed(() => {
 
 const isNavItemActive = (item) => {
   const activePaths = item.activePaths || [item.path]
+  if (item.exactActive) {
+    return activePaths.some((path) => route.path === path)
+  }
   return activePaths.some((path) => route.path === path || route.path.startsWith(`${path}/`))
 }
 

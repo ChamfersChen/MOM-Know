@@ -1,5 +1,4 @@
 import hashlib
-import re
 
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -162,12 +161,3 @@ async def get_superadmin_user(current_user: User = Depends(get_required_user)):
             detail="需要超级管理员权限",
         )
     return current_user
-
-
-# 检查路径是否为公开路径
-def is_public_path(path: str) -> bool:
-    path = path.rstrip("/")  # 去除尾部斜杠以便于匹配
-    for pattern in PUBLIC_PATHS:
-        if re.match(pattern, path):
-            return True
-    return False
