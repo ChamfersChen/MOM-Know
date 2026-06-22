@@ -1147,7 +1147,7 @@ class JavaTokenStatusResponse(BaseModel):
 
 @auth.get("/java-token/status", response_model=JavaTokenStatusResponse)
 async def get_java_token_status(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_required_user),
 ):
     """获取当前用户的 Java Token 状态"""
     if not java_config.enabled:

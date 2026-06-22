@@ -58,9 +58,9 @@ async def _build_middlewares(context):
         KnowledgeBaseMiddleware(),
         SkillsMiddleware(),
     ]
-    subagent_middleware = await create_subagent_task_middleware(context)
-    if subagent_middleware:
-        middlewares.append(subagent_middleware)
+    # subagent_middleware = await create_subagent_task_middleware(context)
+    # if subagent_middleware:
+    #     middlewares.append(subagent_middleware)
     middlewares.extend(
         [
             summary_middleware,

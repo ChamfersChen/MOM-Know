@@ -60,8 +60,8 @@ def login_with_api_key(
     console: Console,
     client_factory=YuxiClient,
 ) -> Remote:
-    if not api_key.startswith("yxkey_"):
-        raise CommandError("API Key 格式无效，应以 yxkey_ 开头")
+    if not api_key.startswith("key_"):
+        raise CommandError("API Key 格式无效，应以 key_ 开头")
 
     config = store.load()
     remote = config.get_remote(remote_name)
