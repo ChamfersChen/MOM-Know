@@ -171,7 +171,7 @@ const mainList = computed(() => {
     })
   }
 
-  if (userStore.isAdmin) {
+  if (userStore.isSuperAdmin) {
     items.push({
       name: '数据总览',
       path: '/dashboard',
