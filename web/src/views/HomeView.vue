@@ -35,20 +35,6 @@
           <span class="logo-text">{{ infoStore.organization.name }}</span>
         </div>
         <div class="header-actions">
-          <a
-            class="github-link"
-            href="https://github.com/xerrors/Yuxi"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="GitHub"
-          >
-            <svg height="20" width="20" viewBox="0 0 16 16" version="1.1">
-              <path
-                fill-rule="evenodd"
-                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
-              ></path>
-            </svg>
-          </a>
           <UserInfoComponent :show-button="true" />
         </div>
       </header>
@@ -71,7 +57,7 @@
                 <span>{{ badgeParts.suffix }}</span>
               </template>
               <template v-else>{{ typedBadge }}</template>
-            </p> -->
+            </p>
             <h1 class="title reveal-up delay-1">{{ infoStore.branding.title }}</h1>
             <Transition name="subtitle-switch" mode="out-in">
               <p v-if="currentSubtitle" class="subtitle" :key="currentSubtitle">
@@ -83,15 +69,6 @@
                 <span>开始体验</span>
                 <ArrowRight :size="18" />
               </button>
-              <a
-                class="button-base secondary"
-                href="https://xerrors.github.io/Yuxi/"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <BookText :size="18" />
-                <span>查看文档</span>
-              </a>
             </div>
           </div>
 
@@ -176,16 +153,6 @@
 
                 <p class="flow-caption">智能体发起检索 · 引擎融合向量与图谱 · 召回知识增强生成</p>
               </div>
-
-              <div class="stat-row" v-if="realtimeStats.length">
-                <div class="stat-item" v-for="stat in realtimeStats" :key="stat.key">
-                  <span class="stat-item-value">
-                    <component :is="stat.icon" :size="15" />
-                    {{ stat.value }}
-                  </span>
-                  <span class="stat-item-label">{{ stat.label }}</span>
-                </div>
-              </div>
             </div>
           </aside>
         </div>
@@ -236,7 +203,7 @@ let badgeTimer = null
 let subtitleTimer = null
 let starsFetchController = null
 
-const GITHUB_REPO_API = 'https://api.github.com/repos/xerrors/Yuxi'
+// const GITHUB_REPO_API = 'https://api.github.com/repos/xerrors/Yuxi'
 const GITHUB_STARS_TIMEOUT = 3000
 
 const formatStars = (count) => {
@@ -399,7 +366,7 @@ const loadData = async () => {
     startSubtitleCarousel()
     const repo = await fetchGithubRepo()
     githubStats.value = repo
-    startBadgeTyping(repo?.stars ?? null)
+    // startBadgeTyping(repo?.stars ?? null)
   } catch (e) {
     console.error('加载失败:', e)
     stopBadgeTyping()
