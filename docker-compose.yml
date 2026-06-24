@@ -39,6 +39,7 @@ services:
     build:
       context: .
       dockerfile: docker/api.Dockerfile
+    # platform: linux/amd64
     image: momai-api:0.6.1
     container_name: momai-api-dev
     working_dir: /app
