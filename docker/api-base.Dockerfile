@@ -1,5 +1,5 @@
 # 使用轻量级Python基础镜像
-FROM api-base:0.1.0
+FROM base-api:0.1.0
 
 # 设置工作目录
 WORKDIR /app

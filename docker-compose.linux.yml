@@ -39,8 +39,8 @@ services:
     build:
       context: .
       dockerfile: docker/api-base.Dockerfile
-    # platform: linux/amd64
-    image: momai-api:0.6.1
+    platform: linux/amd64
+    image: momai-api-linux:0.6.1
     container_name: momai-api-dev
     working_dir: /app
     volumes:
@@ -87,8 +87,8 @@ services:
     build:
       context: .
       dockerfile: docker/api-base.Dockerfile
-    # platform: linux/amd64
-    image: momai-api:0.6.1
+    platform: linux/amd64
+    image: momai-api-linux:0.6.1
     container_name: momai-worker-dev
     working_dir: /app
     volumes:
@@ -127,8 +127,8 @@ services:
     build:
       context: ./docker/sandbox_provisioner
       dockerfile: Dockerfile
-    # platform: linux/amd64
-    image: momai-sandbox-provisioner:0.6.1
+    platform: linux/amd64
+    image: momai-sandbox-provisioner-linux:0.6.1
     container_name: momai-sandbox-provisioner
     volumes:
       - ./docker/volumes/yuxi:/app/saves
