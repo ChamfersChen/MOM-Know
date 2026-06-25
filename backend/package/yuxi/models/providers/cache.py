@@ -9,15 +9,14 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from yuxi.storage.redis import sync_redis_client
 from yuxi.utils.logging_config import logger
 
 REDIS_CACHE_KEY = "yuxi:model_cache"
-_DEFAULT_REDIS_URL = "redis://redis:6379/0"
 _CACHE_TTL_SECONDS = 5
 
 
@@ -83,47 +82,31 @@ class ModelCache:
     """基于 Redis 的模型缓存，所有写入均走 Redis，保证跨进程一致。"""
 
     def __init__(self) -> None:
-        self._redis = None
         self._local_cache: dict[str, ModelInfo] | None = None
         self._local_cache_at: float = 0.0
-
-    def _get_redis(self):
-        if self._redis is None:
-            try:
-                import redis
-
-                redis_url = os.getenv("REDIS_URL", _DEFAULT_REDIS_URL)
-                self._redis = redis.from_url(redis_url, decode_responses=True)
-            except Exception as e:
-                logger.warning(f"Redis client unavailable: {e}")
-        return self._redis
-
-    def _reset_redis(self) -> None:
-        self._redis = None
 
     def _load_cache(self) -> dict[str, ModelInfo]:
         now = time.monotonic()
         if self._local_cache is not None and (now - self._local_cache_at) < _CACHE_TTL_SECONDS:
             return self._local_cache
 
-        r = self._get_redis()
-        if r is None:
-            return {}
         try:
-            raw = r.get(REDIS_CACHE_KEY)
+            with sync_redis_client() as redis_client:
+                raw = redis_client.get(REDIS_CACHE_KEY)
             if not raw:
                 self._local_cache = {}
                 self._local_cache_at = now
                 return {}
+
             items = json.loads(raw)
             cache = {spec: ModelInfo.from_dict(data) for spec, data in items.items()}
-            self._local_cache = cache
-            self._local_cache_at = now
-            return cache
         except Exception as e:
             logger.warning(f"Failed to load model cache from Redis: {e}")
-            self._reset_redis()
             return {}
+
+        self._local_cache = cache
+        self._local_cache_at = now
+        return cache
 
     def _invalidate_local(self) -> None:
         self._local_cache = None
@@ -183,16 +166,12 @@ class ModelCache:
         logger.info(f"Model cache rebuilt: {len(new_cache)} models → Redis")
 
     def _save_cache(self, cache: dict[str, ModelInfo]) -> None:
-        r = self._get_redis()
-        if r is None:
-            logger.warning("Redis unavailable, cache not saved")
-            return
         try:
             data = {spec: info.to_dict() for spec, info in cache.items()}
-            r.set(REDIS_CACHE_KEY, json.dumps(data, ensure_ascii=False))
+            with sync_redis_client() as redis_client:
+                redis_client.set(REDIS_CACHE_KEY, json.dumps(data, ensure_ascii=False))
         except Exception as e:
             logger.error(f"Failed to save model cache to Redis: {e}")
-            self._reset_redis()
 
     @staticmethod
     def _get_base_url_for_type(provider: Any, model_type: str) -> str:

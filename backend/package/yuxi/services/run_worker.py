@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import time
 from dataclasses import dataclass, field
 
@@ -12,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from yuxi.agents.mcp.service import ensure_builtin_mcp_servers_in_db
 from yuxi.agents.skills.service import init_builtin_skills
+from yuxi.config import config as sys_config
 from yuxi.repositories.agent_run_repository import TERMINAL_RUN_STATUSES, AgentRunRepository
 from yuxi.services.chat_service import stream_agent_chat, stream_agent_resume
 from yuxi.services.run_queue_service import (
@@ -22,12 +22,12 @@ from yuxi.services.run_queue_service import (
 )
 from yuxi.storage.postgres.manager import pg_manager
 from yuxi.storage.postgres.models_business import User
+from yuxi.storage.redis import get_arq_redis_settings
 from yuxi.utils.logging_config import logger
 
 LOADING_FLUSH_INTERVAL_MS = 100
 LOADING_FLUSH_MAX_CHARS = 512
 RUN_CANCEL_POLL_SECONDS = 0.2
-REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
 
 class RetryableRunError(Exception):
@@ -513,6 +513,7 @@ async def _worker_startup(ctx):
     await ensure_builtin_mcp_servers_in_db()
     async with pg_manager.get_async_session_context() as session:
         await init_builtin_skills(session)
+    sys_config.start_runtime_sync()
 
 
 async def _worker_shutdown(ctx):
@@ -528,8 +529,6 @@ class WorkerSettings:
     on_startup = _worker_startup
     on_shutdown = _worker_shutdown
     try:
-        from arq.connections import RedisSettings
-
-        redis_settings = RedisSettings.from_dsn(REDIS_URL)
+        redis_settings = get_arq_redis_settings()
     except Exception:
         redis_settings = None

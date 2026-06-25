@@ -13,6 +13,9 @@ from yuxi.models import select_model
 from yuxi.repositories.knowledge_base_repository import KnowledgeBaseRepository
 from yuxi.utils import logger
 
+MINDMAP_FILE_PAGE_SIZE = 500
+MINDMAP_GENERATION_FILE_LIMIT = 200
+
 MINDMAP_SYSTEM_PROMPT = """你是一个专业的知识整理助手。
 
 你的任务是分析用户提供的文件列表，生成一个层次分明的思维导图结构。
@@ -93,6 +96,46 @@ def build_database_file_list(files: dict[str, dict[str, Any]]) -> list[dict[str,
         }
         for file_id, file_info in files.items()
     ]
+
+
+def _file_record_to_mindmap_file(record: Any) -> dict[str, Any]:
+    created_at = getattr(record, "created_at", None)
+    return {
+        "file_id": getattr(record, "file_id"),
+        "filename": getattr(record, "filename", None) or "",
+        "type": getattr(record, "file_type", None) or "",
+        "status": getattr(record, "status", None) or "",
+        "created_at": created_at.isoformat() if created_at else "",
+    }
+
+
+async def _list_mindmap_files_page(
+    kb_id: str, *, page_size: int = MINDMAP_FILE_PAGE_SIZE
+) -> tuple[dict[str, dict], int]:
+    from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
+
+    records, total = await KnowledgeFileRepository().list_documents(
+        kb_id=kb_id,
+        page=1,
+        page_size=page_size,
+        files_only=True,
+    )
+    return {record.file_id: _file_record_to_mindmap_file(record) for record in records}, total
+
+
+async def _load_mindmap_current_files(kb_id: str, tracked_file_ids: list[str]) -> tuple[dict[str, dict], int]:
+    from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
+
+    current_files, total = await _list_mindmap_files_page(kb_id)
+    tracked_ids = [file_id for file_id in tracked_file_ids if file_id]
+    if not tracked_ids:
+        return current_files, total
+
+    tracked_records = await KnowledgeFileRepository().list_by_file_ids(tracked_ids)
+    for record in tracked_records:
+        if record.kb_id == kb_id and not record.is_folder:
+            current_files[record.file_id] = _file_record_to_mindmap_file(record)
+    return current_files, total
 
 
 def collect_mindmap_files(all_files: dict[str, dict[str, Any]], file_ids: list[str]) -> list[dict[str, str]]:
@@ -255,18 +298,19 @@ def remove_files_from_mindmap(mindmap_data: dict[str, Any], removed_filenames: s
 
 
 async def get_mindmap_database_files(kb_id: str) -> dict[str, Any]:
-    db_info = await knowledge_base.get_database_info(kb_id, include_files=True)
-    if not db_info:
+    kb = await KnowledgeBaseRepository().get_by_kb_id(kb_id)
+    if kb is None:
         raise HTTPException(status_code=404, detail=f"知识库 {kb_id} 不存在")
 
-    file_list = build_database_file_list(db_info.get("files", {}))
+    current_files, total = await _list_mindmap_files_page(kb_id)
     return {
         "message": "success",
         "kb_id": kb_id,
         "slug": kb_id,
-        "db_name": db_info.get("name", ""),
-        "files": file_list,
-        "total": len(file_list),
+        "db_name": kb.name,
+        "files": build_database_file_list(current_files),
+        "total": total,
+        "truncated": total > len(current_files),
     }
 
 
@@ -276,10 +320,11 @@ async def get_mindmap_diff(kb_id: str) -> dict[str, Any]:
     if kb is None:
         raise HTTPException(status_code=404, detail=f"知识库 {kb_id} 不存在")
 
-    db_info = await knowledge_base.get_database_info(kb_id, include_files=True)
-    current_files = db_info.get("files", {}) if db_info else {}
+    current_files, total = await _load_mindmap_current_files(kb_id, list((kb.mindmap_file_ids or {}).keys()))
 
     changes = detect_mindmap_changes(kb.mindmap, kb.mindmap_file_ids, current_files)
+    changes["current_total"] = total
+    changes["current_files_truncated"] = total > len(current_files)
     changes["kb_id"] = kb_id
     changes["slug"] = kb_id
     changes["message"] = "success"
@@ -292,11 +337,11 @@ async def update_mindmap_incremental(kb_id: str, user_prompt: str = "") -> dict[
     if kb is None or not kb.mindmap:
         raise HTTPException(status_code=400, detail="知识库没有现有思维导图，请使用全量生成")
 
-    db_info = await knowledge_base.get_database_info(kb_id, include_files=True)
-    db_name = db_info.get("name", "知识库") if db_info else "知识库"
-    current_files = db_info.get("files", {}) if db_info else {}
+    current_files, total = await _load_mindmap_current_files(kb_id, list((kb.mindmap_file_ids or {}).keys()))
+    db_name = kb.name or "知识库"
 
     changes = detect_mindmap_changes(kb.mindmap, kb.mindmap_file_ids, current_files)
+    changes["current_files_truncated"] = total > len(current_files)
 
     if not changes["needs_update"]:
         return {
@@ -388,20 +433,33 @@ async def generate_database_mindmap(
     if incremental:
         return await update_mindmap_incremental(kb_id, user_prompt)
 
-    db_info = await knowledge_base.get_database_info(kb_id, include_files=True)
-    if not db_info:
+    kb = await KnowledgeBaseRepository().get_by_kb_id(kb_id)
+    if kb is None:
         raise HTTPException(status_code=404, detail=f"知识库 {kb_id} 不存在")
 
-    db_name = db_info.get("name", "知识库")
-    all_files = db_info.get("files", {})
-    selected_file_ids = list(file_ids or all_files.keys())
+    db_name = kb.name or "知识库"
+    from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
+
+    file_repo = KnowledgeFileRepository()
+    if file_ids:
+        original_count = len(file_ids)
+        selected_file_ids = list(file_ids[:MINDMAP_GENERATION_FILE_LIMIT])
+        if len(file_ids) > MINDMAP_GENERATION_FILE_LIMIT:
+            logger.info(
+                f"文件数量超过限制，已从{original_count}个文件中选择前{MINDMAP_GENERATION_FILE_LIMIT}个文件生成思维导图"
+            )
+        records = await file_repo.list_by_file_ids(selected_file_ids)
+        all_files = {
+            record.file_id: _file_record_to_mindmap_file(record)
+            for record in records
+            if record.kb_id == kb_id and not record.is_folder
+        }
+    else:
+        all_files, original_count = await _list_mindmap_files_page(kb_id, page_size=MINDMAP_GENERATION_FILE_LIMIT)
+        selected_file_ids = list(all_files.keys())
+
     if not selected_file_ids:
         raise HTTPException(status_code=400, detail="知识库中没有文件")
-
-    original_count = len(selected_file_ids)
-    if len(selected_file_ids) > 20:
-        selected_file_ids = selected_file_ids[:20]
-        logger.info(f"文件数量超过限制，已从{original_count}个文件中选择前20个文件生成思维导图")
 
     files_info = collect_mindmap_files(all_files, selected_file_ids)
     if not files_info:
@@ -459,6 +517,9 @@ async def generate_database_mindmap(
 
 
 async def get_mindmap_databases_overview(uid: str) -> dict[str, Any]:
+    from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
+
+    file_repo = KnowledgeFileRepository()
     databases = await knowledge_base.get_databases_by_uid(uid)
     db_list = []
     for db_info in databases.get("databases", []):
@@ -466,8 +527,7 @@ async def get_mindmap_databases_overview(uid: str) -> dict[str, Any]:
         if not kb_id:
             continue
 
-        detail_info = await knowledge_base.get_database_info(kb_id, include_files=True)
-        file_count = len(detail_info.get("files", {})) if detail_info else 0
+        file_count = (await file_repo.get_kb_file_stats(kb_id))["file_count"]
         db_list.append(
             {
                 "kb_id": kb_id,

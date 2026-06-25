@@ -62,8 +62,10 @@ async def get_config(current_user: User = Depends(get_admin_user)):
 @system.post("/config")
 async def update_config_single(key=Body(...), value=Body(...), current_user: User = Depends(get_admin_user)) -> dict:
     """更新单个配置项"""
-    if not hasattr(config, key):
+    if not isinstance(key, str) or key not in type(config).model_fields:
         raise HTTPException(status_code=400, detail=f"未知配置项: {key}")
+    if not config.can_update(key):
+        raise HTTPException(status_code=400, detail=f"配置项不可修改: {key}")
     setattr(config, key, value)
     config.save()
     return config.dump_config()

@@ -10,14 +10,21 @@ import tomli
 import tomli_w
 from pydantic import BaseModel, Field, PrivateAttr
 
+from yuxi.config import cache as runtime_cache
 from yuxi.utils.logging_config import logger
+
+READONLY_CONFIG_FIELDS = frozenset({"save_dir"})
 
 
 class Config(BaseModel):
-    """应用配置类。"""
+    """应用配置类。
 
-    save_dir: str = Field(default="saves", description="保存目录")
-    enable_reranker: bool = Field(default=False, description="是否开启重排序")
+    `save_dir` 只在启动时决定配置文件位置，运行时不可修改。管理员保存配置时先写
+    `base.toml`，再把可运行时同步的字段写入 Redis 快照（`yuxi:runtime_config`）。
+    其他进程通过 `start_runtime_sync()` 启动的后台线程周期性拉取该快照刷新内存值。
+    """
+
+    save_dir: str = Field(default="saves", description="保存目录", exclude=True)
     enable_content_guard: bool = Field(default=False, description="是否启用内容审查")
     enable_content_guard_llm: bool = Field(default=False, description="是否启用LLM内容审查")
     default_model: str = Field(
@@ -41,8 +48,6 @@ class Config(BaseModel):
         description="内容审查LLM模型",
     )
 
-    default_agent_id: str = Field(default="ChatbotAgent", description="默认智能体ID")
-
     sandbox_provider: str = Field(default="provisioner", description="沙箱提供者")
     sandbox_provisioner_url: str = Field(default="http://sandbox-provisioner:8002", description="沙箱服务地址")
     sandbox_virtual_path_prefix: str = Field(default="/home/gem/user-data", description="沙箱用户目录前缀")
@@ -51,7 +56,7 @@ class Config(BaseModel):
     sandbox_keepalive_interval_seconds: int = Field(default=30, description="沙箱保活间隔")
 
     _config_file: Path | None = PrivateAttr(default=None)
-    _user_modified_fields: set[str] = PrivateAttr(default_factory=set)
+    _runtime_sync_thread: Any = PrivateAttr(default=None)
 
     model_config = {"arbitrary_types_allowed": True, "extra": "allow"}
 
@@ -75,10 +80,10 @@ class Config(BaseModel):
             with open(self._config_file, "rb") as f:
                 user_config = tomli.load(f)
 
-            self._user_modified_fields = set(user_config.keys())
-
             for key, value in user_config.items():
-                if hasattr(self, key):
+                if key in READONLY_CONFIG_FIELDS:
+                    logger.warning(f"Readonly config key ignored: {key}")
+                elif key in type(self).model_fields:
                     setattr(self, key, value)
                 else:
                     logger.warning(f"Unknown config key: {key}")
@@ -111,26 +116,37 @@ class Config(BaseModel):
         if not self.sandbox_virtual_path_prefix.startswith("/"):
             self.sandbox_virtual_path_prefix = f"/{self.sandbox_virtual_path_prefix}"
 
+    def start_runtime_sync(self, interval: float = runtime_cache.RUNTIME_CONFIG_SYNC_INTERVAL_SECONDS) -> None:
+        """启动后台线程周期性从 Redis 同步运行时配置。多次调用仅启动一次。"""
+        self._runtime_sync_thread = runtime_cache.start_runtime_sync(
+            self,
+            self._runtime_sync_thread,
+            interval=interval,
+        )
+
+    def refresh(self) -> None:
+        """从 Redis 快照刷新公开配置字段到内存；Redis 不可用或无快照时保持当前值。"""
+        runtime_cache.refresh_runtime_config(self)
+
     def save(self) -> None:
         if not self._config_file:
             logger.warning("Config file path not set")
             return
 
         logger.info(f"Saving config to {self._config_file}")
-        default_config = Config.model_construct()
         user_modified = {}
-        for field_name, field_info in self.model_fields.items():
+        for field_name, field_info in type(self).model_fields.items():
             if field_info.exclude:
                 continue
             current_value = getattr(self, field_name)
-            default_value = getattr(default_config, field_name)
-            if current_value != default_value:
+            if current_value != field_info.default:
                 user_modified[field_name] = current_value
 
         try:
             with open(self._config_file, "wb") as f:
                 tomli_w.dump(user_modified, f)
             logger.info(f"Config saved to {self._config_file}")
+            runtime_cache.save_runtime_config(self)
         except Exception as e:
             logger.error(f"Failed to save config to {self._config_file}: {e}")
 
@@ -153,10 +169,15 @@ class Config(BaseModel):
 
     def update(self, other: dict[str, Any]) -> None:
         for key, value in other.items():
-            if hasattr(self, key):
+            if self.can_update(key):
                 setattr(self, key, value)
+            elif key in READONLY_CONFIG_FIELDS:
+                logger.warning(f"Readonly config key ignored: {key}")
             else:
                 logger.warning(f"Unknown config key: {key}")
+
+    def can_update(self, key: object) -> bool:
+        return isinstance(key, str) and key in type(self).model_fields and key not in READONLY_CONFIG_FIELDS
 
 
 config = Config()

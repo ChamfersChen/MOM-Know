@@ -28,8 +28,8 @@ from yuxi.knowledge.parser.unified import Parser
 from yuxi.knowledge.utils.kb_utils import resolve_processing_params
 from yuxi.models.providers.cache import model_cache
 from yuxi.repositories.knowledge_chunk_repository import KnowledgeChunkRepository
+from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
 from yuxi.utils import hashstr, logger
-from yuxi.utils.datetime_utils import utc_isoformat
 
 MILVUS_AVAILABLE = True
 CONTENT_SPARSE_FIELD = "content_sparse"
@@ -312,9 +312,6 @@ class MilvusKB(KnowledgeBase):
 
         # 存储集合映射 {kb_id: Collection}
         self.collections: dict[str, Any] = {}
-
-        # 元数据锁
-        self._metadata_lock = asyncio.Lock()
 
         # 初始化连接
         self._init_connection()
@@ -617,21 +614,28 @@ class MilvusKB(KnowledgeBase):
 
         await asyncio.to_thread(_delete_from_milvus)
 
-    def _get_filename_for_file_id(self, file_id: str | None) -> str:
-        if not file_id:
-            return "未知来源"
-        return self.files_meta.get(file_id, {}).get("filename") or "未知来源"
+    async def _hydrate_chunk_sources(self, kb_id: str, chunks: list[dict]) -> None:
+        file_ids = sorted(
+            {str(file_id) for chunk in chunks if (file_id := (chunk.get("metadata") or {}).get("file_id"))}
+        )
+        if not file_ids:
+            return
 
-    def _build_file_name_expr(self, kb_id: str, file_name: str | None) -> str | None:
+        filenames = await KnowledgeFileRepository().get_filenames_by_file_ids(kb_id=kb_id, file_ids=file_ids)
+        for chunk in chunks:
+            metadata = chunk.get("metadata")
+            if not isinstance(metadata, dict):
+                continue
+            metadata["source"] = filenames.get(str(metadata.get("file_id") or ""), "") or "未知来源"
+
+    async def _build_file_name_expr(self, kb_id: str, file_name: str | None) -> str | None:
         if not file_name:
             return None
 
-        file_name_pattern = file_name.replace("%", "")
-        matched_file_ids = [
-            file_id
-            for file_id, file_meta in self.files_meta.items()
-            if file_meta.get("kb_id") == kb_id and file_name_pattern in (file_meta.get("filename") or "")
-        ]
+        matched_file_ids = await KnowledgeFileRepository().list_file_ids_by_filename_contains(
+            kb_id=kb_id,
+            filename_pattern=file_name,
+        )
         if not matched_file_ids:
             return 'file_id == "__no_matching_file__"'
         escaped_ids = [file_id.replace('"', '\\"') for file_id in matched_file_ids]
@@ -666,54 +670,47 @@ class MilvusKB(KnowledgeBase):
         embedding_model_spec = self.databases_meta[kb_id].get("embedding_model_spec")
         embedding_function = self._get_embedding_function(embedding_model_spec)
 
-        # Get file meta
-        async with self._metadata_lock:
-            if file_id not in self.files_meta:
-                raise ValueError(f"File {file_id} not found")
-            file_meta = self.files_meta[file_id]
+        file_meta = await self._load_file_meta(kb_id, file_id)
+        allowed_statuses = {
+            FileStatus.PARSED,
+            FileStatus.ERROR_INDEXING,
+            FileStatus.INDEXED,
+            "done",
+        }
+        params = resolve_processing_params(
+            kb_additional_params=self.databases_meta.get(kb_id, {}).get("metadata"),
+            file_processing_params=file_meta.get("processing_params"),
+            request_params=params,
+        )
 
-            # Validate current status - only allow indexing from these states
-            current_status = file_meta.get("status")
-            allowed_statuses = {
-                FileStatus.PARSED,
-                FileStatus.ERROR_INDEXING,
-                FileStatus.INDEXED,  # For re-indexing
-                "done",  # Legacy status
-            }
+        claim_data = {
+            "status": FileStatus.INDEXING,
+            "processing_params": params,
+            "error_message": None,
+        }
+        if operator_id:
+            claim_data["updated_by"] = operator_id
 
-            if current_status not in allowed_statuses:
-                raise ValueError(
-                    f"Cannot index file with status '{current_status}'. "
-                    f"File must be parsed first (status should be one of: {', '.join(allowed_statuses)})"
-                )
-
-            # Check markdown file exists
-            if not file_meta.get("markdown_file"):
-                await self._mark_file_unparsed(file_id, operator_id)
-                raise ValueError("File has not been parsed yet (no markdown_file)")
-
-            # Clear previous error if any
-            if "error" in file_meta:
-                self.files_meta[file_id].pop("error", None)
-
-            # Update status and add to processing queue
-            self.files_meta[file_id]["status"] = FileStatus.INDEXING
-            self.files_meta[file_id]["updated_at"] = utc_isoformat()
-            if operator_id:
-                self.files_meta[file_id]["updated_by"] = operator_id
-
-            # 将传入的 params 作为 request_params，确保用户指定的参数始终覆盖存储的参数
-            params = resolve_processing_params(
-                kb_additional_params=self.databases_meta.get(kb_id, {}).get("metadata"),
-                file_processing_params=file_meta.get("processing_params"),
-                request_params=params,
+        claimed_record = await KnowledgeFileRepository().update_fields_if_status(
+            kb_id=kb_id,
+            file_id=file_id,
+            allowed_statuses=allowed_statuses,
+            data=claim_data,
+        )
+        if claimed_record is None:
+            current_meta = await self._load_file_meta(kb_id, file_id)
+            current_status = current_meta.get("status")
+            raise ValueError(
+                f"Cannot index file with status '{current_status}'. "
+                f"File must be parsed first (status should be one of: {', '.join(allowed_statuses)})"
             )
-            self.files_meta[file_id]["processing_params"] = params
-            await self._persist_file(file_id)
-            logger.debug(f"[index_file] file_id={file_id}, processing_params={params}")
 
-        # Add to processing queue
-        self._add_to_processing_queue(file_id)
+        file_meta = self._file_record_to_meta(claimed_record)
+        if not file_meta.get("markdown_file"):
+            await self._mark_file_unparsed(kb_id, file_id, operator_id)
+            raise ValueError("File has not been parsed yet (no markdown_file)")
+
+        logger.debug(f"[index_file] file_id={file_id}, processing_params={params}")
 
         try:
             # Read markdown
@@ -739,32 +736,35 @@ class MilvusKB(KnowledgeBase):
             logger.info(f"Indexed file {file_id} into Milvus")
 
             # Update status
-            async with self._metadata_lock:
-                self.files_meta[file_id]["status"] = FileStatus.INDEXED
-                self.files_meta[file_id].update(chunk_stats)
-                self.files_meta[file_id]["updated_at"] = utc_isoformat()
-                if operator_id:
-                    self.files_meta[file_id]["updated_by"] = operator_id
-                await self._persist_file(file_id)
-                result = self.files_meta[file_id]
+            update_data = {"status": FileStatus.INDEXED, "error_message": None, **chunk_stats}
+            if operator_id:
+                update_data["updated_by"] = operator_id
+            updated_record = await KnowledgeFileRepository().update_fields(
+                file_id=file_id,
+                kb_id=kb_id,
+                data=update_data,
+            )
+            result = (
+                self._file_record_to_meta(updated_record)
+                if updated_record is not None
+                else {
+                    **file_meta,
+                    **chunk_stats,
+                    "status": FileStatus.INDEXED,
+                    "error": None,
+                }
+            )
 
             await self.refresh_database_stats(kb_id)
             return result
 
         except Exception as e:
             logger.error(f"Indexing failed for {file_id}: {e}")
-            async with self._metadata_lock:
-                self.files_meta[file_id]["status"] = FileStatus.ERROR_INDEXING
-                self.files_meta[file_id]["error"] = str(e)
-                self.files_meta[file_id]["updated_at"] = utc_isoformat()
-                if operator_id:
-                    self.files_meta[file_id]["updated_by"] = operator_id
-                await self._persist_file(file_id)
+            update_data = {"status": FileStatus.ERROR_INDEXING, "error_message": str(e)}
+            if operator_id:
+                update_data["updated_by"] = operator_id
+            await KnowledgeFileRepository().update_fields(file_id=file_id, kb_id=kb_id, data=update_data)
             raise
-
-        finally:
-            # Remove from processing queue
-            self._remove_from_processing_queue(file_id)
 
     async def update_content(self, kb_id: str, file_ids: list[str], params: dict | None = None) -> list[dict]:
         """更新内容 - 根据file_ids重新解析文件并更新向量库"""
@@ -784,34 +784,33 @@ class MilvusKB(KnowledgeBase):
         processed_items_info = []
 
         for file_id in file_ids:
-            # 从元数据中获取文件信息
-            async with self._metadata_lock:
-                if file_id not in self.files_meta:
-                    logger.warning(f"File {file_id} not found in metadata, skipping")
-                    continue
+            try:
+                file_meta = await self._load_file_meta(kb_id, file_id)
+            except ValueError:
+                logger.warning(f"File {file_id} not found in metadata, skipping")
+                continue
 
-                file_meta = self.files_meta[file_id]
-                file_path = file_meta.get("path")
-                filename = file_meta.get("filename")
+            file_path = file_meta.get("path")
+            filename = file_meta.get("filename")
 
-                if not file_path:
-                    logger.warning(f"File path not found for {file_id}, skipping")
-                    continue
-
-            # 添加到处理队列
-            self._add_to_processing_queue(file_id)
+            if not file_path:
+                logger.warning(f"File path not found for {file_id}, skipping")
+                continue
 
             try:
                 # 更新状态为处理中
-                async with self._metadata_lock:
-                    resolved_params = resolve_processing_params(
-                        kb_additional_params=self.databases_meta.get(kb_id, {}).get("metadata"),
-                        file_processing_params=self.files_meta[file_id].get("processing_params"),
-                        request_params=params,
-                    )
-                    self.files_meta[file_id]["processing_params"] = resolved_params
-                    self.files_meta[file_id]["status"] = FileStatus.INDEXING
-                    await self._persist_file(file_id)
+                resolved_params = resolve_processing_params(
+                    kb_additional_params=self.databases_meta.get(kb_id, {}).get("metadata"),
+                    file_processing_params=file_meta.get("processing_params"),
+                    request_params=params,
+                )
+                file_meta["processing_params"] = resolved_params
+                file_meta["status"] = FileStatus.INDEXING
+                await KnowledgeFileRepository().update_fields(
+                    file_id=file_id,
+                    kb_id=kb_id,
+                    data={"status": FileStatus.INDEXING, "processing_params": resolved_params},
+                )
 
                 # 重新解析文件为 markdown
                 parse_params = {**resolved_params, "image_bucket": "public", "image_prefix": f"{kb_id}/kb-images"}
@@ -831,34 +830,34 @@ class MilvusKB(KnowledgeBase):
                 logger.info(f"Updated file {file_path} in Milvus. Done.")
 
                 # 更新元数据状态
-                async with self._metadata_lock:
-                    self.files_meta[file_id]["status"] = "done"
-                    self.files_meta[file_id].update(chunk_stats)
-                    await self._persist_file(file_id)
+                file_meta["status"] = FileStatus.INDEXED
+                file_meta.update(chunk_stats)
+                await KnowledgeFileRepository().update_fields(
+                    file_id=file_id,
+                    kb_id=kb_id,
+                    data={"status": FileStatus.INDEXED, "error_message": None, **chunk_stats},
+                )
                 await self.refresh_database_stats(kb_id)
-
-                # 从处理队列中移除
-                self._remove_from_processing_queue(file_id)
 
                 # 返回更新后的文件信息
                 updated_file_meta = file_meta.copy()
-                updated_file_meta["status"] = "done"
+                updated_file_meta["status"] = FileStatus.INDEXED
                 updated_file_meta.update(chunk_stats)
                 updated_file_meta["file_id"] = file_id
                 processed_items_info.append(updated_file_meta)
 
             except Exception as e:
                 logger.error(f"更新file {file_path} 失败: {e}, {traceback.format_exc()}")
-                async with self._metadata_lock:
-                    self.files_meta[file_id]["status"] = "failed"
-                    await self._persist_file(file_id)
-
-                # 从处理队列中移除
-                self._remove_from_processing_queue(file_id)
+                await KnowledgeFileRepository().update_fields(
+                    file_id=file_id,
+                    kb_id=kb_id,
+                    data={"status": FileStatus.ERROR_INDEXING, "error_message": str(e)},
+                )
 
                 # 返回失败的文件信息
                 failed_file_meta = file_meta.copy()
-                failed_file_meta["status"] = "failed"
+                failed_file_meta["status"] = FileStatus.ERROR_INDEXING
+                failed_file_meta["error"] = str(e)
                 failed_file_meta["file_id"] = file_id
                 processed_items_info.append(failed_file_meta)
 
@@ -875,7 +874,7 @@ class MilvusKB(KnowledgeBase):
         entity = hit.entity
         file_id = entity.get("file_id")
         metadata = {
-            "source": self._get_filename_for_file_id(file_id),
+            "source": "未知来源",
             "chunk_id": entity.get("chunk_id"),
             "file_id": file_id,
             "chunk_index": entity.get("chunk_index"),
@@ -918,7 +917,7 @@ class MilvusKB(KnowledgeBase):
             else:
                 recall_top_k = final_top_k
 
-            file_expr = self._build_file_name_expr(kb_id, merged_kwargs.get("file_name"))
+            file_expr = await self._build_file_name_expr(kb_id, merged_kwargs.get("file_name"))
             if file_expr:
                 logger.debug(f"Using filter expression: {file_expr}")
 
@@ -1032,6 +1031,8 @@ class MilvusKB(KnowledgeBase):
 
             if not retrieved_chunks:
                 return []
+
+            await self._hydrate_chunk_sources(kb_id, retrieved_chunks)
 
             if not use_reranker:
                 return retrieved_chunks[:final_top_k]
@@ -1174,7 +1175,7 @@ class MilvusKB(KnowledgeBase):
 
     def _build_chunk_from_record(self, chunk: Any, score: float, score_field: str | None = None) -> dict:
         metadata = {
-            "source": self._get_filename_for_file_id(chunk.file_id),
+            "source": "未知来源",
             "chunk_id": chunk.chunk_id,
             "file_id": chunk.file_id,
             "chunk_index": chunk.chunk_index,
@@ -1234,39 +1235,26 @@ class MilvusKB(KnowledgeBase):
                 await self._delete_file_chunks_from_milvus(collection, file_id)
             except Exception as e:
                 logger.error(f"Error checking file existence in Milvus: {e}")
-        # 注意：这里不删除 files_meta[file_id]，保留元数据用于后续操作
-        if file_id in self.files_meta:
-            self.files_meta[file_id]["chunk_count"] = 0
-            self.files_meta[file_id]["token_count"] = 0
-            await self._persist_file(file_id)
-            await self.refresh_database_stats(kb_id)
+        await KnowledgeFileRepository().update_fields(
+            file_id=file_id,
+            kb_id=kb_id,
+            data={"chunk_count": 0, "token_count": 0},
+        )
+        await self.refresh_database_stats(kb_id)
 
     async def delete_file(self, kb_id: str, file_id: str) -> None:
         """删除文件（包括元数据）"""
         # 先删除 Milvus 中的 chunks 数据
         await self.delete_file_chunks_only(kb_id, file_id)
 
-        # 使用锁确保元数据操作的原子性
-        async with self._metadata_lock:
-            if file_id in self.files_meta:
-                del self.files_meta[file_id]
-                from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
-
-                await KnowledgeFileRepository().delete(file_id)
+        await KnowledgeFileRepository().delete(file_id)
         await self.refresh_database_stats(kb_id)
 
     async def get_file_basic_info(self, kb_id: str, file_id: str) -> dict:
         """获取文件基本信息（仅元数据）"""
-        if file_id not in self.files_meta:
-            raise Exception(f"File not found: {file_id}")
+        return {"meta": await self._load_file_meta(kb_id, file_id)}
 
-        return {"meta": self.files_meta[file_id]}
-
-    async def get_file_content(self, kb_id: str, file_id: str) -> dict:
-        """获取文件内容信息（chunks和lines）"""
-        if file_id not in self.files_meta:
-            raise Exception(f"File not found: {file_id}")
-
+    async def _get_file_content_from_meta(self, file_id: str, file_meta: dict) -> dict:
         content_info = {"lines": []}
         try:
             chunks = await KnowledgeChunkRepository().list_by_file_id(file_id)
@@ -1293,7 +1281,6 @@ class MilvusKB(KnowledgeBase):
             logger.warning(f"No chunks found in PostgreSQL for file {file_id}, file may not have been indexed")
 
         # Try to read markdown content if available
-        file_meta = self.files_meta[file_id]
         if file_meta.get("markdown_file"):
             try:
                 content = await self._read_markdown_from_minio(file_meta["markdown_file"])
@@ -1303,16 +1290,16 @@ class MilvusKB(KnowledgeBase):
 
         return content_info
 
+    async def get_file_content(self, kb_id: str, file_id: str) -> dict:
+        """获取文件内容信息（chunks和lines）"""
+        file_meta = await self._load_file_meta(kb_id, file_id)
+        return await self._get_file_content_from_meta(file_id, file_meta)
+
     async def get_file_info(self, kb_id: str, file_id: str) -> dict:
         """获取文件完整信息（基本信息+内容信息）"""
-        if file_id not in self.files_meta:
-            raise Exception(f"File not found: {file_id}")
-
-        # 合并基本信息和内容信息
-        basic_info = await self.get_file_basic_info(kb_id, file_id)
-        content_info = await self.get_file_content(kb_id, file_id)
-
-        return {**basic_info, **content_info}
+        file_meta = await self._load_file_meta(kb_id, file_id)
+        content_info = await self._get_file_content_from_meta(file_id, file_meta)
+        return {"meta": file_meta, **content_info}
 
     def delete_database(self, kb_id: str) -> dict:
         """删除数据库，同时清除Milvus中的集合"""

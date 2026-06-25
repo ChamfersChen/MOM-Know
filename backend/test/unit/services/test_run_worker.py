@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 import pytest
-
 import yuxi.services.run_worker as run_worker
 
 
@@ -254,12 +253,16 @@ async def test_worker_startup_ensures_builtin_mcp_servers(monkeypatch: pytest.Mo
         del session
         calls.append("init_builtin_skills")
 
+    def fake_start_runtime_sync():
+        calls.append("start_runtime_sync")
+
     monkeypatch.setattr(run_worker.pg_manager, "initialize", fake_initialize)
     monkeypatch.setattr(run_worker.pg_manager, "create_business_tables", fake_create_business_tables)
     monkeypatch.setattr(run_worker.pg_manager, "ensure_business_schema", fake_ensure_business_schema)
     monkeypatch.setattr(run_worker.pg_manager, "get_async_session_context", fake_session_ctx)
     monkeypatch.setattr(run_worker, "ensure_builtin_mcp_servers_in_db", fake_ensure_builtin_mcp_servers_in_db)
     monkeypatch.setattr(run_worker, "init_builtin_skills", fake_init_builtin_skills)
+    monkeypatch.setattr(run_worker.sys_config, "start_runtime_sync", fake_start_runtime_sync)
 
     await run_worker._worker_startup({})
 
@@ -269,4 +272,5 @@ async def test_worker_startup_ensures_builtin_mcp_servers(monkeypatch: pytest.Mo
         "ensure_business_schema",
         "ensure_builtin_mcp_servers_in_db",
         "init_builtin_skills",
+        "start_runtime_sync",
     ]

@@ -19,28 +19,23 @@ GRAPH_PPR_MAX_NODES = 10000
 
 
 async def collect_kb_chunks(kb_instance: Any, kb_id: str) -> list[dict[str, Any]]:
-    chunks = []
-    for fid, finfo in kb_instance.files_meta.items():
-        if finfo.get("kb_id") != kb_id:
-            continue
-        try:
-            content_info = await kb_instance.get_file_content(kb_id, fid)
-            for line in content_info.get("lines", []):
-                chunks.append(
-                    {
-                        "id": line.get("id"),
-                        "content": line.get("content", ""),
-                        "file_id": fid,
-                        "chunk_index": line.get("chunk_order_index"),
-                        "graph_indexed": bool(line.get("graph_indexed")),
-                        "ent_ids": line.get("ent_ids") or [],
-                        "tags": line.get("tags") or [],
-                        "extraction_result": line.get("extraction_result"),
-                    }
-                )
-        except Exception:
-            continue
-    return chunks
+    del kb_instance
+
+    from yuxi.repositories.knowledge_chunk_repository import KnowledgeChunkRepository
+
+    return [
+        {
+            "id": chunk.chunk_id,
+            "content": chunk.content or "",
+            "file_id": chunk.file_id,
+            "chunk_index": chunk.chunk_index,
+            "graph_indexed": bool(chunk.graph_indexed),
+            "ent_ids": chunk.ent_ids or [],
+            "tags": chunk.tags or [],
+            "extraction_result": chunk.extraction_result,
+        }
+        for chunk in await KnowledgeChunkRepository().list_by_kb_id(kb_id)
+    ]
 
 
 def clamp_neighbors_count(neighbors_count: int) -> int:

@@ -1,12 +1,7 @@
-import asyncio
 import types
 
 import pytest
-import yuxi
 from pymilvus import CollectionSchema, DataType, FieldSchema, Function, FunctionType
-
-if "knowledge_base" not in vars(yuxi):
-    yuxi.knowledge_base = types.SimpleNamespace()
 
 from yuxi.knowledge.base import FileStatus
 from yuxi.knowledge.chunking.ragflow_like.nlp import count_tokens
@@ -51,15 +46,100 @@ class FakeCollection:
 def make_kb(collection: FakeCollection) -> MilvusKB:
     kb = MilvusKB.__new__(MilvusKB)
     kb.databases_meta = {"db": {"embedding_model_spec": "test-provider:test-embedding"}}
-    kb.files_meta = {"file-1": {"filename": "demo.md", "kb_id": "db"}}
     kb._get_query_params = lambda kb_id: {}
     kb._get_embedding_function = lambda embedding_model_spec, **kwargs: lambda texts: [[0.1, 0.2] for _ in texts]
 
     async def get_collection(kb_id: str):
         return collection
 
+    async def hydrate_chunk_sources(kb_id: str, chunks: list[dict]) -> None:
+        for chunk in chunks:
+            chunk["metadata"]["source"] = "demo.md"
+
     kb._get_milvus_collection = get_collection
+    kb._hydrate_chunk_sources = hydrate_chunk_sources
     return kb
+
+
+def make_file_record(**overrides):
+    data = {
+        "file_id": "file-1",
+        "kb_id": "db",
+        "parent_id": None,
+        "filename": "demo.md",
+        "file_type": "md",
+        "path": "/tmp/demo.md",
+        "minio_url": None,
+        "markdown_file": "minio://parsed/db/file-1.md",
+        "status": FileStatus.PARSED,
+        "content_hash": None,
+        "file_size": 0,
+        "chunk_count": 0,
+        "token_count": 0,
+        "content_type": "file",
+        "processing_params": {},
+        "is_folder": False,
+        "error_message": None,
+        "created_by": None,
+        "updated_by": None,
+        "created_at": None,
+        "updated_at": None,
+        "original_filename": None,
+    }
+    data.update(overrides)
+    return types.SimpleNamespace(**data)
+
+
+class FakeKnowledgeFileRepository:
+    def __init__(self, records: dict[str, types.SimpleNamespace]):
+        self.records = records
+        self.update_calls = []
+        self.conditional_update_calls = []
+        self.deleted = []
+
+    async def get_by_file_id(self, file_id: str):
+        return self.records.get(file_id)
+
+    async def update_fields_if_status(self, *, kb_id: str, file_id: str, allowed_statuses: set[str], data: dict):
+        record = self.records.get(file_id)
+        self.conditional_update_calls.append((kb_id, file_id, set(allowed_statuses), dict(data)))
+        if record is None or record.kb_id != kb_id or record.status not in allowed_statuses:
+            return None
+        for key, value in data.items():
+            setattr(record, key, value)
+        return record
+
+    async def update_fields(self, *, file_id: str, data: dict, kb_id: str | None = None):
+        record = self.records.get(file_id)
+        if record is None or (kb_id and record.kb_id != kb_id):
+            return None
+        for key, value in data.items():
+            setattr(record, key, value)
+        self.update_calls.append((file_id, kb_id, dict(data)))
+        return record
+
+    async def get_filenames_by_file_ids(self, *, kb_id: str, file_ids: list[str]):
+        return {
+            file_id: record.filename
+            for file_id in file_ids
+            if (record := self.records.get(file_id)) is not None and record.kb_id == kb_id
+        }
+
+    async def list_file_ids_by_filename_contains(self, *, kb_id: str, filename_pattern: str, limit: int = 10_000):
+        return [
+            file_id
+            for file_id, record in self.records.items()
+            if record.kb_id == kb_id and filename_pattern.lower() in record.filename.lower()
+        ][:limit]
+
+    async def delete(self, file_id: str) -> None:
+        self.deleted.append(file_id)
+        self.records.pop(file_id, None)
+
+
+def patch_file_repository(monkeypatch, file_repo: FakeKnowledgeFileRepository) -> None:
+    monkeypatch.setattr("yuxi.repositories.knowledge_file_repository.KnowledgeFileRepository", lambda: file_repo)
+    monkeypatch.setattr("yuxi.knowledge.implementations.milvus.KnowledgeFileRepository", lambda: file_repo)
 
 
 def make_chunk(index: int, content: str = "content") -> dict:
@@ -143,26 +223,15 @@ def test_calculate_chunk_stats_counts_chunks_and_tokens():
     }
 
 
-async def test_index_file_persists_chunk_stats():
+async def test_index_file_persists_chunk_stats(monkeypatch):
     kb = MilvusKB.__new__(MilvusKB)
     kb.databases_meta = {"db": {"embedding_model_spec": "test-provider:test-embedding", "metadata": {}}}
-    kb.files_meta = {
-        "file-1": {
-            "kb_id": "db",
-            "filename": "demo.md",
-            "markdown_file": "minio://parsed/db/file-1.md",
-            "processing_params": {},
-            "status": FileStatus.PARSED,
-        }
-    }
-    kb._metadata_lock = asyncio.Lock()
+    file_repo = FakeKnowledgeFileRepository({"file-1": make_file_record()})
+    patch_file_repository(monkeypatch, file_repo)
     collection = FakeCollection()
     deleted_files = []
     store_calls = []
-    persisted_files = []
     refreshed_kbs = []
-    queue_adds = []
-    queue_removes = []
     chunks = [make_chunk(0, content="alpha beta"), make_chunk(1, content="中文")]
 
     async def get_collection(kb_id):
@@ -180,9 +249,6 @@ async def test_index_file_persists_chunk_stats():
     async def embed_and_store_chunks(kb_id, file_id, collection_arg, chunk_records, embedding_fn):
         store_calls.append((kb_id, file_id, collection_arg, list(chunk_records), embedding_fn))
 
-    async def persist_file(file_id):
-        persisted_files.append((file_id, dict(kb.files_meta[file_id])))
-
     async def refresh_database_stats(kb_id):
         refreshed_kbs.append(kb_id)
         return {}
@@ -193,10 +259,7 @@ async def test_index_file_persists_chunk_stats():
     kb._get_embedding_function = lambda embedding_model_spec: embedding_function
     kb.delete_file_chunks_only = delete_file_chunks_only
     kb._embed_and_store_chunks = embed_and_store_chunks
-    kb._persist_file = persist_file
     kb.refresh_database_stats = refresh_database_stats
-    kb._add_to_processing_queue = lambda file_id: queue_adds.append(file_id)
-    kb._remove_from_processing_queue = lambda file_id: queue_removes.append(file_id)
 
     result = await kb.index_file("db", "file-1", operator_id="user-1", params={})
 
@@ -206,9 +269,9 @@ async def test_index_file_persists_chunk_stats():
     assert result["status"] == FileStatus.INDEXED
     assert result["chunk_count"] == 2
     assert result["token_count"] == count_tokens("alpha beta") + count_tokens("中文")
-    assert queue_adds == ["file-1"]
-    assert queue_removes == ["file-1"]
-    assert persisted_files[-1][1]["chunk_count"] == result["chunk_count"]
+    assert file_repo.records["file-1"].chunk_count == result["chunk_count"]
+    assert file_repo.conditional_update_calls[0][3]["status"] == FileStatus.INDEXING
+    assert file_repo.update_calls[-1][2]["status"] == FileStatus.INDEXED
     assert refreshed_kbs == ["db"]
 
 
@@ -228,31 +291,29 @@ async def test_delete_file_chunks_only_resets_file_stats(monkeypatch):
             return 2
 
     monkeypatch.setattr("yuxi.knowledge.implementations.milvus.KnowledgeChunkRepository", FakeChunkRepo)
+    file_repo = FakeKnowledgeFileRepository(
+        {"file-1": make_file_record(chunk_count=2, token_count=10, status=FileStatus.INDEXED)}
+    )
+    patch_file_repository(monkeypatch, file_repo)
     kb = MilvusKB.__new__(MilvusKB)
-    kb.files_meta = {"file-1": {"kb_id": "db", "chunk_count": 2, "token_count": 10}}
-    persisted_files = []
     refreshed_kbs = []
 
     async def get_collection(kb_id):
         return None
-
-    async def persist_file(file_id):
-        persisted_files.append((file_id, dict(kb.files_meta[file_id])))
 
     async def refresh_database_stats(kb_id):
         refreshed_kbs.append(kb_id)
         return {}
 
     kb._get_milvus_collection = get_collection
-    kb._persist_file = persist_file
     kb.refresh_database_stats = refresh_database_stats
 
     await kb.delete_file_chunks_only("db", "file-1")
 
     assert repos[0].delete_calls == ["file-1"]
-    assert kb.files_meta["file-1"]["chunk_count"] == 0
-    assert kb.files_meta["file-1"]["token_count"] == 0
-    assert persisted_files == [("file-1", {"kb_id": "db", "chunk_count": 0, "token_count": 0})]
+    assert file_repo.records["file-1"].chunk_count == 0
+    assert file_repo.records["file-1"].token_count == 0
+    assert file_repo.update_calls == [("file-1", "db", {"chunk_count": 0, "token_count": 0})]
     assert refreshed_kbs == ["db"]
 
 
@@ -332,18 +393,11 @@ async def test_insert_chunks_to_stores_rolls_back_file_when_milvus_insert_fails(
 async def test_update_content_uses_streaming_chunk_store(monkeypatch):
     kb = MilvusKB.__new__(MilvusKB)
     kb.databases_meta = {"db": {"embedding_model_spec": "test-provider:test-embedding", "metadata": {}}}
-    kb.files_meta = {
-        "file-1": {
-            "path": "/tmp/demo.md",
-            "filename": "demo.md",
-            "processing_params": {},
-        }
-    }
-    kb._metadata_lock = asyncio.Lock()
+    file_repo = FakeKnowledgeFileRepository(
+        {"file-1": make_file_record(markdown_file=None, status=FileStatus.INDEXED)}
+    )
+    patch_file_repository(monkeypatch, file_repo)
     collection = FakeCollection()
-    queue_adds = []
-    queue_removes = []
-    persisted_files = []
     refreshed_kbs = []
     deleted_files = []
     store_calls = []
@@ -353,9 +407,6 @@ async def test_update_content_uses_streaming_chunk_store(monkeypatch):
 
     async def forbidden_embedding(texts):
         raise AssertionError("update_content should not embed the whole file directly")
-
-    async def persist_file(file_id):
-        persisted_files.append(file_id)
 
     async def refresh_database_stats(kb_id):
         refreshed_kbs.append(kb_id)
@@ -372,13 +423,10 @@ async def test_update_content_uses_streaming_chunk_store(monkeypatch):
 
     kb._get_milvus_collection = get_collection
     kb._get_embedding_function = lambda embedding_model_spec: forbidden_embedding
-    kb._persist_file = persist_file
     kb.refresh_database_stats = refresh_database_stats
     kb._split_text_into_chunks = lambda text, file_id, filename, params: [make_chunk(0), make_chunk(1)]
     kb.delete_file_chunks_only = delete_file_chunks_only
     kb._embed_and_store_chunks = embed_and_store_chunks
-    kb._add_to_processing_queue = lambda file_id: queue_adds.append(file_id)
-    kb._remove_from_processing_queue = lambda file_id: queue_removes.append(file_id)
     monkeypatch.setattr("yuxi.knowledge.implementations.milvus.Parser.aparse", parse_file)
 
     result = await kb.update_content("db", ["file-1"])
@@ -388,11 +436,10 @@ async def test_update_content_uses_streaming_chunk_store(monkeypatch):
     assert store_calls[0][2] is collection
     assert [chunk["chunk_id"] for chunk in store_calls[0][3]] == ["chunk-0", "chunk-1"]
     assert store_calls[0][4] is forbidden_embedding
-    assert result[0]["status"] == "done"
-    assert kb.files_meta["file-1"]["status"] == "done"
-    assert queue_adds == ["file-1"]
-    assert queue_removes == ["file-1"]
-    assert persisted_files
+    assert result[0]["status"] == FileStatus.INDEXED
+    assert file_repo.records["file-1"].status == FileStatus.INDEXED
+    assert file_repo.update_calls[0][2]["status"] == FileStatus.INDEXING
+    assert file_repo.update_calls[-1][2]["status"] == FileStatus.INDEXED
     assert refreshed_kbs == ["db"]
 
 

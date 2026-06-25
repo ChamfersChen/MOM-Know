@@ -20,7 +20,7 @@ def test_parse_sample_questions_content_rejects_invalid_payload():
 @pytest.mark.asyncio
 async def test_generate_database_sample_questions_rejects_empty_files(monkeypatch):
     class FakeKnowledgeBase:
-        async def get_database_info(self, kb_id: str) -> dict:
+        async def get_database_info(self, kb_id: str, include_files: bool = False) -> dict:
             return {"name": "空知识库", "kb_type": "milvus", "files": {}}
 
     monkeypatch.setattr(sq, "knowledge_base", FakeKnowledgeBase())
@@ -42,7 +42,7 @@ async def test_generate_database_sample_questions_saves_and_returns_questions(mo
     saved: dict = {}
 
     class FakeKnowledgeBase:
-        async def get_database_info(self, kb_id: str) -> dict:
+        async def get_database_info(self, kb_id: str, include_files: bool = False) -> dict:
             return {
                 "name": "测试知识库",
                 "kb_type": "milvus",
@@ -82,7 +82,7 @@ async def test_generate_database_sample_questions_saves_and_returns_questions(mo
 @pytest.mark.asyncio
 async def test_generate_database_sample_questions_maps_invalid_json(monkeypatch):
     class FakeKnowledgeBase:
-        async def get_database_info(self, kb_id: str) -> dict:
+        async def get_database_info(self, kb_id: str, include_files: bool = False) -> dict:
             return {
                 "name": "测试知识库",
                 "kb_type": "milvus",

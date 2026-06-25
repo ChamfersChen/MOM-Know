@@ -202,7 +202,12 @@ def merge_processing_params(metadata_params: dict | None, request_params: dict |
     if request_params:
         merged_params.update(request_params)
 
-    logger.debug(f"Merged processing params: {metadata_params=}, {request_params=}, {merged_params=}")
+    logger.debug(
+        "Merged processing params: "
+        f"metadata_keys={list(metadata_params.keys()) if metadata_params else []}, "
+        f"request_keys={list(request_params.keys()) if request_params else []}, "
+        f"merged_keys={list(merged_params.keys())}"
+    )
     return merged_params
 
 

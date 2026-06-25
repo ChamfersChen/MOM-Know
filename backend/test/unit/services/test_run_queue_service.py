@@ -1,23 +1,7 @@
 from __future__ import annotations
 
 import pytest
-
 import yuxi.services.run_queue_service as run_queue_service
-
-
-class _FakeRedisClient:
-    def __init__(self, *, ping_error: Exception | None = None):
-        self.ping_error = ping_error
-        self.ping_calls = 0
-        self.closed = False
-
-    async def ping(self):
-        self.ping_calls += 1
-        if self.ping_error is not None:
-            raise self.ping_error
-
-    async def aclose(self):
-        self.closed = True
 
 
 class _FakeStreamRedis:
@@ -52,48 +36,25 @@ class _FakeStreamRedis:
 
 
 @pytest.mark.asyncio
-async def test_get_redis_client_ping_once_and_cache(monkeypatch: pytest.MonkeyPatch):
-    redis_asyncio = pytest.importorskip("redis.asyncio")
+async def test_get_redis_client_uses_storage_client(monkeypatch: pytest.MonkeyPatch):
+    fake_client = object()
 
-    fake_client = _FakeRedisClient()
-    monkeypatch.setattr(run_queue_service, "_redis_client", None)
-    monkeypatch.setattr(
-        redis_asyncio.Redis,
-        "from_url",
-        staticmethod(lambda *args, **kwargs: fake_client),
-    )
+    async def fake_get_async_redis_client():
+        return fake_client
 
-    client_1 = await run_queue_service.get_redis_client()
-    client_2 = await run_queue_service.get_redis_client()
+    monkeypatch.setattr(run_queue_service, "get_async_redis_client", fake_get_async_redis_client)
 
-    assert client_1 is fake_client
-    assert client_2 is fake_client
-    assert fake_client.ping_calls == 1
-
-
-@pytest.mark.asyncio
-async def test_get_redis_client_ping_fail_fast(monkeypatch: pytest.MonkeyPatch):
-    redis_asyncio = pytest.importorskip("redis.asyncio")
-
-    fake_client = _FakeRedisClient(ping_error=RuntimeError("redis unavailable"))
-    monkeypatch.setattr(run_queue_service, "_redis_client", None)
-    monkeypatch.setattr(
-        redis_asyncio.Redis,
-        "from_url",
-        staticmethod(lambda *args, **kwargs: fake_client),
-    )
-
-    with pytest.raises(RuntimeError, match="Redis connection failed"):
-        await run_queue_service.get_redis_client()
-
-    assert run_queue_service._redis_client is None
-    assert fake_client.closed is True
+    assert await run_queue_service.get_redis_client() is fake_client
 
 
 @pytest.mark.asyncio
 async def test_run_stream_event_roundtrip(monkeypatch: pytest.MonkeyPatch):
     fake_redis = _FakeStreamRedis()
-    monkeypatch.setattr(run_queue_service, "_redis_client", fake_redis)
+
+    async def fake_get_async_redis_client():
+        return fake_redis
+
+    monkeypatch.setattr(run_queue_service, "get_async_redis_client", fake_get_async_redis_client)
 
     run_id = "run-1"
     seq1 = await run_queue_service.append_run_stream_event(run_id, "loading", {"items": [1]})

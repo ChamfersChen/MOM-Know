@@ -73,7 +73,7 @@ class TestAddFileRecordSizeFallback:
             async def _initialize_kb_instance(self, instance):
                 pass
 
-            async def _persist_file(self, file_id):
+            async def _persist_file_meta(self, file_id, meta):
                 pass
 
             async def _persist_kb(self, kb_id):
@@ -81,6 +81,9 @@ class TestAddFileRecordSizeFallback:
 
             async def _save_metadata(self):
                 pass
+
+            async def refresh_database_stats(self, kb_id):
+                return {}
 
             async def index_file(self, kb_id, file_id, operator_id=None):
                 return {}

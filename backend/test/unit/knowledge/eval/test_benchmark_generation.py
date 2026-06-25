@@ -19,32 +19,13 @@ from yuxi.knowledge.eval.benchmark_generation import (
 
 
 class FakeKnowledgeBase:
-    files_meta = {
-        "file_a": {"kb_id": "db_1"},
-        "file_b": {"kb_id": "db_2"},
-    }
-
-    async def get_file_content(self, kb_id, fid):
-        return {
-            "lines": [
-                {"id": f"{fid}_chunk", "content": "内容", "chunk_order_index": 0},
-            ]
-        }
+    pass
 
 
 class FakeGenerationKnowledgeBase:
-    files_meta = {"file_a": {"kb_id": "db_1"}}
-
     def __init__(self, query_results=None):
         self.query_results = query_results or []
         self.query_calls = []
-
-    async def get_file_content(self, kb_id, fid):
-        return {
-            "lines": [
-                {"id": "anchor_chunk", "content": "anchor content", "chunk_order_index": 0},
-            ]
-        }
 
     async def aquery(self, query_text, kb_id, **kwargs):
         self.query_calls.append({"query_text": query_text, "kb_id": kb_id, **kwargs})
@@ -89,32 +70,45 @@ class TrackingLlm:
 
 
 class FakeGraphGenerationKnowledgeBase(FakeGenerationKnowledgeBase):
-    async def get_file_content(self, kb_id, fid):
-        return {
-            "lines": [
-                {
-                    "id": "vector_anchor",
-                    "content": "vector content",
-                    "chunk_order_index": 0,
-                    "graph_indexed": False,
-                    "ent_ids": ["vector_entity"],
-                },
-                {
-                    "id": "graph_anchor",
-                    "content": "graph anchor content",
-                    "chunk_order_index": 1,
-                    "graph_indexed": True,
-                    "ent_ids": ["anchor_entity"],
-                },
-                {
-                    "id": "graph_neighbor",
-                    "content": "graph neighbor content",
-                    "chunk_order_index": 2,
-                    "graph_indexed": False,
-                    "ent_ids": ["neighbor_entity"],
-                },
-            ]
-        }
+    pass
+
+
+def make_chunk(
+    chunk_id: str,
+    *,
+    kb_id: str = "db_1",
+    file_id: str = "file_a",
+    content: str = "anchor content",
+    chunk_index: int = 0,
+    graph_indexed: bool = False,
+    ent_ids: list[str] | None = None,
+):
+    return SimpleNamespace(
+        chunk_id=chunk_id,
+        kb_id=kb_id,
+        file_id=file_id,
+        content=content,
+        chunk_index=chunk_index,
+        graph_indexed=graph_indexed,
+        ent_ids=ent_ids,
+        tags=None,
+        extraction_result=None,
+    )
+
+
+@pytest.fixture(autouse=True)
+def fake_chunk_repository(monkeypatch):
+    class FakeChunkRepository:
+        chunks = [make_chunk("anchor_chunk")]
+
+        async def list_by_kb_id(self, kb_id):
+            return [chunk for chunk in self.chunks if chunk.kb_id == kb_id]
+
+    monkeypatch.setattr(
+        "yuxi.repositories.knowledge_chunk_repository.KnowledgeChunkRepository",
+        FakeChunkRepository,
+    )
+    return FakeChunkRepository
 
 
 def test_clamp_neighbors_count():
@@ -139,7 +133,12 @@ def test_build_benchmark_generation_prompt_contains_required_schema():
 
 
 @pytest.mark.asyncio
-async def test_collect_kb_chunks_filters_kb_id():
+async def test_collect_kb_chunks_filters_kb_id(fake_chunk_repository):
+    fake_chunk_repository.chunks = [
+        make_chunk("file_a_chunk", content="内容"),
+        make_chunk("file_b_chunk", kb_id="db_2", file_id="file_b", content="其他"),
+    ]
+
     chunks = await collect_kb_chunks(FakeKnowledgeBase(), "db_1")
 
     assert chunks == [
@@ -246,7 +245,31 @@ async def test_select_graph_enhanced_chunks_expands_by_ppr_with_anchor_bias(monk
 
 
 @pytest.mark.asyncio
-async def test_iter_generated_benchmark_items_graph_mode_uses_graph_indexed_anchor(monkeypatch):
+async def test_iter_generated_benchmark_items_graph_mode_uses_graph_indexed_anchor(monkeypatch, fake_chunk_repository):
+    fake_chunk_repository.chunks = [
+        make_chunk(
+            "vector_anchor",
+            content="vector content",
+            chunk_index=0,
+            graph_indexed=False,
+            ent_ids=["vector_entity"],
+        ),
+        make_chunk(
+            "graph_anchor",
+            content="graph anchor content",
+            chunk_index=1,
+            graph_indexed=True,
+            ent_ids=["anchor_entity"],
+        ),
+        make_chunk(
+            "graph_neighbor",
+            content="graph neighbor content",
+            chunk_index=2,
+            graph_indexed=False,
+            ent_ids=["neighbor_entity"],
+        ),
+    ]
+
     async def fake_rank(self, kb_id, seed_weights, *, max_nodes, top_k, damping):
         assert seed_weights["anchor_entity"] == 1.0
         return [("graph_anchor", 0.9), ("graph_neighbor", 0.8)]

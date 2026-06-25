@@ -1,4 +1,36 @@
-from yuxi.models.providers.cache import ModelCache
+from __future__ import annotations
+
+import json
+from contextlib import contextmanager
+
+import pytest
+import yuxi.models.providers.cache as cache_module
+from yuxi.models.providers.cache import REDIS_CACHE_KEY, ModelCache, ModelInfo
+
+pytestmark = pytest.mark.unit
+
+
+class _FakeRedis:
+    def __init__(self):
+        self.data: dict[str, str] = {}
+        self.get_calls = 0
+
+    def get(self, key: str) -> str | None:
+        self.get_calls += 1
+        return self.data.get(key)
+
+    def set(self, key: str, value: str) -> bool:
+        self.data[key] = value
+        return True
+
+
+def _patch_redis(monkeypatch: pytest.MonkeyPatch, redis: _FakeRedis) -> None:
+    @contextmanager
+    def fake_sync_redis_client(*args, **kwargs):
+        del args, kwargs
+        yield redis
+
+    monkeypatch.setattr(cache_module, "sync_redis_client", fake_sync_redis_client)
 
 
 def test_model_cache_prefers_model_base_url_override(monkeypatch):
@@ -30,3 +62,50 @@ def test_model_cache_prefers_model_base_url_override(monkeypatch):
     cache.rebuild([Provider()])
 
     assert saved_cache["alibaba:qwen3-rerank"].base_url == "https://invalid.example/rerank"
+
+
+def test_model_cache_loads_from_redis_and_uses_local_ttl(monkeypatch: pytest.MonkeyPatch):
+    redis = _FakeRedis()
+    _patch_redis(monkeypatch, redis)
+    redis.data[REDIS_CACHE_KEY] = json.dumps(
+        {
+            "provider:chat": {
+                "provider_id": "provider",
+                "model_id": "chat",
+                "model_type": "chat",
+                "display_name": "Chat",
+                "api_key": "sk-test",
+                "base_url": "https://example.com/v1",
+                "provider_type": "openai",
+            }
+        }
+    )
+    cache = ModelCache()
+
+    info = cache.get_model_info("provider:chat")
+    cached_info = cache.get_model_info("provider:chat")
+
+    assert info is not None
+    assert cached_info is info
+    assert info.base_url == "https://example.com/v1"
+    assert redis.get_calls == 1
+
+
+def test_model_cache_save_writes_redis_json(monkeypatch: pytest.MonkeyPatch):
+    redis = _FakeRedis()
+    _patch_redis(monkeypatch, redis)
+    cache = ModelCache()
+    info = ModelInfo(
+        provider_id="provider",
+        model_id="chat",
+        model_type="chat",
+        display_name="Chat",
+        api_key="sk-test",
+        base_url="https://example.com/v1",
+        provider_type="openai",
+    )
+
+    cache._save_cache({info.spec: info})
+
+    payload = json.loads(redis.data[REDIS_CACHE_KEY])
+    assert payload[info.spec]["base_url"] == "https://example.com/v1"

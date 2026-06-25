@@ -14,6 +14,7 @@ from yuxi.knowledge import knowledge_base
 from yuxi.utils import logger
 from yuxi.agents.backends.sandbox import init_sandbox_provider, shutdown_sandbox_provider
 from yuxi import get_version
+from yuxi.config import config
 
 
 @asynccontextmanager
@@ -89,6 +90,9 @@ async def lifespan(app: FastAPI):
         await redis.ping()
     except Exception as e:
         logger.warning(f"Run queue redis unavailable on startup: {e}")
+
+    # 启动运行时配置同步线程（周期性从 Redis 拉取管理员保存的配置快照）
+    config.start_runtime_sync()
 
     try:
         init_sandbox_provider()

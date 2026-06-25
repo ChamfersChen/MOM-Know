@@ -75,7 +75,7 @@ class FakeMinioClient:
 def make_kb(tmp_path) -> FakeKnowledgeBase:
     kb = FakeKnowledgeBase(str(tmp_path))
     kb.databases_meta["db1"] = {"metadata": {}}
-    kb.files_meta["file1"] = {
+    kb.test_file_meta = {
         "file_id": "file1",
         "kb_id": "db1",
         "filename": "demo.docx",
@@ -83,13 +83,20 @@ def make_kb(tmp_path) -> FakeKnowledgeBase:
         "markdown_file": "minio://knowledgebases/db1/parsed/file1.md",
         "status": "parsed",
     }
+
+    async def load_file_meta(kb_id: str, file_id: str, *, refresh: bool = False) -> dict:
+        assert kb_id == "db1"
+        assert file_id == "file1"
+        return kb.test_file_meta
+
+    kb._load_file_meta = load_file_meta
     return kb
 
 
 def test_office_file_entry_exposes_logical_file_availability(tmp_path) -> None:
     kb = make_kb(tmp_path)
 
-    entry = kb._knowledge_file_entry("db1", "file1", kb.files_meta["file1"])
+    entry = kb._knowledge_file_entry("db1", "file1", kb.test_file_meta)
 
     assert entry["has_original_file"] is True
     assert entry["has_parsed_markdown"] is True
@@ -132,12 +139,12 @@ async def test_read_office_pdf_preview_converts_and_caches_pdf(tmp_path, monkeyp
 @pytest.mark.asyncio
 async def test_non_docx_pptx_office_files_do_not_get_pdf_preview(tmp_path, monkeypatch) -> None:
     kb = make_kb(tmp_path)
-    kb.files_meta["file1"]["filename"] = "demo.xlsx"
+    kb.test_file_meta["filename"] = "demo.xlsx"
     minio_client = FakeMinioClient()
     minio_client.objects[("knowledgebases", "db1/upload/demo.docx")] = b"PK\x03\x04excel"
     monkeypatch.setattr("yuxi.storage.minio.get_minio_client", lambda: minio_client)
 
-    entry = kb._knowledge_file_entry("db1", "file1", kb.files_meta["file1"])
+    entry = kb._knowledge_file_entry("db1", "file1", kb.test_file_meta)
     response = await kb.read_file_preview("db1", "file1")
 
     assert entry["has_original_file"] is True
@@ -149,8 +156,8 @@ async def test_non_docx_pptx_office_files_do_not_get_pdf_preview(tmp_path, monke
 @pytest.mark.asyncio
 async def test_read_file_preview_rejects_large_original_before_download(tmp_path, monkeypatch) -> None:
     kb = make_kb(tmp_path)
-    kb.files_meta["file1"]["filename"] = "large.pdf"
-    kb.files_meta["file1"]["size"] = MAX_BINARY_PREVIEW_SIZE_BYTES + 1
+    kb.test_file_meta["filename"] = "large.pdf"
+    kb.test_file_meta["size"] = MAX_BINARY_PREVIEW_SIZE_BYTES + 1
 
     async def fail_read(_path: str) -> bytes:
         raise AssertionError("large preview should not download file content")

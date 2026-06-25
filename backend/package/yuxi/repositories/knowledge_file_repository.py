@@ -3,13 +3,43 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
-from sqlalchemy import DateTime, String, case, cast, func, literal, or_, select, union_all
+from sqlalchemy import DateTime, String, case, cast, func, literal, or_, select, union_all, update
 
 from yuxi.storage.postgres.manager import pg_manager
 from yuxi.storage.postgres.models_knowledge import KnowledgeFile
+from yuxi.utils.datetime_utils import utc_now_naive
 
 
 class KnowledgeFileRepository:
+    _writable_fields = {
+        "kb_id",
+        "parent_id",
+        "filename",
+        "original_filename",
+        "file_type",
+        "path",
+        "minio_url",
+        "markdown_file",
+        "status",
+        "content_hash",
+        "file_size",
+        "chunk_count",
+        "token_count",
+        "content_type",
+        "processing_params",
+        "is_folder",
+        "error_message",
+        "created_by",
+        "updated_by",
+    }
+
+    @classmethod
+    def _sanitize_data(cls, data: dict[str, Any]) -> dict[str, Any]:
+        sanitized = {key: value for key, value in data.items() if key in cls._writable_fields}
+        if sanitized:
+            sanitized["updated_at"] = utc_now_naive()
+        return sanitized
+
     async def get_all(self) -> list[KnowledgeFile]:
         """获取所有文件记录"""
         async with pg_manager.get_async_session_context() as session:
@@ -21,10 +51,133 @@ class KnowledgeFileRepository:
             result = await session.execute(select(KnowledgeFile).where(KnowledgeFile.file_id == file_id))
             return result.scalar_one_or_none()
 
+    async def list_by_file_ids(self, file_ids: list[str]) -> list[KnowledgeFile]:
+        normalized_ids = [file_id for file_id in file_ids if file_id]
+        if not normalized_ids:
+            return []
+
+        async with pg_manager.get_async_session_context() as session:
+            result = await session.execute(select(KnowledgeFile).where(KnowledgeFile.file_id.in_(normalized_ids)))
+            records_by_id = {record.file_id: record for record in result.scalars().all()}
+            return [records_by_id[file_id] for file_id in normalized_ids if file_id in records_by_id]
+
     async def list_by_kb_id(self, kb_id: str) -> list[KnowledgeFile]:
         async with pg_manager.get_async_session_context() as session:
             result = await session.execute(select(KnowledgeFile).where(KnowledgeFile.kb_id == kb_id))
             return list(result.scalars().all())
+
+    async def list_by_kb_id_after(
+        self,
+        kb_id: str,
+        *,
+        after_file_id: str | None = None,
+        limit: int = 500,
+        files_only: bool = False,
+    ) -> list[KnowledgeFile]:
+        filters = [KnowledgeFile.kb_id == kb_id]
+        if after_file_id:
+            filters.append(KnowledgeFile.file_id > after_file_id)
+        if files_only:
+            filters.append(KnowledgeFile.is_folder.is_(False))
+
+        async with pg_manager.get_async_session_context() as session:
+            result = await session.execute(
+                select(KnowledgeFile)
+                .where(*filters)
+                .order_by(KnowledgeFile.file_id.asc())
+                .limit(min(max(int(limit or 100), 1), 1000))
+            )
+            return list(result.scalars().all())
+
+    async def get_filenames_by_file_ids(self, *, kb_id: str, file_ids: list[str]) -> dict[str, str]:
+        normalized_ids = [file_id for file_id in file_ids if file_id]
+        if not normalized_ids:
+            return {}
+
+        async with pg_manager.get_async_session_context() as session:
+            result = await session.execute(
+                select(KnowledgeFile.file_id, KnowledgeFile.filename).where(
+                    KnowledgeFile.kb_id == kb_id,
+                    KnowledgeFile.file_id.in_(normalized_ids),
+                )
+            )
+            return {str(file_id): str(filename or "") for file_id, filename in result.all()}
+
+    async def list_children(self, *, kb_id: str, parent_id: str | None) -> list[KnowledgeFile]:
+        async with pg_manager.get_async_session_context() as session:
+            result = await session.execute(
+                select(KnowledgeFile)
+                .where(KnowledgeFile.kb_id == kb_id, self._parent_condition(parent_id))
+                .order_by(KnowledgeFile.is_folder.desc(), func.lower(KnowledgeFile.filename).asc())
+            )
+            return list(result.scalars().all())
+
+    async def list_same_name_files(self, *, kb_id: str, filename: str) -> list[KnowledgeFile]:
+        normalized_filename = filename.strip()
+        if not normalized_filename:
+            return []
+
+        async with pg_manager.get_async_session_context() as session:
+            result = await session.execute(
+                select(KnowledgeFile)
+                .where(
+                    KnowledgeFile.kb_id == kb_id,
+                    KnowledgeFile.is_folder.is_(False),
+                    func.lower(KnowledgeFile.filename) == normalized_filename.lower(),
+                    or_(KnowledgeFile.status.is_(None), KnowledgeFile.status != "failed"),
+                )
+                .order_by(KnowledgeFile.created_at.desc())
+            )
+            return list(result.scalars().all())
+
+    async def list_file_ids_by_filename_contains(
+        self,
+        *,
+        kb_id: str,
+        filename_pattern: str,
+        limit: int = 10_000,
+    ) -> list[str]:
+        normalized_pattern = filename_pattern.replace("%", "").strip().lower()
+        if not normalized_pattern:
+            return []
+
+        escaped_pattern = normalized_pattern.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+        async with pg_manager.get_async_session_context() as session:
+            result = await session.execute(
+                select(KnowledgeFile.file_id)
+                .where(
+                    KnowledgeFile.kb_id == kb_id,
+                    KnowledgeFile.is_folder.is_(False),
+                    func.lower(KnowledgeFile.filename).like(f"%{escaped_pattern}%", escape="\\"),
+                )
+                .order_by(KnowledgeFile.file_id.asc())
+                .limit(min(max(int(limit or 100), 1), 10_000))
+            )
+            return [str(file_id) for file_id in result.scalars().all()]
+
+    async def exists_by_content_hash(self, *, kb_id: str, content_hash: str) -> bool:
+        normalized_hash = content_hash.strip()
+        if not normalized_hash:
+            return False
+
+        async with pg_manager.get_async_session_context() as session:
+            result = await session.execute(
+                select(KnowledgeFile.file_id)
+                .where(
+                    KnowledgeFile.kb_id == kb_id,
+                    KnowledgeFile.is_folder.is_(False),
+                    KnowledgeFile.content_hash == normalized_hash,
+                    or_(KnowledgeFile.status.is_(None), KnowledgeFile.status != "failed"),
+                )
+                .limit(1)
+            )
+            return result.scalar_one_or_none() is not None
+
+    async def count_all(self) -> int:
+        async with pg_manager.get_async_session_context() as session:
+            result = await session.execute(select(func.count()).select_from(KnowledgeFile))
+            return int(result.scalar() or 0)
 
     async def list_file_ids_by_exact_statuses(
         self,
@@ -332,16 +485,66 @@ class KnowledgeFileRepository:
         }
 
     async def upsert(self, file_id: str, data: dict[str, Any]) -> KnowledgeFile:
+        sanitized_data = self._sanitize_data(data)
         async with pg_manager.get_async_session_context() as session:
             result = await session.execute(select(KnowledgeFile).where(KnowledgeFile.file_id == file_id))
             existing = result.scalar_one_or_none()
             if existing is None:
-                record = KnowledgeFile(file_id=file_id, **data)
+                record = KnowledgeFile(file_id=file_id, **sanitized_data)
                 session.add(record)
                 return record
-            for key, value in data.items():
+            for key, value in sanitized_data.items():
                 setattr(existing, key, value)
             return existing
+
+    async def update_fields(
+        self,
+        *,
+        file_id: str,
+        data: dict[str, Any],
+        kb_id: str | None = None,
+    ) -> KnowledgeFile | None:
+        sanitized_data = self._sanitize_data(data)
+        if not sanitized_data:
+            return await self.get_by_file_id(file_id)
+
+        filters = [KnowledgeFile.file_id == file_id]
+        if kb_id:
+            filters.append(KnowledgeFile.kb_id == kb_id)
+
+        async with pg_manager.get_async_session_context() as session:
+            result = await session.execute(select(KnowledgeFile).where(*filters))
+            record = result.scalar_one_or_none()
+            if record is None:
+                return None
+            for key, value in sanitized_data.items():
+                setattr(record, key, value)
+            return record
+
+    async def update_fields_if_status(
+        self,
+        *,
+        kb_id: str,
+        file_id: str,
+        allowed_statuses: set[str],
+        data: dict[str, Any],
+    ) -> KnowledgeFile | None:
+        sanitized_data = self._sanitize_data(data)
+        if not sanitized_data:
+            return await self.get_by_file_id(file_id)
+
+        async with pg_manager.get_async_session_context() as session:
+            result = await session.execute(
+                update(KnowledgeFile)
+                .where(
+                    KnowledgeFile.kb_id == kb_id,
+                    KnowledgeFile.file_id == file_id,
+                    KnowledgeFile.status.in_(sorted(allowed_statuses)),
+                )
+                .values(**sanitized_data)
+                .returning(KnowledgeFile)
+            )
+            return result.scalar_one_or_none()
 
     async def delete(self, file_id: str) -> None:
         async with pg_manager.get_async_session_context() as session:
