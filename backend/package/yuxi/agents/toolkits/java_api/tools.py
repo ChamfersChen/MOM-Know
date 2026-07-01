@@ -22,12 +22,6 @@ HTTP_METHODS = ["GET", "POST", "PUT", "DELETE"]
 REMOVE_KEYS = ["files", "updateTime", "createTime", "updateBy", "createBy", "remark", "tenantId", 
                "organizationId", "parentId", "weight"]  # 需要从结果中移除的字段，避免返回过多无用信息
 
-# 端点注册表文件路径
-MOM_SYSTEM_ENDPOINTS_PATH = os.path.join(os.path.dirname(__file__), "endpoints/mom_system_endpoints.json")
-MES_ORDER_ENDPOINTS_PATH = os.path.join(os.path.dirname(__file__), "endpoints/mes_order_endpoints.json")
-MES_WMS_ENDPOINTS_PATH = os.path.join(os.path.dirname(__file__), "endpoints/mes_wms_endpoints.json")
-
-
 def fuzzy_match_keywords(rewritten_query: str, content: List[dict], top_k: int = 5) -> List[dict]:
     """
     将 rewritten_query 中的查询与 content 中的value字段进行模糊匹配，取 top_k 并去重后返回。
@@ -65,6 +59,34 @@ def _load_endpoint_registry(endpoint_path: str) -> list[dict]:
         logger.error(f"加载端点注册表失败: {e}")
         return []
 
+async def list_endpoints(rewritten_query: str, endpoint_json_filepath: str) -> str:
+    registry = _load_endpoint_registry(endpoint_json_filepath)
+    if not registry:
+        return json.dumps(
+            {"success": False, "error": "端点注册表为空或未配置"},
+            ensure_ascii=False,
+        )
+
+    if rewritten_query:
+        # 使用fuzzywuzzy算法进行模糊匹配，提升搜索体验
+        filtered = fuzzy_match_keywords(rewritten_query, registry, top_k=10)
+    else:
+        filtered = registry
+
+    if not filtered:
+        return json.dumps(
+            {
+                "success": False,
+                "error": f"未找到与 {rewritten_query} 相关的端点",
+            },
+            ensure_ascii=False,
+            )
+
+    return json.dumps(
+        {"success": True, "endpoints": filtered, "count": len(registry)},
+        ensure_ascii=False,
+        default=str,
+    )
 
 class MomApiInput(BaseModel):
     """MOM 系统 API 调用参数"""
@@ -249,7 +271,12 @@ async def call_api(
 
         logger.info(f"MOM API 成功: {method} {url}, status={response.status_code}")
 
-        result_str = json.dumps({"success": True, "data": result}, ensure_ascii=False, default=str)
+        if method != "GET":
+            #! 注意，此处 "refresh": True 表示调用了非 GET 方法，前端需要进行刷新才能获得最新结果
+            #! 前端只解析了内容中是否有 "refresh" 字段来判断是否需要刷新，而不关心其值
+            result_str = json.dumps({"success": True, "data": result, "refresh": True}, ensure_ascii=False, default=str)
+        else:
+            result_str = json.dumps({"success": True, "data": result}, ensure_ascii=False, default=str)
         # 对结果进行长度限制，避免返回过长内容导致模型处理困难
         # max_length = 10000
         # if len(result_str) > max_length:
@@ -273,127 +300,3 @@ async def call_api(
             {"success": False, "error": f"MOM API 调用异常: {str(e)}\n\n{error_message}"},
             ensure_ascii=False,
         )
-
-
-# class ListMomEndpointsInput(BaseModel):
-#     """查询系统端点列表的参数"""
-
-#     rewritten_query: str = Field(
-#         default="",
-#         description="对原始用户问题进行的语义等价改写结果。用于提升模型对多样化表达的鲁棒性，或作为数据增强、问答一致性评估的输入。",
-#     )
-
-
-# @tool(
-#     category="mom_api",
-#     tags=["MOM系统", "API"],
-#     display_name="查询MOM系统端点列表",
-#     args_schema=ListMomEndpointsInput,
-# )
-# async def list_mom_endpoints(rewritten_query: str = "") -> str:
-#     """查询 MOM 系统 API 的可用端点列表及参数格式。
-#     可以按分类筛选，也可以获取全部端点。
-
-#     注意：如果先前对话中没有调用 list_mom_endpoints 工具，请先调用 list_mom_endpoints 工具查看完整端点列表。
-
-#     返回内容包括：端点路径、HTTP 方法、参数格式说明、简要描述。
-#     """
-#     registry = _load_endpoint_registry(MOM_SYSTEM_ENDPOINTS_PATH)
-#     if not registry:
-#         return json.dumps(
-#             {"success": False, "error": "端点注册表为空或未配置"},
-#             ensure_ascii=False,
-#         )
-
-#     if rewritten_query:
-#         # 使用fuzzywuzzy算法进行模糊匹配，提升搜索体验
-#         filtered = fuzzy_match_keywords(rewritten_query, registry, top_k=10)
-#     else:
-#         filtered = registry
-
-#     if not filtered:
-#         return json.dumps(
-#             {
-#                 "success": False,
-#                 "error": f"未找到与 {rewritten_query} 相关的端点",
-#             },
-#             ensure_ascii=False,
-#             )
-
-#     return json.dumps(
-#         {"success": True, "endpoints": filtered, "count": len(registry)},
-#         ensure_ascii=False,
-#         default=str,
-#     )
-
-
-# @tool(
-#     category="mes_api",
-#     tags=["MES系统", "API"],
-#     display_name="查询MES系统中订单中心端点列表",
-#     args_schema=ListMomEndpointsInput,
-# )
-# async def list_mes_order_endpoints(rewritten_query: str = "") -> str:
-#     """查询 MES 系统中订单中心 API 的可用端点列表及参数格式。
-#     可以按分类筛选，也可以获取全部端点。
-
-#     注意：如果先前对话中没有调用 list_mes_order_endpoints 工具，请先调用 list_mes_order_endpoints 工具查看完整端点列表。
-
-#     返回内容包括：端点路径、HTTP 方法、参数格式说明、简要描述。
-#     """
-#     registry = _load_endpoint_registry(MES_ORDER_ENDPOINTS_PATH)
-#     if not registry:
-#         return json.dumps(
-#             {"success": False, "error": "端点注册表为空或未配置"},
-#             ensure_ascii=False,
-#         )
-
-#     if rewritten_query:
-#         # 使用fuzzywuzzy算法进行模糊匹配，提升搜索体验
-#         filtered = fuzzy_match_keywords(rewritten_query, registry, top_k=10)
-#     else:
-#         filtered = registry
-
-#     if not filtered:
-#         return json.dumps(
-#             {
-#                 "success": False,
-#                 "error": f"未找到与 {rewritten_query} 相关的端点",
-#             },
-#             ensure_ascii=False,
-#             )
-
-#     return json.dumps(
-#         {"success": True, "endpoints": filtered, "count": len(registry)},
-#         ensure_ascii=False,
-#         default=str,
-#     )
-
-async def list_endpoints(rewritten_query: str, endpoint_json_filepath: str) -> str:
-    registry = _load_endpoint_registry(endpoint_json_filepath)
-    if not registry:
-        return json.dumps(
-            {"success": False, "error": "端点注册表为空或未配置"},
-            ensure_ascii=False,
-        )
-
-    if rewritten_query:
-        # 使用fuzzywuzzy算法进行模糊匹配，提升搜索体验
-        filtered = fuzzy_match_keywords(rewritten_query, registry, top_k=10)
-    else:
-        filtered = registry
-
-    if not filtered:
-        return json.dumps(
-            {
-                "success": False,
-                "error": f"未找到与 {rewritten_query} 相关的端点",
-            },
-            ensure_ascii=False,
-            )
-
-    return json.dumps(
-        {"success": True, "endpoints": filtered, "count": len(registry)},
-        ensure_ascii=False,
-        default=str,
-    )
