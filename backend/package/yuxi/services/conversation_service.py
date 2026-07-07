@@ -12,13 +12,13 @@ from yuxi.agents.backends.sandbox import (
 )
 from yuxi.agents.buildin import agent_manager
 from yuxi.config import config as app_config
-from yuxi.knowledge.parser import Parser
+from yuxi.knowledge.parser import DocumentProcessorFactory, Parser
 from yuxi.repositories.agent_repository import AgentRepository
-from yuxi.repositories.conversation_repository import ConversationRepository
+from yuxi.repositories.conversation_repository import INVOCATION_CONVERSATION_SOURCES, ConversationRepository
 from yuxi.services.mention_search_service import invalidate_mention_cache
 from yuxi.storage.minio import StorageError, get_minio_client
 from yuxi.storage.postgres.models_business import User
-from yuxi.utils.datetime_utils import utc_isoformat
+from yuxi.utils.datetime_utils import format_utc_datetime, utc_isoformat
 from yuxi.utils.logging_config import logger
 from yuxi.utils.paths import VIRTUAL_PATH_UPLOADS
 from yuxi.utils.upload_utils import read_upload_with_limit, write_upload_to_path
@@ -29,13 +29,7 @@ MAX_ATTACHMENT_MARKDOWN_CHARS = 32_000  # TODO: 转 MARKDOWN的时候，不应�
 TMP_ATTACHMENT_PREFIX = "tmp/chat_attachments"
 TMP_ATTACHMENT_PARSE_EXTENSIONS = (".pdf", ".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif")
 TMP_ATTACHMENT_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif")
-TMP_ATTACHMENT_OCR_METHODS = (
-    "rapid_ocr",
-    "mineru_ocr",
-    "mineru_official",
-    "pp_structure_v3_ocr",
-    "deepseek_ocr",
-)
+TMP_ATTACHMENT_OCR_METHODS = tuple(DocumentProcessorFactory.get_available_processors())
 TMP_ATTACHMENT_PARSE_METHODS = ("disable", *TMP_ATTACHMENT_OCR_METHODS)
 
 
@@ -406,7 +400,7 @@ def _materialize_tmp_attachment_files(
 
 async def create_thread_view(
     *,
-    agent_id: str,
+    agent_slug: str,
     title: str | None,
     metadata: dict | None,
     db: AsyncSession,
@@ -418,7 +412,7 @@ async def create_thread_view(
         raise HTTPException(status_code=404, detail="用户不存在")
 
     agent_repo = AgentRepository(db)
-    agent_item = await agent_repo.get_visible_by_slug(slug=agent_id, user=current_user)
+    agent_item = await agent_repo.get_visible_by_slug(slug=agent_slug, user=current_user)
     if not agent_item:
         raise HTTPException(status_code=404, detail="智能体不存在")
 
@@ -447,7 +441,7 @@ async def create_thread_view(
 
 async def list_threads_view(
     *,
-    agent_id: str | None,
+    agent_slug: str | None,
     db: AsyncSession,
     current_uid: str,
     limit: int | None = None,
@@ -456,10 +450,11 @@ async def list_threads_view(
     conv_repo = ConversationRepository(db)
     conversations = await conv_repo.list_conversations(
         uid=str(current_uid),
-        agent_id=agent_id,
+        agent_id=agent_slug,
         status="active",
         limit=limit,
         offset=offset,
+        exclude_sources=INVOCATION_CONVERSATION_SOURCES,
     )
 
     return [
@@ -475,6 +470,61 @@ async def list_threads_view(
         }
         for conv in conversations
     ]
+
+
+async def search_threads_view(
+    *,
+    query: str,
+    agent_id: str | None,
+    db: AsyncSession,
+    current_uid: str,
+    limit: int = 20,
+    offset: int = 0,
+) -> dict:
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return {"items": [], "has_more": False, "limit": limit, "offset": offset}
+
+    conv_repo = ConversationRepository(db)
+    search_items, has_more = await conv_repo.search_conversations_by_message_content(
+        uid=str(current_uid),
+        agent_id=agent_id,
+        query=normalized_query,
+        limit=limit,
+        offset=offset,
+        exclude_sources=INVOCATION_CONVERSATION_SOURCES,
+    )
+
+    items = []
+    for item in search_items:
+        conv = item["conversation"]
+        snippets = [
+            {
+                "message_id": snippet.get("message_id"),
+                "content": snippet.get("content") or "",
+                "created_at": format_utc_datetime(snippet.get("created_at")),
+            }
+            for snippet in item.get("snippets", [])
+        ]
+        items.append(
+            {
+                "id": conv.thread_id,
+                "thread_id": conv.thread_id,
+                "uid": conv.uid,
+                "agent_id": conv.agent_id,
+                "title": conv.title,
+                "is_pinned": bool(conv.is_pinned),
+                "created_at": format_utc_datetime(conv.created_at),
+                "updated_at": format_utc_datetime(conv.updated_at),
+                "metadata": conv.extra_metadata or {},
+                "matched_count": item.get("matched_count", 0),
+                "message_id": item.get("message_id"),
+                "latest_match_at": format_utc_datetime(item.get("latest_match_at")),
+                "snippets": snippets,
+            }
+        )
+
+    return {"items": items, "has_more": has_more, "limit": limit, "offset": offset}
 
 
 async def delete_thread_view(
@@ -898,6 +948,9 @@ async def get_thread_history_view(
             "type": role_type_map.get(msg.role, msg.role),
             "content": msg.content,
             "created_at": msg.created_at.isoformat() if msg.created_at else None,
+            "run_id": msg.run_id,
+            "request_id": msg.request_id,
+            "delivery_status": msg.delivery_status,
             "error_type": extra_metadata.get("error_type"),
             "error_message": extra_metadata.get("error_message"),
             "extra_metadata": extra_metadata,

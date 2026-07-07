@@ -209,7 +209,7 @@ const getReferenceLabel = (reference, index) => {
     overflow: hidden;
 
     .graph-summary {
-      padding: 10px 12px;
+      padding: 6px 10px;
       background: var(--gray-25);
       font-size: 12px;
       color: var(--gray-700);
@@ -217,7 +217,7 @@ const getReferenceLabel = (reference, index) => {
     }
 
     .graph-section {
-      padding: 10px 12px;
+      padding: 6px 10px;
       border-bottom: 1px solid var(--gray-100);
 
       &:last-child {
@@ -228,7 +228,7 @@ const getReferenceLabel = (reference, index) => {
         font-size: 12px;
         font-weight: 600;
         color: var(--gray-700);
-        margin-bottom: 8px;
+        margin-bottom: 6px;
       }
     }
 
@@ -240,7 +240,7 @@ const getReferenceLabel = (reference, index) => {
       .entity-item {
         border: 1px solid var(--gray-150);
         border-radius: 6px;
-        padding: 8px;
+        padding: 6px 8px;
 
         .entity-header {
           display: flex;
@@ -323,7 +323,7 @@ const getReferenceLabel = (reference, index) => {
   .no-results {
     border: 1px solid var(--gray-150);
     border-radius: 8px;
-    padding: 10px 12px;
+    padding: 8px 10px;
     font-size: 12px;
     color: var(--gray-600);
   }

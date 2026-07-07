@@ -7,7 +7,20 @@ from langchain_core.messages import SystemMessage, ToolMessage
 from langgraph.types import Command
 
 import yuxi.agents.middlewares.skills as skills_middleware
-from yuxi.agents.middlewares.skills import SkillsMiddleware, resolve_runtime_skills_for_context
+from yuxi.agents.middlewares.skills import (
+    SkillsMiddleware,
+    resolve_runtime_skills_for_context,
+    resolve_skill_gated_tools,
+)
+from yuxi.agents.toolkits.service import resolve_configured_runtime_tools
+
+_KB_TOOL_NAMES = {
+    "list_kbs",
+    "query_kb",
+    "find_kb_document",
+    "open_kb_document",
+    "get_mindmap",
+}
 
 
 def _system_message_text(message: SystemMessage) -> str:
@@ -140,6 +153,140 @@ async def test_awrap_model_call_mounts_dependencies_only_for_readable_activated_
 
     assert result == "ok"
     assert captured["tools"] == ["tool-a"]
+
+
+@pytest.mark.asyncio
+async def test_awrap_model_call_mounts_knowledge_base_skill_tools():
+    class FakeRequest:
+        def __init__(self, tools=None):
+            self.runtime = SimpleNamespace(
+                context=SimpleNamespace(
+                    _readable_skills=["knowledge-base"],
+                    _runtime_skill_dependency_map={
+                        "knowledge-base": {
+                            "tools": [
+                                "list_kbs",
+                                "query_kb",
+                                "find_kb_document",
+                                "open_kb_document",
+                                "get_mindmap",
+                            ],
+                            "mcps": [],
+                            "skills": [],
+                        }
+                    },
+                    mcps=[],
+                )
+            )
+            self.state = {"activated_skills": ["knowledge-base"]}
+            self.tools = tools or []
+
+        def override(self, *, tools):
+            new_request = FakeRequest(tools=tools)
+            new_request.runtime = self.runtime
+            new_request.state = self.state
+            return new_request
+
+    captured = {}
+
+    async def handler(request):
+        captured["tools"] = {tool.name for tool in request.tools}
+        return "ok"
+
+    result = await SkillsMiddleware().awrap_model_call(FakeRequest(), handler)
+
+    assert result == "ok"
+    assert captured["tools"] == {
+        "list_kbs",
+        "query_kb",
+        "find_kb_document",
+        "open_kb_document",
+        "get_mindmap",
+    }
+
+
+def test_resolve_skill_gated_tools_collects_readable_dependency_tools():
+    """门控工具必须能从可见 Skill 的依赖解析出真实工具实例，供构建期注册进 ToolNode。"""
+    context = SimpleNamespace(
+        _readable_skills=["knowledge-base"],
+        _runtime_skill_dependency_map={"knowledge-base": {"tools": sorted(_KB_TOOL_NAMES), "mcps": [], "skills": []}},
+    )
+
+    tools = resolve_skill_gated_tools(context)
+
+    assert {tool.name for tool in tools} == _KB_TOOL_NAMES
+
+
+@pytest.mark.asyncio
+async def test_resolve_configured_runtime_tools_registers_skill_gated_tools():
+    """门控工具必须随基础工具一起进入 create_agent 工具列表（即注册进 ToolNode），否则激活后仍报 not a valid tool。"""
+    context = SimpleNamespace(
+        tools=None,
+        mcps=None,
+        _readable_skills=["knowledge-base"],
+        _runtime_skill_dependency_map={"knowledge-base": {"tools": sorted(_KB_TOOL_NAMES), "mcps": [], "skills": []}},
+    )
+
+    tools = await resolve_configured_runtime_tools(context)
+
+    assert _KB_TOOL_NAMES <= {tool.name for tool in tools}
+
+
+def _make_gated_request(activated):
+    base = SimpleNamespace(name="read_file")
+    gated = [SimpleNamespace(name="list_kbs"), SimpleNamespace(name="query_kb")]
+
+    class FakeRequest:
+        def __init__(self, tools):
+            self.runtime = SimpleNamespace(
+                context=SimpleNamespace(
+                    _readable_skills=["knowledge-base"],
+                    _runtime_skill_dependency_map={
+                        "knowledge-base": {"tools": ["list_kbs", "query_kb"], "mcps": [], "skills": []}
+                    },
+                    mcps=[],
+                )
+            )
+            self.state = {"activated_skills": activated}
+            self.tools = tools
+
+        def override(self, *, tools):
+            new_request = FakeRequest(tools)
+            new_request.runtime = self.runtime
+            new_request.state = self.state
+            return new_request
+
+    # ToolNode 默认绑定 = 基础工具 + 门控工具
+    return FakeRequest([base, *gated])
+
+
+@pytest.mark.asyncio
+async def test_awrap_model_call_hides_gated_tools_until_activated():
+    """未激活 Skill 时门控工具对模型不可见（懒加载），激活后才放出。"""
+    request = _make_gated_request(activated=[])
+    captured = {}
+
+    async def handler(req):
+        captured["tools"] = {tool.name for tool in req.tools}
+        return "ok"
+
+    await SkillsMiddleware().awrap_model_call(request, handler)
+
+    assert captured["tools"] == {"read_file"}
+
+
+@pytest.mark.asyncio
+async def test_awrap_model_call_keeps_gated_tools_when_activated():
+    request = _make_gated_request(activated=["knowledge-base"])
+    captured = {}
+
+    async def handler(req):
+        captured["tools"] = {tool.name for tool in req.tools}
+        return "ok"
+
+    await SkillsMiddleware().awrap_model_call(request, handler)
+
+    assert captured["tools"] == {"read_file", "list_kbs", "query_kb"}
 
 
 def test_read_file_activates_only_readable_skill() -> None:

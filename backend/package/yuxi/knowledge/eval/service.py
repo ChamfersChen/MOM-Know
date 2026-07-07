@@ -349,8 +349,7 @@ class EvaluationService:
 
     async def _generate_dataset_task(self, context: TaskContext):
         await context.set_progress(0, "初始化")
-        task = context._tasker._tasks.get(context.task_id)
-        payload = task.payload if task else {}
+        payload = context.payload
 
         dataset_id = payload.get("dataset_id")
         kb_id = payload.get("kb_id")
@@ -509,10 +508,7 @@ class EvaluationService:
 
     async def _run_evaluation_task(self, context: TaskContext):
         try:
-            task = context._tasker._tasks.get(context.task_id)
-            if not task:
-                raise ValueError("Task not found")
-            payload = task.payload
+            payload = context.payload
 
             run_id = payload["run_id"]
             kb_id = payload["kb_id"]

@@ -4,7 +4,7 @@
 
 import uuid as uuid_lib
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
@@ -14,6 +14,12 @@ from yuxi.utils import logger
 from yuxi.utils.datetime_utils import utc_now_naive
 
 MAX_CONVERSATION_TITLE_LENGTH = 255
+MESSAGE_SEARCH_SNIPPET_RADIUS = 72
+MESSAGE_SEARCH_SNIPPET_MAX_LENGTH = 180
+MESSAGE_SEARCH_SNIPPETS_PER_THREAD = 2
+MESSAGE_SEARCH_ROLES = ("user", "assistant")
+MESSAGE_SEARCH_EXCLUDED_TYPES = ("tool_call", "tool_result")
+INVOCATION_CONVERSATION_SOURCES = ("agent_call", "agent_evaluation")
 
 
 class ConversationRepository:
@@ -33,14 +39,57 @@ class ConversationRepository:
             return normalized[:MAX_CONVERSATION_TITLE_LENGTH]
         return normalized
 
-    async def create_conversation(
+    def _escape_like_query(self, query: str) -> str:
+        return query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+    def _message_search_conditions(self, query: str):
+        pattern = f"%{self._escape_like_query(query)}%"
+        return [
+            Message.role.in_(MESSAGE_SEARCH_ROLES),
+            or_(Message.message_type.is_(None), Message.message_type.notin_(MESSAGE_SEARCH_EXCLUDED_TYPES)),
+            Message.content.ilike(pattern, escape="\\"),
+        ]
+
+    def _exclude_source_conditions(self, sources: tuple[str, ...]):
+        if not sources:
+            return []
+        source = Conversation.extra_metadata["source"].as_string()
+        return [
+            or_(
+                Conversation.extra_metadata.is_(None),
+                source.is_(None),
+                source.notin_(sources),
+            )
+        ]
+
+    def _build_message_search_snippet(self, content: str, query: str) -> str:
+        normalized = " ".join(str(content or "").split())
+        if not normalized:
+            return ""
+
+        match_index = normalized.lower().find(query.lower())
+        if match_index < 0:
+            return normalized[:MESSAGE_SEARCH_SNIPPET_MAX_LENGTH]
+
+        start = max(0, match_index - MESSAGE_SEARCH_SNIPPET_RADIUS)
+        end = min(len(normalized), match_index + len(query) + MESSAGE_SEARCH_SNIPPET_RADIUS)
+        snippet = normalized[start:end].strip()
+        if start > 0:
+            snippet = f"...{snippet}"
+        if end < len(normalized):
+            snippet = f"{snippet}..."
+        return snippet[:MESSAGE_SEARCH_SNIPPET_MAX_LENGTH]
+
+    async def add_conversation(
         self,
+        *,
         uid: str,
         agent_id: str,
         title: str | None = None,
         thread_id: str | None = None,
         metadata: dict | None = None,
     ) -> Conversation:
+        """创建对话和统计记录但只 flush，供外层事务继续绑定关系。"""
         if not thread_id:
             thread_id = str(uuid_lib.uuid4())
 
@@ -63,17 +112,36 @@ class ConversationRepository:
 
         stats = ConversationStats(conversation_id=conversation.id)
         self.db.add(stats)
-        await self.db.commit()
-        await self.db.refresh(conversation)
+        await self.db.flush()
 
         logger.info(f"Created conversation: {conversation.thread_id} for user {uid}")
+        return conversation
+
+    async def create_conversation(
+        self,
+        uid: str,
+        agent_id: str,
+        title: str | None = None,
+        thread_id: str | None = None,
+        metadata: dict | None = None,
+    ) -> Conversation:
+        """创建并提交一个完整对话，适用于不需要外层事务编排的入口。"""
+        conversation = await self.add_conversation(
+            uid=uid,
+            agent_id=agent_id,
+            title=title,
+            thread_id=thread_id,
+            metadata=metadata,
+        )
+        await self.db.commit()
+        await self.db.refresh(conversation)
         return conversation
 
     async def get_conversation_by_thread_id(self, thread_id: str) -> Conversation | None:
         result = await self.db.execute(select(Conversation).where(Conversation.thread_id == thread_id))
         return result.scalar_one_or_none()
 
-    async def _get_conversation_by_id(self, conversation_id: int) -> Conversation | None:
+    async def get_conversation_by_id(self, conversation_id: int) -> Conversation | None:
         result = await self.db.execute(select(Conversation).where(Conversation.id == conversation_id))
         return result.scalar_one_or_none()
 
@@ -115,7 +183,7 @@ class ConversationRepository:
         )
 
         self.db.add(message)
-        conversation = await self._get_conversation_by_id(conversation_id)
+        conversation = await self.get_conversation_by_id(conversation_id)
         if conversation:
             conversation.updated_at = utc_now_naive()
 
@@ -226,6 +294,7 @@ class ConversationRepository:
         status: str = "active",
         limit: int | None = None,
         offset: int = 0,
+        exclude_sources: tuple[str, ...] = (),
     ) -> list[Conversation]:
         """List conversations with pinned conversations always included first.
 
@@ -238,6 +307,7 @@ class ConversationRepository:
             base_conditions.append(Conversation.uid == str(uid))
         if agent_id:
             base_conditions.append(Conversation.agent_id == agent_id)
+        base_conditions.extend(self._exclude_source_conditions(exclude_sources))
 
         # First, get all pinned conversations (no limit)
         pinned_query = (
@@ -276,6 +346,82 @@ class ConversationRepository:
             non_pinned_conversations = []
 
         return pinned_conversations + non_pinned_conversations
+
+    async def search_conversations_by_message_content(
+        self,
+        *,
+        uid: str,
+        query: str,
+        agent_id: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+        exclude_sources: tuple[str, ...] = (),
+    ) -> tuple[list[dict], bool]:
+        normalized_query = str(query or "").strip()
+        if not normalized_query:
+            return [], False
+
+        conversation_conditions = [
+            Conversation.uid == str(uid),
+            Conversation.status == "active",
+        ]
+        if agent_id:
+            conversation_conditions.append(Conversation.agent_id == agent_id)
+        conversation_conditions.extend(self._exclude_source_conditions(exclude_sources))
+
+        message_conditions = self._message_search_conditions(normalized_query)
+        summary = (
+            select(
+                Message.conversation_id.label("conversation_id"),
+                func.count(Message.id).label("matched_count"),
+                func.max(Message.created_at).label("latest_match_at"),
+            )
+            .join(Conversation, Conversation.id == Message.conversation_id)
+            .where(*conversation_conditions, *message_conditions)
+            .group_by(Message.conversation_id)
+            .subquery()
+        )
+
+        result = await self.db.execute(
+            select(Conversation, summary.c.matched_count, summary.c.latest_match_at)
+            .join(summary, Conversation.id == summary.c.conversation_id)
+            .order_by(summary.c.latest_match_at.desc(), Conversation.updated_at.desc(), Conversation.id.desc())
+            .limit(limit + 1)
+            .offset(offset)
+        )
+        rows = list(result.all())
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+
+        items: list[dict] = []
+        for conversation, matched_count, latest_match_at in rows:
+            snippet_result = await self.db.execute(
+                select(Message.id, Message.content, Message.created_at)
+                .where(Message.conversation_id == conversation.id, *message_conditions)
+                .order_by(Message.created_at.desc(), Message.id.desc())
+                .limit(MESSAGE_SEARCH_SNIPPETS_PER_THREAD)
+            )
+            snippet_rows = list(snippet_result.all())
+            snippets = [
+                {
+                    "message_id": message_id,
+                    "content": self._build_message_search_snippet(content, normalized_query),
+                    "created_at": created_at,
+                }
+                for message_id, content, created_at in snippet_rows
+            ]
+
+            items.append(
+                {
+                    "conversation": conversation,
+                    "matched_count": int(matched_count or 0),
+                    "latest_match_at": latest_match_at,
+                    "message_id": snippets[0]["message_id"] if snippets else None,
+                    "snippets": snippets,
+                }
+            )
+
+        return items, has_more
 
     async def update_conversation(
         self,
@@ -398,7 +544,7 @@ class ConversationRepository:
             await self.db.commit()
 
     async def get_attachments(self, conversation_id: int) -> list[dict]:
-        conversation = await self._get_conversation_by_id(conversation_id)
+        conversation = await self.get_conversation_by_id(conversation_id)
         if not conversation:
             return []
         metadata = self._ensure_metadata(conversation)
@@ -411,7 +557,7 @@ class ConversationRepository:
         return await self.get_attachments(conversation.id)
 
     async def add_attachment(self, conversation_id: int, attachment_info: dict) -> dict | None:
-        conversation = await self._get_conversation_by_id(conversation_id)
+        conversation = await self.get_conversation_by_id(conversation_id)
         if not conversation:
             return None
 
@@ -424,7 +570,7 @@ class ConversationRepository:
         return attachment_info
 
     async def add_attachments(self, conversation_id: int, attachment_infos: list[dict]) -> list[dict] | None:
-        conversation = await self._get_conversation_by_id(conversation_id)
+        conversation = await self.get_conversation_by_id(conversation_id)
         if not conversation:
             return None
 
@@ -440,7 +586,7 @@ class ConversationRepository:
     async def update_attachment_status(
         self, conversation_id: int, file_id: str, status: str, update_fields: dict | None = None
     ) -> dict | None:
-        conversation = await self._get_conversation_by_id(conversation_id)
+        conversation = await self.get_conversation_by_id(conversation_id)
         if not conversation:
             return None
 
@@ -463,7 +609,7 @@ class ConversationRepository:
     async def bind_attachments_to_request(
         self, conversation_id: int, request_id: str, file_ids: list[str]
     ) -> list[dict]:
-        conversation = await self._get_conversation_by_id(conversation_id)
+        conversation = await self.get_conversation_by_id(conversation_id)
         if not conversation or not request_id or not file_ids:
             return []
 
@@ -493,7 +639,7 @@ class ConversationRepository:
         return [item for item in attachments if item.get("request_id") == request_id]
 
     async def remove_attachment(self, conversation_id: int, file_id: str) -> bool:
-        conversation = await self._get_conversation_by_id(conversation_id)
+        conversation = await self.get_conversation_by_id(conversation_id)
         if not conversation:
             return False
 

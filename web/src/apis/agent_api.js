@@ -101,14 +101,13 @@ export const agentApi = {
   createAgentRun: (data) =>
     apiPost('/api/agent/runs', {
       query: data.query,
-      agent_id: data.agent_id,
+      agent_slug: data.agent_slug,
       thread_id: data.thread_id,
       meta: data.meta || {},
       image_content: data.image_content || null,
       model_spec: data.model_spec || null,
       resume: data.resume ?? null,
-      parent_run_id: data.parent_run_id || null,
-      resume_request_id: data.resume_request_id || null
+      created_by_run_id: data.created_by_run_id || null
     }),
 
   /**
@@ -204,6 +203,27 @@ export const threadApi = {
     }
     const url = `/api/chat/threads?${params.toString()}`
     return apiGet(url)
+  },
+
+  /**
+   * 搜索历史对话
+   * @param {string} query - 搜索关键词
+   * @param {Object} options - 搜索选项
+   * @param {string | null | undefined} options.agentId - 智能体ID，可选
+   * @param {number} options.limit - 返回数量限制
+   * @param {number} options.offset - 偏移量
+   * @returns {Promise} - 搜索结果
+   */
+  searchThreads: (query, { agentId = null, limit = 20, offset = 0 } = {}) => {
+    const params = new URLSearchParams({
+      q: query,
+      limit: String(limit),
+      offset: String(offset)
+    })
+    if (agentId) {
+      params.set('agent_id', agentId)
+    }
+    return apiGet(`/api/chat/threads/search?${params.toString()}`)
   },
 
   /**

@@ -15,11 +15,13 @@ import {
 } from 'lucide-vue-next'
 
 import { modelProviderApi } from '@/apis/system_api'
+import { useConfigStore } from '@/stores/config'
 import { modelIcons } from '@/utils/modelIcon'
 import PageShoulder from '@/components/shared/PageShoulder.vue'
 import InfoCard from '@/components/shared/InfoCard.vue'
 import ExtensionCardGrid from '@/components/extensions/ExtensionCardGrid.vue'
 
+const configStore = useConfigStore()
 const loading = ref(false)
 const remoteLoading = ref(false)
 const saving = ref(false)
@@ -28,6 +30,15 @@ const providers = ref([])
 const searchQuery = ref('')
 const modelTestLoadingBySpec = ref({})
 const modelTestResultBySpec = ref({})
+
+const PROVIDER_TYPE_OPTIONS = [
+  { value: 'openai', label: 'OpenAI Completions API' },
+  { value: 'anthropic', label: 'Anthropic Messages API' }
+]
+
+const providerTypeLabelMap = Object.fromEntries(
+  PROVIDER_TYPE_OPTIONS.map((option) => [option.value, option.label])
+)
 
 // Provider form state
 const showProviderModal = ref(false)
@@ -120,6 +131,9 @@ const getProviderIcon = (provider) => {
   return modelIcons[providerId] || modelIcons[providerType] || modelIcons.default
 }
 
+const getProviderTypeLabel = (providerType) =>
+  providerTypeLabelMap[providerType] || providerType || '-'
+
 const getIconUrl = (icon) => {
   if (!icon) return modelIcons.default
   if (typeof icon === 'string') return icon
@@ -161,6 +175,23 @@ const getModelId = (model) => {
 }
 
 const buildModelSpec = (providerId, modelId) => `${providerId}:${modelId}`
+
+const defaultModelSpec = computed(() => configStore.config?.default_model || '')
+
+const getDefaultModelProviderId = () => {
+  const spec = defaultModelSpec.value
+  const separatorIndex = spec.indexOf(':')
+  return separatorIndex > 0 ? spec.slice(0, separatorIndex) : ''
+}
+
+const providerContainsDefaultModel = (providerId) => getDefaultModelProviderId() === providerId
+
+const isDefaultModel = (providerId, modelId) =>
+  defaultModelSpec.value === buildModelSpec(providerId, modelId)
+
+const warnDefaultModelProtected = () => {
+  message.warning('当前默认模型正在使用该供应商或模型，请先切换默认模型')
+}
 
 const isModelTesting = (providerId, modelId) =>
   !!modelTestLoadingBySpec.value[buildModelSpec(providerId, modelId)]
@@ -258,6 +289,9 @@ const formatJsonText = (value) => JSON.stringify(value || {}, null, 2)
 const loadProviders = async () => {
   loading.value = true
   try {
+    if (!configStore.config?.default_model) {
+      await configStore.refreshConfig()
+    }
     const result = await modelProviderApi.getProviders()
     providers.value = result.data || []
   } catch (error) {
@@ -269,6 +303,7 @@ const loadProviders = async () => {
 
 function getProviderInfo(provider) {
   return [
+    { label: 'Provider Type', value: getProviderTypeLabel(provider.provider_type) },
     { label: 'Base URL', value: provider.base_url || '-' },
     { label: '能力', value: provider.capabilities?.join(', ') || 'chat' }
   ]
@@ -361,6 +396,15 @@ const createProvider = async () => {
 }
 
 const saveProvider = async () => {
+  if (
+    editingProviderId.value &&
+    providerContainsDefaultModel(providerForm.provider_id) &&
+    providerForm.is_enabled === false
+  ) {
+    warnDefaultModelProtected()
+    return
+  }
+
   saving.value = true
   try {
     await modelProviderApi.updateProvider(providerForm.provider_id, buildProviderPayload())
@@ -375,6 +419,11 @@ const saveProvider = async () => {
 }
 
 const deleteProvider = async (provider) => {
+  if (providerContainsDefaultModel(provider.provider_id)) {
+    warnDefaultModelProtected()
+    return
+  }
+
   Modal.confirm({
     title: `删除 ${provider.display_name}`,
     content: '删除后不会影响当前系统正在使用的旧模型配置。',
@@ -409,6 +458,11 @@ const deleteProviderFromEdit = async () => {
 }
 
 const toggleProviderEnabled = async (provider, checked) => {
+  if (!checked && providerContainsDefaultModel(provider.provider_id)) {
+    warnDefaultModelProtected()
+    return
+  }
+
   togglingProviderId.value = provider.provider_id
   try {
     await modelProviderApi.updateProvider(provider.provider_id, { is_enabled: checked })
@@ -602,6 +656,10 @@ const saveModelConfig = async () => {
 const removeModel = async (providerId, modelId) => {
   const provider = providers.value.find((p) => p.provider_id === providerId)
   if (!provider) return
+  if (isDefaultModel(providerId, modelId)) {
+    warnDefaultModelProtected()
+    return
+  }
 
   Modal.confirm({
     title: '移除模型',
@@ -745,10 +803,13 @@ defineExpose({
           <label class="form-label">
             <span>Provider Type</span>
             <a-select v-model:value="providerForm.provider_type">
-              <a-select-option value="openai">openai</a-select-option>
-              <!-- <a-select-option value="anthropic">anthropic</a-select-option>
-              <a-select-option value="gemini">gemini</a-select-option>
-              <a-select-option value="openrouter">openrouter</a-select-option> -->
+              <a-select-option
+                v-for="option in PROVIDER_TYPE_OPTIONS"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </a-select-option>
             </a-select>
           </label>
         </div>

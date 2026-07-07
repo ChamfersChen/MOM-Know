@@ -2,41 +2,40 @@
 
 路线图可能会经常变更，如果有强烈的建议，可以在 [issue](https://github.com/xerrors/Yuxi/issues) 中提。
 
+项目看板（Maintainer Only）：[GitHub Project](https://github.com/users/xerrors/projects/2)
+
 日志添加规范（For Agent）:
 
 
 ### 看板
 
 **知识库**
-- [ ] office 组件预览，docx/pptx 可以转PDF，然后前端预览 <Badge text="v0.7.1" />
+- [ ] 知识库工具接口化与 CLI 集成：将当前知识库的主要工具（如上传、检索、建索引等）封装为后端 API 接口，并集成到 Yuxi CLI 工具中
+- [ ] 知识库 Mindmap 扩展：新增基于文件名的文件“边”构建，支持聚类算法形成社区节点，并提供思维导图 (Mindmap) 可视化结构展示
 - [ ] 知识库工具新增 query_keywords 工具，专门用于基于关键词命中的排序 <Badge text="v0.7.1" />
-- [ ] 调研将当前知识库映射为虚拟文件系统的可行性，先明确文件树映射、权限边界、内容读取与 Agent 工具调用形态，再决定是否实现
 - [ ] 增强知识库检索体验：增强 metadata、标签等
-- [ ] 新增基于 PaddleOCR 的解析器：接入 PaddleOCR-VL-1.6、PP-OCRv6、PP-StructureV3，并抽象共用基类复用相似的脚本调用、产物收集和配置处理
-- [x] 优化思维导图构建的接口设计，支持增量构建和更新
 - [ ] 个人工作区增加可检索能力（但是不做向量化） <Badge text="v0.7.1" />
-- [ ] Yuxi CLI 支持 `yuxi kb upload <DIR_PATH|FILE_PATH>`，将本地文件上传、解析并添加到已有知识库 Badge text="v0.7.1" /> <Badge type="warning" text="开发中" />
+- [ ] 新增基于 PaddleOCR 的解析器：接入 PaddleOCR-VL-1.6、PP-OCRv6、PP-StructureV3，并抽象共用基类复用相似的脚本调用、产物收集和配置处理
 
 
 **智能体**
-- [ ] 子智能体缺少异步的机制 <Badge text="v0.7.1" />
+- [ ] 修复不同用户安装相同 Skill 时，因目前 Skill slug 全局唯一导致无法安装、会自动新增 versiontag 的问题，排查其对安装流程 and 版本管理的影响
+- [x] 子智能体缺少异步的机制 <Badge text="v0.7.1" />
 - [ ] 子智能体缺少 steer 机制 <Badge text="v0.7.1" />
 - [ ] 子智能体的双向通信，缺少 ask_for_main_agent 的机制
 - [ ] 子智能体与子智能体的通信机制
-- [ ] 如何停掉一个子智能体、查看智能体的进度
-- [ ] 优化 Agent `read_file` 工具：至少对齐 DeepAgents 的读取行为
-- [ ] RAG 评估支持 Agent 模式 <Badge text="v0.7.1" />
-- [ ] 添加 Agent 独立调用接口，方便后续评估使用
-- [ ] 任务队列 <Badge text="v0.7.2" />
-
-**并发与分布式**
-- [ ] 提高 FastAPI 的并发能力
+- [x] 优化 Agent `read_file` 工具：至少对齐 DeepAgents 的读取行为 <Badge text="v0.7.1" />
+- [ ] Skill 详情页增强绑定能力展示：内置 Skill 也应清晰展示只读的工具/MCP/Skill 依赖说明
+- [x] 添加 Agent 独立调用接口，方便后续评估使用
+- [ ] 任务队列：调研是否可以通过修改 state 实现，添加一个中间件（after agents 钩子），并支持通过 after model 触发的引导模式。 <Badge text="v0.7.2" />
+- [x] 反馈接入到 Langfuse
 
 **其他**
-- [ ] 历史对话新增分组（或者叫做项目）
+- [x] 历史对话新增搜索能力（[#790](https://github.com/xerrors/Yuxi/issues/790)）
+- [x] 消息中的代码块增加快速复制按钮（[#790](https://github.com/xerrors/Yuxi/issues/790)）
 - [ ] 集成 Memory，基于 deepagents 的文件后端实现，需要考虑定位
-- [ ] 优化 Task 模块定位：区分真正的后台任务实体与进度条管理工具，重新定义任务中心/Tasker 的职责边界
-- [ ] 模型供应商类型继续补齐非 OpenAI 兼容适配，并清理不再支持的 provider type 字样 <Badge text="v0.7.1" />
+- [x] 优化 Task 模块定位：区分真正的后台任务实体与进度条管理工具，重新定义任务中心/Tasker 的职责边界
+- [x] 模型供应商类型继续补齐非 OpenAI 兼容适配，并清理不再支持的 provider type 字样 <Badge text="v0.7.1" />
 - [ ] 优化 Agent 向用户追问交互：支持较长文本回答输入，并在流式输出时保持聊天区跟随最新内容（[#753](https://github.com/xerrors/Yuxi/issues/753)）
 
 **仅设想**

@@ -56,7 +56,7 @@ Qwen-Image 生成能力已迁移为内置 Skill `image-gen`。模型调用与图
 
 ### 知识库工具 (kbs)
 
-知识库工具通过 `get_common_kb_tools()` 获取，不通过 `@tool` 装饰器注册：
+知识库工具使用 `@tool(category="knowledge")` 注册，并通过内置 `knowledge-base` Skill 的 `tool_dependencies` 按需加载。`get_common_kb_tools()` 仍可用于直接获取完整工具列表：
 
 ```python
 from yuxi.agents.toolkits.kbs import get_common_kb_tools
@@ -79,8 +79,7 @@ kb_tools = get_common_kb_tools()
 
 1. **基础工具**：从 `context.tools` 中按名称筛选
 2. **MCP 工具**：根据 `context.mcps` 加载 MCP 服务器工具
-3. **知识库工具**：由 `KnowledgeBaseMiddleware` 独立处理
-4. **Skill 依赖工具**：由 `SkillsMiddleware` 在 Skill 激活后按需追加
+3. **Skill 依赖工具**：由 `SkillsMiddleware` 在 Skill 激活后按需追加，包括 `knowledge-base` 绑定的知识库工具
 
 ```python
 from yuxi.agents.context import prepare_agent_runtime_context

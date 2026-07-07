@@ -10,16 +10,19 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 from yuxi import config, knowledge_base
+from yuxi.knowledge.chunking.ragflow_like.presets import get_chunk_preset_options
 from yuxi.knowledge.factory import KnowledgeBaseFactory
 from yuxi.knowledge.graphs.milvus_graph_service import GRAPH_TASK_TYPE, MilvusGraphService
 from yuxi.knowledge.parser import SUPPORTED_FILE_EXTENSIONS, Parser, is_supported_file_extension
 from yuxi.knowledge.utils import calculate_content_hash, is_minio_url, parse_minio_url
 from yuxi.knowledge.utils.mindmap_utils import (
+    batch_remove_files_from_mindmap,
     generate_database_mindmap,
     get_database_mindmap_data,
     get_mindmap_database_files,
     get_mindmap_databases_overview,
     get_mindmap_diff,
+    remove_file_from_mindmap,
 )
 from yuxi.knowledge.utils.sample_question_utils import (
     generate_database_sample_questions,
@@ -797,7 +800,7 @@ async def add_documents(
             }
             for index, item in enumerate(processed_items)
         ]
-        failed_count = len([item for item in final_items if "error" in item or item.get("status") == "failed"])
+        failed_count = len([item for item in final_items if _is_failed_item(item)])
 
         summary = {
             "kb_id": kb_id,
@@ -926,6 +929,14 @@ def _append_document_action_result_sample(items: list[dict], item: dict) -> None
         items.append(item)
 
 
+def _is_failed_item(item: dict) -> bool:
+    """判断单个处理结果是否失败：显式失败状态，或携带非空错误信息。
+
+    文件元数据成功时也会带 `error: None`，因此不能仅凭 `error` key 是否存在来判定失败。
+    """
+    return item.get("status") == "failed" or bool(item.get("error"))
+
+
 async def _run_parse_file_ids(
     *,
     context: TaskContext,
@@ -951,7 +962,7 @@ async def _run_parse_file_ids(
             logger.error(f"Parse failed for {file_id}: {e}")
             processed_items.append({"file_id": file_id, "status": "failed", "error": str(e)})
 
-    failed_count = len([p for p in processed_items if "error" in p])
+    failed_count = len([p for p in processed_items if _is_failed_item(p)])
     message = f"解析完成，失败 {failed_count} 个"
     result_payload = {"items": processed_items, "processed": len(processed_items), "failed": failed_count}
     await context.set_result(result_payload)
@@ -1000,7 +1011,7 @@ async def _run_index_file_ids(
             logger.error(f"Index failed for {file_id}: {e}")
             processed_items.append({"file_id": file_id, "status": "failed", "error": str(e)})
 
-    failed_count = len([p for p in processed_items if "error" in p])
+    failed_count = len([p for p in processed_items if _is_failed_item(p)])
     message = f"入库完成，失败 {failed_count} 个"
     result_payload = {"items": processed_items, "processed": len(processed_items), "failed": failed_count}
     await context.set_result(result_payload)
@@ -1375,17 +1386,20 @@ async def batch_delete_documents(
 
             await _delete_document_storage_objects(kb_id, doc_id, file_path)
 
-            # 收集待清理的文件名（循环结束后统一清理导图）
-            removed_filename = file_meta_info.get("meta", {}).get("filename", "")
-            if removed_filename:
-                mindmap_removals.append((doc_id, removed_filename))
-
             # 无论MinIO删除是否成功，都继续从知识库删除
             await knowledge_base.delete_file(kb_id, doc_id)
             deleted_count += 1
+
+            # 只有成功删除的文件才同步从导图快照移除，避免部分失败导致导图与文件表失同步
+            removed_filename = file_meta_info.get("meta", {}).get("filename", "")
+            if removed_filename:
+                mindmap_removals.append((doc_id, removed_filename))
         except Exception as e:
             logger.error(f"批量删除过程中删除文档 {doc_id} 失败: {e}, {traceback.format_exc()}")
             failed_items.append({"doc_id": doc_id, "error": str(e)})
+
+    # 同步清理导图快照，移除已删除文件对应的叶子节点
+    await batch_remove_files_from_mindmap(kb_id, mindmap_removals)
 
     if failed_items:
         if deleted_count == 0:
@@ -1419,6 +1433,10 @@ async def delete_document(kb_id: str, doc_id: str, current_user: User = Depends(
 
         # 无论MinIO删除是否成功，都继续从知识库删除
         await knowledge_base.delete_file(kb_id, doc_id)
+
+        # 同步清理导图快照，移除已删除文件对应的叶子节点
+        removed_filename = file_meta_info.get("meta", {}).get("filename", "")
+        await remove_file_from_mindmap(kb_id, doc_id, removed_filename)
         return {"message": "删除成功"}
     except Exception as e:
         logger.error(f"删除文档失败 {e}, {traceback.format_exc()}")
@@ -1961,6 +1979,12 @@ async def get_knowledge_base_types(current_user: User = Depends(get_admin_user))
     except Exception as e:
         logger.error(f"获取知识库类型失败 {e}, {traceback.format_exc()}")
         return {"message": f"获取知识库类型失败 {e}", "kb_types": {}}
+
+
+@knowledge.get("/chunk-presets")
+async def get_knowledge_chunk_presets(current_user: User = Depends(get_admin_user)):
+    """获取支持的知识库分块策略"""
+    return {"chunk_presets": get_chunk_preset_options(), "message": "success"}
 
 
 @knowledge.get("/stats")

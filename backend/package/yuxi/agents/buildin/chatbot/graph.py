@@ -6,6 +6,7 @@ from yuxi.agents import BaseAgent, load_chat_model, resolve_chat_model_spec
 from yuxi.agents.backends import create_agent_filesystem_middleware
 from yuxi.agents.context import (
     DEFAULT_SUMMARY_KEEP_MESSAGES,
+    DEFAULT_SUMMARY_L2_TRIGGER_RATIO,
     DEFAULT_SUMMARY_THRESHOLD_K,
     DEFAULT_SUMMARY_TOOL_RESULT_TOKEN_LIMIT,
     DEFAULT_TOOL_RESULT_EVICTION_K_TOKENS,
@@ -17,7 +18,6 @@ from yuxi.agents.middlewares import (
     create_summary_middleware,
     save_attachments_to_fs,
 )
-from yuxi.agents.middlewares.knowledge_base import KnowledgeBaseMiddleware
 from yuxi.agents.middlewares.skills import SkillsMiddleware
 from yuxi.agents.middlewares.subagent_task import create_subagent_task_middleware
 from yuxi.agents.toolkits.service import resolve_configured_runtime_tools
@@ -39,14 +39,16 @@ async def _build_middlewares(context):
         "summary_tool_result_token_limit",
         DEFAULT_SUMMARY_TOOL_RESULT_TOKEN_LIMIT,
     )
+    summary_l2_trigger_ratio = getattr(context, "summary_l2_trigger_ratio", DEFAULT_SUMMARY_L2_TRIGGER_RATIO)
     model_spec = resolve_chat_model_spec(context.model)
     summary_middleware = create_summary_middleware(
         model=load_chat_model(fully_specified_name=model_spec),
         trigger=("tokens", summary_trigger_tokens),
         keep=("messages", summary_keep_messages),
         summary_prompt=summary_prompt,
-        trim_tokens_to_summarize=4000,
+        trim_tokens_to_summarize=summary_trigger_tokens,
         tool_result_offload_token_limit=summary_tool_result_token_limit,
+        l1_l2_trigger_ratio=summary_l2_trigger_ratio,
     )
 
     middlewares = [
@@ -55,7 +57,6 @@ async def _build_middlewares(context):
             context=context,
         ),
         save_attachments_to_fs,
-        KnowledgeBaseMiddleware(),
         SkillsMiddleware(),
     ]
     # subagent_middleware = await create_subagent_task_middleware(context)

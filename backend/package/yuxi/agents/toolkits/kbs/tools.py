@@ -198,6 +198,12 @@ def _find_query_target(
     return target_info, normalized_kb_id, None
 
 
+async def _build_query_output(target_kb_id: str, result: Any) -> Any:
+    if isinstance(result, dict) and result.get("kb_id") == target_kb_id and isinstance(result.get("results"), list):
+        return SearchOutputSchema(**result).model_dump()
+    return KnowledgeBase.build_search_output(target_kb_id, result)
+
+
 @tool(category="knowledge", tags=["知识库"], args_schema=QueryKBInput)
 async def query_kb(kb_id: str, query_text: str, file_name: str | None = None, runtime: ToolRuntime = None) -> Any:
     """在指定知识库中检索内容
@@ -232,9 +238,7 @@ async def query_kb(kb_id: str, query_text: str, file_name: str | None = None, ru
         else:
             result = retriever(query_text, **kwargs)
 
-        if isinstance(result, dict) and result.get("kb_id") == target_kb_id and isinstance(result.get("results"), list):
-            return SearchOutputSchema(**result).model_dump()
-        return KnowledgeBase.build_search_output(target_kb_id, result)
+        return await _build_query_output(target_kb_id, result)
 
     except Exception as e:
         logger.error(f"检索失败: {e}")
@@ -355,14 +359,115 @@ async def find_kb_document(
         return f"知识库文档内检索失败: {str(e)}"
 
 
+# 单个知识库一次最多扫描的文件数（与仓储层 list_by_kb_id_after 的硬上限保持一致），
+# 用于在内存中做文件名过滤与准确计数，避免按 limit+offset 截断导致 total/has_more 失真。
+_KB_FILE_SCAN_LIMIT = 5000
+
+
+class SearchFileInput(BaseModel):
+    """搜索文件输入模型"""
+
+    kb_name: str | None = Field(default=None, description="知识库名称，为空时搜索所有知识库")
+    query: str | None = Field(default=None, description="搜索关键词，为空时返回所有文件")
+    offset: int = Field(default=0, ge=0, description="偏移量，从 0 开始")
+    limit: int = Field(default=300, ge=1, le=5000, description="返回数量限制，默认 300")
+
+
+@tool(category="knowledge", tags=["知识库"], args_schema=SearchFileInput)
+async def search_file(
+    kb_name: str | None = None,
+    query: str | None = None,
+    offset: int = 0,
+    limit: int = 300,
+    runtime: ToolRuntime = None,
+) -> dict[str, Any] | str:
+    """搜索知识库中的文件
+
+    当用户需要查找特定文件时使用此工具。可以指定知识库名称和搜索关键词。
+    如果不指定知识库，将搜索所有可访问的知识库。
+    如果不指定搜索关键词，将返回所有文件。
+
+    Args:
+        kb_name: 知识库名称，为空时搜索所有知识库
+        query: 搜索关键词，为空时返回所有文件
+        offset: 偏移量，从 0 开始
+        limit: 返回数量限制，默认 300
+
+    Returns:
+        匹配的文件列表和分页信息
+    """
+    if not kb_name and not query:
+        return "请提供知识库名称或搜索关键词，不能同时为空"
+
+    visible_kbs = await _resolve_visible_knowledge_bases_for_query(runtime)
+    if not visible_kbs:
+        return "无法获取当前会话可访问的知识库"
+
+    if kb_name:
+        target_kbs = [kb for kb in visible_kbs if kb.get("name") == kb_name]
+        if not target_kbs:
+            return f"知识库 '{kb_name}' 不存在或当前会话未启用"
+    else:
+        target_kbs = visible_kbs
+
+    from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
+
+    repo = KnowledgeFileRepository()
+
+    all_files = []
+    for kb in target_kbs:
+        kb_id = kb.get("kb_id")
+        if not kb_id:
+            continue
+
+        files = await repo.list_by_kb_id_after(
+            kb_id=kb_id,
+            limit=_KB_FILE_SCAN_LIMIT,
+            files_only=True,
+        )
+
+        if query:
+            query_lower = query.lower()
+            files = [f for f in files if query_lower in f.filename.lower()]
+
+        for f in files:
+            all_files.append(
+                {
+                    "kb_id": kb_id,
+                    "kb_name": kb.get("name"),
+                    "file_id": f.file_id,
+                    "filename": f.filename,
+                    "file_type": f.file_type,
+                    "status": f.status,
+                    "created_at": str(f.created_at) if f.created_at else None,
+                    "updated_at": str(f.updated_at) if f.updated_at else None,
+                    "file_size": f.file_size,
+                }
+            )
+
+    all_files.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
+
+    total = len(all_files)
+    paginated_files = all_files[offset : offset + limit]
+
+    return {
+        "files": paginated_files,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + limit < total,
+    }
+
+
 def get_common_kb_tools() -> list:
     """获取通用知识库工具列表
 
-    返回 5 个通用工具：
+    返回 6 个通用工具：
     - list_kbs: 列出用户可访问的知识库
     - get_mindmap: 获取指定知识库的思维导图
     - query_kb: 在指定知识库中检索
     - find_kb_document: 在指定文件内定位关键词或正则模式
     - open_kb_document: 按 file_id 分段打开知识库文档
+    - search_file: 搜索知识库中的文件
     """
-    return [list_kbs, get_mindmap, query_kb, find_kb_document, open_kb_document]
+    return [list_kbs, get_mindmap, query_kb, find_kb_document, open_kb_document, search_file]

@@ -89,8 +89,11 @@ def _resolve_image_storage_params(params: dict | None) -> tuple[str, str]:
 
 
 def _resolve_ocr_engine_params(params: dict | None) -> tuple[str, dict[str, Any]]:
+    from yuxi import config
+
     params = params or {}
-    engine = str(params.get("ocr_engine") or "disable")
+    engine = str(params.get("ocr_engine") if "ocr_engine" in params else config.default_ocr_engine)
+    engine = engine.strip() or config.default_ocr_engine
     engine_config = params.get("ocr_engine_config")
     processor_params = dict(params)
     if isinstance(engine_config, dict):
@@ -244,7 +247,9 @@ def parse_image(file, params=None):
     if opt_ocr == "disable":
         raise ValueError(
             "图像文件必须启用OCR才能提取文本内容。"
-            "请选择OCR方式 (rapid_ocr/mineru_ocr/mineru_official/pp_structure_v3_ocr/deepseek_ocr) 或移除该文件。"
+            "请选择OCR方式 "
+            "(rapid_ocr/mineru_ocr/mineru_official/pp_structure_v3_ocr/deepseek_ocr/"
+            "paddleocr_vl_1_6/paddleocr_pp_ocrv6) 或移除该文件。"
         )
 
     image_bucket, image_prefix = _resolve_image_storage_params(processor_params)

@@ -418,6 +418,7 @@
 import { ref, computed, onMounted, watch, h } from 'vue'
 import { message, Upload, Modal } from 'ant-design-vue'
 import { useUserStore } from '@/stores/user'
+import { useConfigStore } from '@/stores/config'
 import { useDatabaseStore } from '@/stores/database'
 import { ocrApi } from '@/apis/system_api'
 import { fileApi, documentApi } from '@/apis/knowledge_api'
@@ -438,7 +439,7 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-vue-next'
-import { buildChunkParamsPayload } from '@/utils/chunk_presets'
+import { buildChunkParamsPayload } from '@/utils/chunkUtils'
 import ChunkParamsConfig from '@/components/ChunkParamsConfig.vue'
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 
@@ -468,6 +469,8 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'success'])
 
 const store = useDatabaseStore()
+const configStore = useConfigStore()
+const DEFAULT_OCR_ENGINE = 'rapid_ocr'
 
 // 文件夹选择相关
 const selectedFolderId = ref(null)
@@ -493,6 +496,8 @@ watch(
   () => props.visible,
   (newVal) => {
     if (newVal) {
+      ocrEngineTouched.value = false
+      applyDefaultOcrEngine()
       selectedFolderId.value = props.currentFolderId
       isFolderUpload.value = props.isFolderMode
       uploadMode.value = props.mode || (props.isFolderMode ? 'folder' : 'file')
@@ -888,17 +893,20 @@ const ocrHealthStatus = ref({
   mineru_ocr: { status: 'unknown', message: '' },
   mineru_official: { status: 'unknown', message: '' },
   pp_structure_v3_ocr: { status: 'unknown', message: '' },
-  deepseek_ocr: { status: 'unknown', message: '' }
+  deepseek_ocr: { status: 'unknown', message: '' },
+  paddleocr_vl_1_6: { status: 'unknown', message: '' },
+  paddleocr_pp_ocrv6: { status: 'unknown', message: '' }
 })
 
 // OCR健康检查状态
 const ocrHealthChecking = ref(false)
 const ocrPanelOpen = ref(false)
 const unavailableOcrExpanded = ref(false)
+const ocrEngineTouched = ref(false)
 
 // 解析参数
 const processingParams = ref({
-  ocr_engine: 'disable',
+  ocr_engine: DEFAULT_OCR_ENGINE,
   ocr_engine_config: {}
 })
 
@@ -1000,12 +1008,45 @@ const ocrEngineOptions = [
     value: 'deepseek_ocr',
     label: 'DeepSeek OCR',
     description: 'DeepSeek OCR (SiliconFlow)'
+  },
+  {
+    value: 'paddleocr_vl_1_6',
+    label: 'PaddleOCR-VL-1.6',
+    description: 'PaddleOCR-VL-1.6 API'
+  },
+  {
+    value: 'paddleocr_pp_ocrv6',
+    label: 'PP-OCRv6',
+    description: 'PaddleOCR PP-OCRv6 API'
   }
 ]
+
+const resolveDefaultOcrEngine = () => {
+  const configuredEngine = String(
+    configStore.config?.default_ocr_engine || DEFAULT_OCR_ENGINE
+  ).trim()
+  return ocrEngineOptions.some((option) => option.value === configuredEngine)
+    ? configuredEngine
+    : DEFAULT_OCR_ENGINE
+}
+
+const applyDefaultOcrEngine = () => {
+  processingParams.value.ocr_engine = resolveDefaultOcrEngine()
+}
+
+watch(
+  () => configStore.config?.default_ocr_engine,
+  () => {
+    if (props.visible && !ocrEngineTouched.value) {
+      applyDefaultOcrEngine()
+    }
+  }
+)
 
 const ocrStatusLabels = {
   local: '不启用',
   healthy: '可用',
+  configured: '已配置',
   unavailable: '不可用',
   unhealthy: '异常',
   timeout: '超时',
@@ -1033,6 +1074,7 @@ const getOcrDescription = (engine) => {
   const status = getOcrStatus(engine)
   const fallbackMap = {
     healthy: '服务正常',
+    configured: 'Token 已配置，将在解析时验证',
     unavailable: '服务不可用',
     unhealthy: '服务异常',
     timeout: '服务检查超时',
@@ -1062,6 +1104,7 @@ const selectedOcrEngineLabel = computed(() => {
 
 const selectOcrEngine = (engine) => {
   if (isUnavailableOcrEngine(engine)) return
+  ocrEngineTouched.value = true
   processingParams.value.ocr_engine = engine
   ocrPanelOpen.value = false
 }
@@ -1872,7 +1915,8 @@ const chunkData = async () => {
 }
 
 .ocr-engine-status.status-local,
-.ocr-engine-status.status-healthy {
+.ocr-engine-status.status-healthy,
+.ocr-engine-status.status-configured {
   color: var(--color-success-700);
 }
 

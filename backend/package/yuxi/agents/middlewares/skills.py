@@ -146,6 +146,24 @@ async def resolve_runtime_skills_for_context(context, *, db: AsyncSession | None
     }
 
 
+def resolve_skill_gated_tools(context) -> list:
+    """解析当前 Agent 所有可见 Skill 依赖的本地工具实例。
+
+    这些工具默认不会绑定给模型（由 SkillsMiddleware 在对应 Skill 激活后才放出），
+    但必须在构建期注册进 create_agent 的 ToolNode，否则即便模型发起调用，执行器也会
+    判定为 "not a valid tool"。调用方应自行排除已在基础工具集中的工具，避免重复门控。
+    """
+    dependency_map = getattr(context, "_runtime_skill_dependency_map", {}) or {}
+    readable_skills = getattr(context, "_readable_skills", []) or []
+    tool_names: set[str] = set()
+    for slug in readable_skills:
+        node = dependency_map.get(slug) or {}
+        tool_names.update(node.get("tools", []))
+    if not tool_names:
+        return []
+    return [tool for tool in get_all_tool_instances() if tool.name in tool_names]
+
+
 def _activated_skills_reducer(left: list[str] | None, right: list[str] | None) -> list[str]:
     """合并 activated_skills 列表"""
     merged: list[str] = []
@@ -223,31 +241,45 @@ class SkillsMiddleware(AgentMiddleware):
         activated = [slug for slug in normalize_string_list(activated) if slug in readable_skills]
 
         deps_bundle = self._build_dependency_bundle(activated, runtime_context)
+        activated_tool_names = set(deps_bundle["tools"])
 
+        # 门控：未激活 Skill 的依赖工具对模型不可见（保持按需加载）。
+        # 这些工具已在构建期由 resolve_configured_runtime_tools 注册进 ToolNode，剔除只影响模型可见性、不影响可执行性。
+        # 排除基础工具集中的工具（如 present_artifacts），它们始终可见、不受 Skill 激活影响。
+        gated_tool_names = self._resolve_gated_tool_names(runtime_context) - activated_tool_names
+        model_tools = list(request.tools or [])
+        if gated_tool_names:
+            model_tools = [t for t in model_tools if t.name not in gated_tool_names]
+
+        # 追加已激活 Skill 的依赖工具：本地工具确保绑定给模型，MCP 工具按需加载
         enabled_tools = []
-
-        if deps_bundle["tools"]:
-            all_tools = get_all_tool_instances()
-            required_tool_names = set(deps_bundle["tools"])
-            enabled_tools = [t for t in all_tools if t.name in required_tool_names]
-
+        if activated_tool_names:
+            enabled_tools = [t for t in get_all_tool_instances() if t.name in activated_tool_names]
         if deps_bundle["mcps"]:
-            mcp_tools = await self._get_mcp_tools_from_context(
-                runtime_context,
-                extra_mcps=deps_bundle["mcps"],
+            enabled_tools.extend(
+                await self._get_mcp_tools_from_context(runtime_context, extra_mcps=deps_bundle["mcps"])
             )
-            enabled_tools.extend(mcp_tools)
 
-        # 合并工具：保留原有工具 + 追加依赖的新工具
-        if enabled_tools:
-            existing_tool_names = {t.name for t in request.tools or []}
-            merged_tools = list(request.tools or [])
-            for t in enabled_tools:
-                if t.name not in existing_tool_names:
-                    merged_tools.append(t)
-            request = request.override(tools=merged_tools)
+        existing_tool_names = {t.name for t in model_tools}
+        for t in enabled_tools:
+            if t.name not in existing_tool_names:
+                model_tools.append(t)
+                existing_tool_names.add(t.name)
+
+        if gated_tool_names or enabled_tools:
+            request = request.override(tools=model_tools)
 
         return await handler(request)
+
+    def _resolve_gated_tool_names(self, runtime_context) -> set[str]:
+        """所有可见 Skill 依赖、且不属于基础工具集的工具名集合（即「仅经 Skill 激活才放出」的工具）。"""
+        dependency_map = self._get_runtime_dependency_map(runtime_context)
+        readable_skills = self._get_readable_skills(runtime_context)
+        base_tool_names = set(normalize_string_list(getattr(runtime_context, "tools", None)))
+        gated: set[str] = set()
+        for slug in readable_skills:
+            gated.update(dependency_map.get(slug, {}).get("tools", []))
+        return gated - base_tool_names
 
     def _build_dependency_bundle(self, activated_skills: list[str], runtime_context) -> dict[str, list[str]]:
         """根据直接激活的 skills 构建依赖包（不包含闭包展开的依赖）"""

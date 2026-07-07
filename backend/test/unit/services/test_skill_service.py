@@ -278,6 +278,23 @@ def test_image_gen_builtin_skill_spec():
     assert (image_gen["source_dir"] / "SKILL.md").exists()
 
 
+def test_knowledge_base_builtin_skill_spec():
+    specs = {spec["slug"]: spec for spec in svc.list_builtin_skill_specs()}
+
+    assert "knowledge-base" in specs
+    knowledge_base = specs["knowledge-base"]
+    assert knowledge_base["name"] == "knowledge-base"
+    assert knowledge_base["tool_dependencies"] == [
+        "list_kbs",
+        "query_kb",
+        "find_kb_document",
+        "open_kb_document",
+        "get_mindmap",
+        "search_file",
+    ]
+    assert (knowledge_base["source_dir"] / "SKILL.md").exists()
+
+
 def test_mysql_reporter_builtin_skill_spec_replaces_reporter_and_deep_reporter():
     specs = {spec["slug"]: spec for spec in svc.list_builtin_skill_specs()}
 

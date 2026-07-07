@@ -20,7 +20,7 @@
 
 ```bash
 # 克隆最新版本
-git clone --branch v0.7.0 --depth 1 https://github.com/xerrors/Yuxi.git
+git clone --branch v0.7.1.beta1 --depth 1 https://github.com/xerrors/Yuxi.git
 cd Yuxi
 ```
 
@@ -121,7 +121,7 @@ docker logs web-dev -f
 
 ```bash
 # 手动拉取基础镜像
-bash scripts/pull_image.sh python:3.12-slim
+bash scripts/pull_image.sh python:3.13-slim
 ```
 
 **离线环境部署方案**：

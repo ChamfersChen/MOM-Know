@@ -158,19 +158,25 @@ import { message } from 'ant-design-vue'
 import { ChevronDown, ChevronUp, X } from 'lucide-vue-next'
 import { threadApi } from '@/apis'
 import { ocrApi } from '@/apis/system_api'
+import { useConfigStore } from '@/stores/config'
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
   threadId: { type: String, default: '' },
-  ensureThread: { type: Function, default: null }
+  ensureThread: { type: Function, default: null },
+  initialFiles: { type: Array, default: () => [] },
+  initialFilesKey: { type: Number, default: 0 }
 })
 
 const emit = defineEmits(['update:open', 'added'])
 
+const configStore = useConfigStore()
+const DEFAULT_OCR_ENGINE = 'rapid_ocr'
 const fileItems = ref([])
 const confirming = ref(false)
 let localIdSeed = 0
+let consumedInitialFilesKey = 0
 
 const methodLabels = {
   disable: 'PDF 文本提取',
@@ -178,7 +184,9 @@ const methodLabels = {
   mineru_ocr: 'MinerU OCR',
   mineru_official: 'MinerU Official',
   pp_structure_v3_ocr: 'PP-Structure V3',
-  deepseek_ocr: 'DeepSeek OCR'
+  deepseek_ocr: 'DeepSeek OCR',
+  paddleocr_vl_1_6: 'PaddleOCR-VL-1.6',
+  paddleocr_pp_ocrv6: 'PP-OCRv6'
 }
 
 const ocrMethodKeys = [
@@ -186,7 +194,9 @@ const ocrMethodKeys = [
   'mineru_ocr',
   'mineru_official',
   'pp_structure_v3_ocr',
-  'deepseek_ocr'
+  'deepseek_ocr',
+  'paddleocr_vl_1_6',
+  'paddleocr_pp_ocrv6'
 ]
 
 const defaultOcrHealthStatus = () =>
@@ -198,6 +208,7 @@ const ocrHealthChecking = ref(false)
 const methodStatusLabels = {
   local: '无需 OCR',
   healthy: '可用',
+  configured: '已配置',
   unavailable: '不可用',
   unhealthy: '异常',
   timeout: '超时',
@@ -228,7 +239,21 @@ const getErrorMessage = (error, fallback = '操作失败') => {
   return error?.response?.data?.detail || error?.message || fallback
 }
 
-const getDefaultParseMethod = () => null
+const getDefaultParseMethod = (parseMethods) => {
+  if (!Array.isArray(parseMethods) || parseMethods.length === 0) {
+    return null
+  }
+  const configuredEngine = String(
+    configStore.config?.default_ocr_engine || DEFAULT_OCR_ENGINE
+  ).trim()
+  if (parseMethods.includes(configuredEngine)) {
+    return configuredEngine
+  }
+  if (parseMethods.includes(DEFAULT_OCR_ENGINE)) {
+    return DEFAULT_OCR_ENGINE
+  }
+  return parseMethods[0]
+}
 
 const normalizeTmpUpload = (response) => ({
   tmpFileId: response.tmp_file_id,
@@ -240,8 +265,21 @@ const normalizeTmpUpload = (response) => ({
   minioUrl: response.minio_url,
   parseSupported: response.parse_supported,
   parseMethods: response.parse_methods || [],
-  selectedParseMethod: getDefaultParseMethod(response.parse_methods || [])
+  selectedParseMethod: getDefaultParseMethod(response.parse_methods || []),
+  parseMethodTouched: false
 })
+
+watch(
+  () => configStore.config?.default_ocr_engine,
+  () => {
+    fileItems.value = fileItems.value.map((item) => {
+      if (!item.parseSupported || item.parseMethodTouched || item.status === 'parsed') {
+        return item
+      }
+      return { ...item, selectedParseMethod: getDefaultParseMethod(item.parseMethods || []) }
+    })
+  }
+)
 
 const updateItem = (localId, patch) => {
   fileItems.value = fileItems.value.map((item) =>
@@ -300,6 +338,26 @@ const handleBeforeUpload = (file) => {
   return false
 }
 
+const uploadInitialFiles = () => {
+  if (!props.open || !props.initialFilesKey) return
+  if (props.initialFilesKey === consumedInitialFilesKey) return
+
+  consumedInitialFilesKey = props.initialFilesKey
+  Array.from(props.initialFiles || [])
+    .filter((file) => file instanceof File)
+    .forEach((file) => {
+      void uploadFile(file)
+    })
+}
+
+watch(
+  () => [props.open, props.initialFilesKey],
+  () => {
+    uploadInitialFiles()
+  },
+  { flush: 'post' }
+)
+
 const getMethodStatus = (method) => {
   if (method === 'disable') return 'local'
   const current = ocrHealthStatus.value?.[method]
@@ -318,6 +376,7 @@ const getMethodDescription = (method) => {
   const status = getMethodStatus(method)
   const fallbackMap = {
     healthy: '服务正常',
+    configured: 'Token 已配置，将在解析时验证',
     unavailable: '服务不可用',
     unhealthy: '服务异常',
     timeout: '服务检查超时',
@@ -355,6 +414,7 @@ const handleParseMethodChange = (localId, selectedParseMethod) => {
   updateItem(localId, {
     ...clearParsedState,
     selectedParseMethod,
+    parseMethodTouched: true,
     parseError: null,
     status: item?.status === 'parsed' ? 'uploaded' : item?.status
   })
@@ -677,7 +737,8 @@ const formatFileSize = (size) => {
 }
 
 .parse-method-status.status-local,
-.parse-method-status.status-healthy {
+.parse-method-status.status-healthy,
+.parse-method-status.status-configured {
   color: var(--color-success-700);
 }
 

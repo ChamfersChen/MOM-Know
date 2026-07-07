@@ -13,6 +13,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   MessageCirclePlus,
+  Search,
   AlertTriangle as AlertTriangleIcon
 } from 'lucide-vue-next'
 
@@ -30,6 +31,7 @@ import DebugComponent from '@/components/DebugComponent.vue'
 import TaskCenterDrawer from '@/components/TaskCenterDrawer.vue'
 import SettingsModal from '@/components/SettingsModal.vue'
 import ConversationNavSection from '@/components/ConversationNavSection.vue'
+import ConversationSearchModal from '@/components/ConversationSearchModal.vue'
 
 const configStore = useConfigStore()
 const agentStore = useAgentStore()
@@ -79,6 +81,7 @@ const showDebugModal = ref(false)
 const showSettingsModal = ref(false)
 const settingsInitialTab = ref('')
 const { sidebarCollapsed } = storeToRefs(chatUIStore)
+const conversationSearchOpen = ref(false)
 
 const openSettingsModal = (tab) => {
   settingsInitialTab.value = tab || (userStore.isAdmin ? 'base' : 'account')
@@ -90,7 +93,6 @@ const handleDebugModalClose = () => {
 }
 
 const getRemoteConfig = async () => {
-  if (!userStore.isAdmin) return
   try {
     await configStore.refreshConfig()
   } catch (error) {
@@ -106,9 +108,11 @@ const getRemoteDatabase = async () => {
   }
 }
 
+// Fetch GitHub stars count
 // const fetchGithubStars = async () => {
 //   try {
 //     isLoadingStars.value = true
+//     // 公共API，可以直接使用fetch
 //     const response = await fetch('https://api.github.com/repos/xerrors/Yuxi')
 //     const data = await response.json()
 //     githubStars.value = data.stargazers_count
@@ -118,6 +122,18 @@ const getRemoteDatabase = async () => {
 //     isLoadingStars.value = false
 //   }
 // }
+
+onMounted(async () => {
+  // 加载信息配置与知识库数据无依赖，可并行
+  await Promise.all([infoStore.loadInfoConfig(), getRemoteDatabase()])
+  await initAgentNavigation()
+  await getRemoteConfig()
+  // 仅管理员加载任务中心数据
+  if (userStore.isAdmin) {
+    taskerStore.loadTasks()
+    fetchGithubStars() // Fetch GitHub stars on mount
+  }
+})
 
 const route = useRoute()
 const router = useRouter()
@@ -183,6 +199,9 @@ const mainList = computed(() => {
   return items
 })
 
+const primaryNavItem = computed(() => mainList.value[0] || null)
+const secondaryNavItems = computed(() => mainList.value.slice(1))
+
 const isNavItemActive = (item) => {
   const activePaths = item.activePaths || [item.path]
   if (item.exactActive) {
@@ -197,6 +216,10 @@ const setSidebarCollapsed = (collapsed) => {
 
 const toggleSidebar = () => {
   setSidebarCollapsed(!sidebarCollapsed.value)
+}
+
+const openConversationSearch = () => {
+  conversationSearchOpen.value = true
 }
 
 const initAgentNavigation = async () => {
@@ -214,6 +237,21 @@ const handleSelectChat = (threadId) => {
   if (!threadId) return
   chatThreadsStore.setCurrentThreadId(threadId)
   router.push({ name: 'AgentCompWithThreadId', params: { thread_id: threadId } })
+}
+
+const handleSearchThreadFound = (thread) => {
+  chatThreadsStore.upsertThread(thread)
+}
+
+const handleSearchSelectThread = (thread) => {
+  if (!thread?.id) return
+  chatThreadsStore.upsertThread(thread)
+  handleSelectChat(thread.id)
+}
+
+const handleCreateConversationFromSearch = () => {
+  chatThreadsStore.setCurrentThreadId(null)
+  router.push({ name: 'AgentComp' })
 }
 
 const handleDeleteChat = async (threadId) => {
@@ -298,12 +336,8 @@ provide('settingsModal', {
         &times;
       </button>
     </div>
-
-    <div
-      class="app-layout"
-      :class="{ 'use-top-bar': layoutSettings.useTopBar, 'sidebar-collapsed': sidebarCollapsed }"
-    >
-      <div class="header" :class="{ 'top-bar': layoutSettings.useTopBar }">
+    <div class="app-layout" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+      <div class="header">
         <div class="sidebar-brand" @click.stop>
           <router-link v-if="!sidebarCollapsed" to="/" class="brand-link">
             <img :src="infoStore.organization.avatar" class="brand-avatar" />
@@ -329,31 +363,67 @@ provide('settingsModal', {
             <PanelLeftClose size="18" />
           </button>
         </div>
-
         <div class="nav">
           <RouterLink
-            v-for="(item, index) in mainList"
+            v-if="primaryNavItem"
+            :to="primaryNavItem.path"
+            class="nav-item"
+            :class="{ active: isNavItemActive(primaryNavItem) }"
+            :active-class="primaryNavItem.action ? '' : 'active'"
+            @click.stop
+          >
+            <a-tooltip placement="right" :open="sidebarCollapsed ? undefined : false">
+              <template #title>{{ primaryNavItem.name }}</template>
+              <component
+                class="icon"
+                :is="
+                  isNavItemActive(primaryNavItem) ? primaryNavItem.activeIcon : primaryNavItem.icon
+                "
+                size="18"
+              />
+            </a-tooltip>
+            <span class="nav-text">{{ primaryNavItem.name }}</span>
+          </RouterLink>
+
+          <button
+            type="button"
+            class="nav-item"
+            :class="{ active: conversationSearchOpen }"
+            @click.stop="openConversationSearch"
+          >
+            <a-tooltip placement="right" :open="sidebarCollapsed ? undefined : false">
+              <template #title>搜索对话</template>
+              <Search class="icon" size="18" />
+            </a-tooltip>
+            <span class="nav-text">搜索对话</span>
+          </button>
+
+          <RouterLink
+            v-for="(item, index) in secondaryNavItems"
             :key="index"
             :to="item.path"
             v-show="!item.hidden"
             class="nav-item"
-            :class="{ active: !item.action && isNavItemActive(item), 'primary-action': item.action }"
+            :class="{ active: isNavItemActive(item) }"
             :active-class="item.action ? '' : 'active'"
             @click.stop
           >
             <a-tooltip placement="right" :open="sidebarCollapsed ? undefined : false">
               <template #title>{{ item.name }}</template>
-              <component class="icon" :is="isNavItemActive(item) ? item.activeIcon : item.icon" size="18" />
+              <component
+                class="icon"
+                :is="isNavItemActive(item) ? item.activeIcon : item.icon"
+                size="18"
+              />
             </a-tooltip>
             <span class="nav-text">{{ item.name }}</span>
           </RouterLink>
         </div>
-
         <div class="fill">
           <ConversationNavSection
             v-if="!sidebarCollapsed"
             class="sidebar-conversations"
-            :current-chat-id="currentThreadId"
+            :current-chat-id="activeConversationThreadId"
             :chats-list="threads"
             :has-more-chats="hasMoreThreads"
             :is-loading-more="isLoadingMoreThreads"
@@ -364,8 +434,8 @@ provide('settingsModal', {
             @load-more-chats="() => chatThreadsStore.loadMoreThreads()"
           />
         </div>
-
         <div class="foo">
+          <!-- 用户信息组件 -->
           <div class="nav-item user-info" @click.stop>
             <UserInfoComponent :show-role="!sidebarCollapsed">
               <template v-if="userStore.isAdmin" #actions>
@@ -377,7 +447,12 @@ provide('settingsModal', {
                     aria-label="任务中心"
                     @click.stop="taskerStore.openDrawer()"
                   >
-                    <a-badge :count="activeTaskCount" :overflow-count="99" class="task-center-badge" size="small">
+                    <a-badge
+                      :count="activeTaskCount"
+                      :overflow-count="99"
+                      class="task-center-badge"
+                      size="small"
+                    >
                       <ClipboardList class="icon" size="16" />
                     </a-badge>
                   </button>
@@ -387,7 +462,6 @@ provide('settingsModal', {
           </div>
         </div>
       </div>
-
       <router-view v-slot="{ Component, route }" id="app-router-view">
         <keep-alive v-if="route.meta.keepAlive !== false">
           <component :is="Component" />
@@ -395,26 +469,34 @@ provide('settingsModal', {
         <component :is="Component" v-else />
       </router-view>
 
-    <!-- Debug Modal -->
-    <a-modal
-      v-model:open="showDebugModal"
-      title="调试面板"
-      width="90%"
-      :footer="null"
-      @cancel="handleDebugModalClose"
-      :maskClosable="true"
-      :destroyOnClose="true"
-      class="debug-modal"
-    >
-      <DebugComponent />
-    </a-modal>
-    <TaskCenterDrawer v-if="userStore.isAdmin" />
-    <SettingsModal
-      v-model:visible="showSettingsModal"
-      :initial-tab="settingsInitialTab"
-      @close="() => (showSettingsModal = false)"
-    />
-  </div>
+      <ConversationSearchModal
+        v-model:open="conversationSearchOpen"
+        :recent-threads="threads"
+        @select-thread="handleSearchSelectThread"
+        @create-thread="handleCreateConversationFromSearch"
+        @thread-found="handleSearchThreadFound"
+      />
+
+      <!-- Debug Modal -->
+      <a-modal
+        v-model:open="showDebugModal"
+        title="调试面板"
+        width="90%"
+        :footer="null"
+        @cancel="handleDebugModalClose"
+        :maskClosable="true"
+        :destroyOnClose="true"
+        class="debug-modal"
+      >
+        <DebugComponent />
+      </a-modal>
+      <TaskCenterDrawer v-if="userStore.isAdmin" />
+      <SettingsModal
+        v-model:visible="showSettingsModal"
+        :initial-tab="settingsInitialTab"
+        @close="() => (showSettingsModal = false)"
+      />
+    </div>
   </div>
 </template>
 
@@ -422,8 +504,11 @@ provide('settingsModal', {
 // Less 变量定义
 @sidebar-width: 230px;
 @sidebar-collapsed-width: 56px;
-@sidebar-padding: 6px 8px;
-@sidebar-item-height: 36px;
+@sidebar-padding-y: 6px;
+@sidebar-padding-x: 8px;
+@sidebar-padding: @sidebar-padding-y @sidebar-padding-x;
+@sidebar-border-width: 1px;
+@sidebar-item-height: 32px;
 @sidebar-item-padding-x: 10px;
 @sidebar-icon-size: 16px;
 
@@ -501,6 +586,19 @@ provide('settingsModal', {
     }
   }
 }
+@brand-avatar-size: 28px;
+@sidebar-collapsed-content-width: @sidebar-collapsed-width - (2 * @sidebar-padding-x) -
+  @sidebar-border-width;
+@sidebar-collapsed-icon-padding-x: (
+  (@sidebar-collapsed-content-width - @sidebar-icon-size - (2 * @sidebar-border-width)) / 2
+);
+@sidebar-collapsed-avatar-padding-x: (
+  (@sidebar-collapsed-content-width - @sidebar-item-height - (2 * @sidebar-border-width)) / 2
+);
+@sidebar-collapsed-brand-padding-x: ((@sidebar-collapsed-content-width - @brand-avatar-size) / 2);
+@sidebar-collapsed-brand-icon-padding-x: (
+  (@sidebar-collapsed-content-width - @sidebar-icon-size) / 2
+);
 
 .app-layout {
   display: flex;
@@ -590,9 +688,9 @@ div.header,
   }
 
   .brand-avatar {
-    flex: 0 0 28px;
-    width: 28px;
-    height: 28px;
+    flex: 0 0 @brand-avatar-size;
+    width: @brand-avatar-size;
+    height: @brand-avatar-size;
     border-radius: 6px;
     object-fit: cover;
   }
@@ -860,14 +958,19 @@ div.header,
     }
 
     .brand-expand-button {
-      flex: 0 0 @sidebar-item-height;
-      justify-content: center;
-      width: @sidebar-item-height;
-      padding: 0 6px;
+      flex: 0 0 100%;
+      justify-content: flex-start;
+      width: 100%;
+      padding: 0;
       border-radius: 8px;
+
+      .brand-avatar-image {
+        margin-left: @sidebar-collapsed-brand-padding-x;
+      }
 
       .brand-expand-icon {
         display: none;
+        margin-left: @sidebar-collapsed-brand-icon-padding-x;
         width: @sidebar-icon-size;
         height: @sidebar-icon-size;
         color: var(--main-color);
@@ -895,8 +998,8 @@ div.header,
 
     .nav-item {
       justify-content: flex-start;
-      width: @sidebar-item-height;
-      padding: 0 10px;
+      width: 100%;
+      padding: 0 @sidebar-collapsed-icon-padding-x;
 
       .nav-text,
       .github-stars {
@@ -913,7 +1016,13 @@ div.header,
       }
 
       &.user-info {
-        padding: 0;
+        padding: 0 @sidebar-collapsed-avatar-padding-x;
+
+        :deep(.user-info-component),
+        :deep(.user-info-dropdown) {
+          justify-content: flex-start;
+        }
+
         :deep(.user-info-actions) {
           display: none;
         }

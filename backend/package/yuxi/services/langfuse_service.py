@@ -186,6 +186,45 @@ def get_trace_info(run_context: LangfuseRunContext | None) -> dict[str, Any]:
     return trace_info
 
 
+def submit_user_feedback_score(
+    *,
+    trace_id: str,
+    feedback_id: int,
+    message_id: int,
+    conversation_id: int,
+    uid: str,
+    rating: str,
+    reason: str | None = None,
+) -> bool:
+    client = get_langfuse_client()
+    if client is None:
+        return False
+
+    value = 1 if rating == "like" else 0
+    try:
+        client.create_score(
+            trace_id=trace_id,
+            score_id=f"yuxi-message-feedback-{feedback_id}",
+            name="user-feedback",
+            value=value,
+            data_type="BOOLEAN",
+            comment=reason,
+            metadata={
+                "source": "yuxi",
+                "feedback_id": feedback_id,
+                "message_id": message_id,
+                "conversation_id": conversation_id,
+                "uid": uid,
+                "rating": rating,
+            },
+        )
+        client.flush()
+        return True
+    except Exception as exc:
+        logger.warning(f"提交 Langfuse 用户反馈评分失败，将保留本地反馈: {exc}")
+        return False
+
+
 async def get_trace_url_async(
     run_context: LangfuseRunContext | None,
     *,

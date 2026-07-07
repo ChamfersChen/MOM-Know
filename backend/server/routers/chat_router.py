@@ -3,7 +3,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, UploadFile, File
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,8 +11,7 @@ from yuxi.storage.postgres.models_business import User
 from server.utils.auth_middleware import get_db, get_required_user
 from yuxi import config as conf
 from yuxi.models import select_model
-from yuxi.services.chat_service import get_agent_state_view, stream_agent_resume
-from yuxi.repositories.conversation_repository import ConversationRepository
+from yuxi.services.chat_service import get_agent_state_view
 from yuxi.services.conversation_service import (
     confirm_tmp_thread_attachments_view,
     create_thread_view,
@@ -22,6 +21,7 @@ from yuxi.services.conversation_service import (
     list_thread_attachments_view,
     list_threads_view,
     parse_tmp_attachment_view,
+    search_threads_view,
     update_thread_view,
     upload_thread_attachment_view,
     upload_tmp_attachment_view,
@@ -75,103 +75,6 @@ async def call(query: str = Body(...), meta: dict = Body(None), current_user: Us
     return {"response": response.content, "request_id": meta["request_id"]}
 
 
-@chat.post("/thread/{thread_id}/resume")
-async def resume_thread_chat(
-    thread_id: str,
-    approved: bool | None = Body(None),
-    answer: dict | None = Body(None),
-    current_user: User = Depends(get_required_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """恢复被人工审批中断的对话（需要登录）"""
-
-    # 验证 thread 存在且属于当前用户
-    conv_repo = ConversationRepository(db)
-    conversation = await conv_repo.get_conversation_by_thread_id(thread_id)
-    if not conversation or conversation.uid != str(current_user.uid) or conversation.status == "deleted":
-        raise HTTPException(status_code=404, detail="对话线程不存在")
-    agent_id = conversation.agent_id
-
-    def normalize_resume_input(raw_answer: Any, raw_approved: bool | None) -> Any:
-        def normalize_single_answer(value: Any) -> Any:
-            if isinstance(value, str):
-                normalized = value.strip()
-                if not normalized:
-                    raise HTTPException(status_code=422, detail="answer 不能为空")
-                return normalized
-
-            if isinstance(value, list):
-                if len(value) == 0:
-                    raise HTTPException(status_code=422, detail="answer 不能为空")
-
-                normalized_list: list[str] = []
-                for item in value:
-                    if not isinstance(item, str) or not item.strip():
-                        raise HTTPException(status_code=422, detail="answer 列表必须是非空字符串")
-                    normalized_list.append(item.strip())
-                return normalized_list
-
-            if isinstance(value, dict):
-                if value.get("type") == "other":
-                    text = value.get("text")
-                    if not isinstance(text, str) or not text.strip():
-                        raise HTTPException(status_code=422, detail="other 文本不能为空")
-                return value
-
-            raise HTTPException(status_code=422, detail="answer 值类型不支持")
-
-        if raw_answer is not None:
-            if isinstance(raw_answer, dict):
-                if len(raw_answer) == 0:
-                    raise HTTPException(status_code=422, detail="answer 不能为空")
-
-                normalized_answers: dict[str, Any] = {}
-                for question_id, value in raw_answer.items():
-                    normalized_question_id = str(question_id).strip()
-                    if not normalized_question_id:
-                        raise HTTPException(status_code=422, detail="question_id 不能为空")
-                    normalized_answers[normalized_question_id] = normalize_single_answer(value)
-                return normalized_answers
-
-            raise HTTPException(status_code=422, detail="answer 必须是对象映射 {question_id: answer}")
-
-        if raw_approved is not None:
-            return "approve" if raw_approved else "reject"
-
-        raise HTTPException(status_code=422, detail="approved 或 answer 至少提供一个")
-
-    resume_input = normalize_resume_input(answer, approved)
-
-    logger.info(
-        "Resuming agent_id: %s, thread_id: %s, approved: %s, answer_type: %s",
-        agent_id,
-        thread_id,
-        approved,
-        type(answer).__name__ if answer is not None else "None",
-    )
-
-    meta = {
-        "agent_id": agent_id,
-        "thread_id": thread_id,
-        "uid": current_user.uid,
-        "approved": approved,
-        "answer": answer,
-        "resume_input": resume_input,
-    }
-    if "request_id" not in meta or not meta.get("request_id"):
-        meta["request_id"] = str(uuid.uuid4())
-    return StreamingResponse(
-        stream_agent_resume(
-            thread_id=thread_id,
-            resume_input=resume_input,
-            meta=meta,
-            current_user=current_user,
-            db=db,
-        ),
-        media_type="application/json",
-    )
-
-
 @chat.get("/thread/{thread_id}/history")
 async def get_thread_history(
     thread_id: str, current_user: User = Depends(get_required_user), db: AsyncSession = Depends(get_db)
@@ -200,7 +103,7 @@ async def get_thread_state(
     try:
         return await get_agent_state_view(
             thread_id=thread_id,
-            current_uid=str(current_user.uid),
+            current_user=current_user,
             db=db,
             include_messages=include_messages,
         )
@@ -229,6 +132,27 @@ class ThreadResponse(BaseModel):
     created_at: str
     updated_at: str
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ThreadSearchSnippet(BaseModel):
+    message_id: int | None = None
+    content: str
+    created_at: str | None = None
+
+
+class ThreadSearchItem(ThreadResponse):
+    thread_id: str
+    matched_count: int
+    message_id: int | None = None
+    latest_match_at: str | None = None
+    snippets: list[ThreadSearchSnippet] = Field(default_factory=list)
+
+
+class ThreadSearchResponse(BaseModel):
+    items: list[ThreadSearchItem]
+    has_more: bool
+    limit: int
+    offset: int
 
 
 class AttachmentResponse(BaseModel):
@@ -350,7 +274,7 @@ async def create_thread(
 ):
     """创建新对话线程 (使用新存储系统)"""
     return await create_thread_view(
-        agent_id=thread.agent_id,
+        agent_slug=thread.agent_id,
         title=thread.title,
         metadata=thread.metadata,
         db=db,
@@ -368,7 +292,27 @@ async def list_threads(
 ):
     """获取用户的所有对话线程 (使用新存储系统)"""
     return await list_threads_view(
-        agent_id=agent_id, db=db, current_uid=str(current_user.uid), limit=limit, offset=offset
+        agent_slug=agent_id, db=db, current_uid=str(current_user.uid), limit=limit, offset=offset
+    )
+
+
+@chat.get("/threads/search", response_model=ThreadSearchResponse)
+async def search_threads(
+    q: str = Query(..., min_length=1, max_length=200),
+    agent_id: str | None = Query(None),
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_required_user),
+):
+    """搜索当前用户的历史对话。"""
+    return await search_threads_view(
+        query=q,
+        agent_id=agent_id,
+        db=db,
+        current_uid=str(current_user.uid),
+        limit=limit,
+        offset=offset,
     )
 
 

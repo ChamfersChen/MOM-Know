@@ -70,17 +70,24 @@ def _build_test_window(content: str, offset: int = 0, limit: int = 1800) -> dict
 
 
 def _patch_retrievers(monkeypatch, *, kb_type: str = "milvus", retriever=None):
-    monkeypatch.setattr(
-        tools.knowledge_base,
-        "get_retrievers",
-        lambda: {
+    async def _not_configured(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError("knowledge base method is not configured for this test")
+
+    manager = SimpleNamespace(
+        get_retrievers=lambda: {
             "db-1": {
                 "name": "FAQ",
                 "retriever": retriever or object(),
                 "metadata": {"kb_type": kb_type},
             }
         },
+        find_file_content=_not_configured,
+        open_file_content=_not_configured,
     )
+    monkeypatch.setattr(tools, "_get_knowledge_base", lambda: manager)
+    monkeypatch.setattr(tools, "knowledge_base", manager, raising=False)
+    return manager
 
 
 async def _fake_visible_kbs(runtime):
@@ -375,3 +382,200 @@ async def test_open_kb_document_requires_markdown_content(monkeypatch) -> None:
     result = await _run_open_kb_document(kb_id="db-1", file_id="file-1", runtime=runtime)
 
     assert "没有解析后的 Markdown 内容" in result
+
+
+def _search_file_callable():
+    return _tool_callable(tools.search_file)
+
+
+async def _run_search_file(**kwargs):
+    return await _run_tool(_search_file_callable(), **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_search_file_requires_kb_name_or_query(monkeypatch) -> None:
+    monkeypatch.setattr(tools, "_resolve_visible_knowledge_bases_for_query", _fake_visible_kbs)
+
+    runtime = SimpleNamespace(context=SimpleNamespace())
+    result = await _run_search_file(runtime=runtime)
+
+    assert "不能同时为空" in result
+
+
+@pytest.mark.asyncio
+async def test_search_file_returns_files_by_query(monkeypatch) -> None:
+    monkeypatch.setattr(tools, "_resolve_visible_knowledge_bases_for_query", _fake_visible_kbs)
+
+    from types import SimpleNamespace as SN
+
+    fake_files = [
+        SN(
+            file_id="file-1",
+            filename="test.pdf",
+            file_type="file",
+            status="indexed",
+            created_at=None,
+            updated_at=None,
+            file_size=1024,
+        ),
+        SN(
+            file_id="file-2",
+            filename="test2.pdf",
+            file_type="file",
+            status="indexed",
+            created_at=None,
+            updated_at=None,
+            file_size=2048,
+        ),
+        SN(
+            file_id="file-3",
+            filename="other.pdf",
+            file_type="file",
+            status="indexed",
+            created_at=None,
+            updated_at=None,
+            file_size=512,
+        ),
+    ]
+
+    async def _fake_list_by_kb_id_after(self, kb_id, *, after_file_id=None, limit=500, files_only=False):
+        return fake_files
+
+    from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
+
+    monkeypatch.setattr(KnowledgeFileRepository, "list_by_kb_id_after", _fake_list_by_kb_id_after)
+
+    runtime = SimpleNamespace(context=SimpleNamespace())
+    result = await _run_search_file(query="test", runtime=runtime)
+
+    assert result["total"] == 2
+    assert len(result["files"]) == 2
+    assert result["files"][0]["filename"] == "test.pdf"
+    assert result["files"][1]["filename"] == "test2.pdf"
+
+
+@pytest.mark.asyncio
+async def test_search_file_returns_all_files_when_query_empty(monkeypatch) -> None:
+    monkeypatch.setattr(tools, "_resolve_visible_knowledge_bases_for_query", _fake_visible_kbs)
+
+    from types import SimpleNamespace as SN
+
+    fake_files = [
+        SN(
+            file_id="file-1",
+            filename="test.pdf",
+            file_type="file",
+            status="indexed",
+            created_at=None,
+            updated_at=None,
+            file_size=1024,
+        ),
+        SN(
+            file_id="file-2",
+            filename="other.pdf",
+            file_type="file",
+            status="indexed",
+            created_at=None,
+            updated_at=None,
+            file_size=2048,
+        ),
+    ]
+
+    async def _fake_list_by_kb_id_after(self, kb_id, *, after_file_id=None, limit=500, files_only=False):
+        return fake_files
+
+    from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
+
+    monkeypatch.setattr(KnowledgeFileRepository, "list_by_kb_id_after", _fake_list_by_kb_id_after)
+
+    runtime = SimpleNamespace(context=SimpleNamespace())
+    result = await _run_search_file(kb_name="FAQ", runtime=runtime)
+
+    assert result["total"] == 2
+    assert len(result["files"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_search_file_pagination(monkeypatch) -> None:
+    monkeypatch.setattr(tools, "_resolve_visible_knowledge_bases_for_query", _fake_visible_kbs)
+
+    from types import SimpleNamespace as SN
+
+    fake_files = [
+        SN(
+            file_id=f"file-{i}",
+            filename=f"file{i}.pdf",
+            file_type="file",
+            status="indexed",
+            created_at=None,
+            updated_at=None,
+            file_size=1024 * i,
+        )
+        for i in range(10)
+    ]
+
+    async def _fake_list_by_kb_id_after(self, kb_id, *, after_file_id=None, limit=500, files_only=False):
+        return fake_files
+
+    from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
+
+    monkeypatch.setattr(KnowledgeFileRepository, "list_by_kb_id_after", _fake_list_by_kb_id_after)
+
+    runtime = SimpleNamespace(context=SimpleNamespace())
+    result = await _run_search_file(kb_name="FAQ", offset=2, limit=3, runtime=runtime)
+
+    assert result["total"] == 10
+    assert len(result["files"]) == 3
+    assert result["offset"] == 2
+    assert result["limit"] == 3
+    assert result["has_more"] is True
+
+
+@pytest.mark.asyncio
+async def test_search_file_rejects_invisible_kb(monkeypatch) -> None:
+    async def _fake_visible_kbs(runtime):
+        del runtime
+        return [{"kb_id": "db-2", "name": "Other"}]
+
+    monkeypatch.setattr(tools, "_resolve_visible_knowledge_bases_for_query", _fake_visible_kbs)
+
+    runtime = SimpleNamespace(context=SimpleNamespace())
+    result = await _run_search_file(kb_name="FAQ", query="test", runtime=runtime)
+
+    assert "不存在或当前会话未启用" in result
+
+
+@pytest.mark.asyncio
+async def test_search_file_total_reflects_full_set_not_page(monkeypatch) -> None:
+    """total/has_more 必须基于全量文件，而非按 limit/offset 截断的窗口。"""
+    monkeypatch.setattr(tools, "_resolve_visible_knowledge_bases_for_query", _fake_visible_kbs)
+
+    from types import SimpleNamespace as SN
+
+    fake_files = [
+        SN(
+            file_id=f"file-{i:02d}",
+            filename=f"file{i}.pdf",
+            file_type="file",
+            status="indexed",
+            created_at=None,
+            updated_at=None,
+            file_size=1024,
+        )
+        for i in range(50)
+    ]
+
+    async def _fake_list_by_kb_id_after(self, kb_id, *, after_file_id=None, limit=500, files_only=False):
+        # 真实仓储会按 limit 截断；此 mock 同样遵守 limit，以暴露按 limit+offset 取数导致的 total 失真。
+        return fake_files[:limit]
+
+    from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
+
+    monkeypatch.setattr(KnowledgeFileRepository, "list_by_kb_id_after", _fake_list_by_kb_id_after)
+
+    runtime = SimpleNamespace(context=SimpleNamespace())
+    result = await _run_search_file(kb_name="FAQ", offset=0, limit=10, runtime=runtime)
+
+    assert result["total"] == 50
+    assert len(result["files"]) == 10
+    assert result["has_more"] is True
