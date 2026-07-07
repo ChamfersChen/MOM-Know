@@ -1,0 +1,20 @@
+{
+    "工单排程流程": {
+        "description": "工单排程流程的完整链路",
+        "steps": [
+            "admin/modelFactory/organization/list;1",
+            "meswms/orderForAi/unproducedOrders;2",
+            "meswms/orderForAi/getScheduleInfo;3",
+            "meswms/orderForAi/createSchedule;4"
+        ]
+    },
+    "工单修改删除流程": {
+        "description": "工单修改删除流程的完整链路",
+        "steps": [
+            "admin/modelFactory/organization/list;1",
+            "meswms/orderForAi/getScheduleTasks;2",
+            "meswms/orderForAi/updateNotProduceSchedule;3",
+            "meswms/orderForAi/deleteNotProduceSchedule;3"
+        ]
+    }
+}

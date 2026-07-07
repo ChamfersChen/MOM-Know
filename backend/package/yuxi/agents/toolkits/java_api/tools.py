@@ -198,6 +198,7 @@ async def call_api(
         )
 
     # 构建请求
+    # url = f"{java_config.api_base_url}/api/{endpoint.lstrip('/')}"
     url = f"{java_config.api_base_url}/{endpoint.lstrip('/')}"
     headers = {
         "Tenant-Id": token_data.tenant_id,
@@ -252,31 +253,33 @@ async def call_api(
 
         try:
             result = response.json()
+            logger.debug(f"MOM API 返回值: {method} {url}, result={result}")
 
             # 移除结果中的权限信息
-            if result.get('data', {}).get('permissions') is not None:
-                del result['data']['permissions']  # 移除权限信息，避免泄露
-
-            # 对 dsScope 字段进行解释
-            ds_scope = result.get('data', {}).get('sysUser',{}).get('dsScope')
-            if ds_scope is not None:
-                extra_message = f"\n\n注意：返回结果中的 dsScope 字段值({ds_scope})为“当前用户能够访问的组织ID列表”, 可请求"
+            if data:=result.get('data', {}):
+                if isinstance(data, dict):
+                    if 'permissions' in data:
+                        del result['data']['permissions']
+                    if 'sysUser' in data and isinstance(data['sysUser'], dict):
+                        # 对 dsScope 字段进行解释
+                        ds_scope = data.get('sysUser',{}).get('dsScope')
+                        if ds_scope is not None:
+                            extra_message = f"\n\n注意：返回结果中的 dsScope 字段值({ds_scope})为“当前用户能够访问的组织ID列表”, 可请求"
             
             # 清理结果中的 None 值，避免返回过多无用信息
 
             result = remove_none_fields(result, remove_keys=REMOVE_KEYS)
+            if method not in ['GET']:
+                result_str = json.dumps({"success": True, "data": result,'refresh': True}, ensure_ascii=False, default=str)
+            else:
+                result_str = json.dumps({"success": True, "data": result}, ensure_ascii=False, default=str)
         except Exception as e:
             logger.error(f"MOM API 返回值处理错误: {method} {url}, error={e}")
             result = response.text
+            result_str = json.dumps({"success": True, "data": result}, ensure_ascii=False, default=str)
 
         logger.info(f"MOM API 成功: {method} {url}, status={response.status_code}")
 
-        if method != "GET":
-            #! 注意，此处 "refresh": True 表示调用了非 GET 方法，前端需要进行刷新才能获得最新结果
-            #! 前端只解析了内容中是否有 "refresh" 字段来判断是否需要刷新，而不关心其值
-            result_str = json.dumps({"success": True, "data": result, "refresh": True}, ensure_ascii=False, default=str)
-        else:
-            result_str = json.dumps({"success": True, "data": result}, ensure_ascii=False, default=str)
         # 对结果进行长度限制，避免返回过长内容导致模型处理困难
         # max_length = 10000
         # if len(result_str) > max_length:
@@ -300,3 +303,32 @@ async def call_api(
             {"success": False, "error": f"MOM API 调用异常: {str(e)}\n\n{error_message}"},
             ensure_ascii=False,
         )
+
+async def list_endpoints(rewritten_query: str, endpoint_json_filepath: str) -> str:
+    registry = _load_endpoint_registry(endpoint_json_filepath)
+    if not registry:
+        return json.dumps(
+            {"success": False, "error": "端点注册表为空或未配置"},
+            ensure_ascii=False,
+        )
+
+    if rewritten_query:
+        # 使用fuzzywuzzy算法进行模糊匹配，提升搜索体验
+        filtered = fuzzy_match_keywords(rewritten_query, registry, top_k=10)
+    else:
+        filtered = registry
+
+    if not filtered:
+        return json.dumps(
+            {
+                "success": False,
+                "error": f"未找到与 {rewritten_query} 相关的端点",
+            },
+            ensure_ascii=False,
+            )
+
+    return json.dumps(
+        {"success": True, "endpoints": filtered, "count": len(registry)},
+        ensure_ascii=False,
+        default=str,
+    )
