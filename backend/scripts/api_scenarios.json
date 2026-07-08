@@ -16,5 +16,13 @@
             "meswms/orderForAi/updateNotProduceSchedule;3",
             "meswms/orderForAi/deleteNotProduceSchedule;3"
         ]
+    },
+	"订单分析流程": {
+        "description": "订单分析流程的完整链路",
+        "steps": [
+            "admin/modelFactory/organization/list;1",
+            "meswms/orderForAi/getOrderInfo;2",
+            "meswms/orderForAi/getProductionBomWithOrderId;2"
+        ]
     }
 }

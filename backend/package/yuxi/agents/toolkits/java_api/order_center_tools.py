@@ -13,6 +13,18 @@ from typing import List
 from yuxi.agents.toolkits.registry import tool
 
 from .tools import list_endpoints
+from .api_neo4j import Neo4jApiGraph, scenario_result_to_markdown
+
+import dotenv
+
+dotenv.load_dotenv()  # 加载 .env 文件中的环境变量
+
+# URI = "bolt://localhost:17687"
+URI = os.environ.get("NEO4J_URI") or "bolt://graph:17687"
+
+USER = os.environ.get("NEO4J_USERNAME") or "neo4j"
+PASSWORD = os.environ.get("NEO4J_PASSWORD") or "0123456789"  # 改成你自己的密码
+graph = Neo4jApiGraph(URI, USER, PASSWORD)
 
 HTTP_METHODS = ["GET", "POST", "PUT", "DELETE"]
 REMOVE_KEYS = [
@@ -117,3 +129,19 @@ async def list_order_schedule_update_endpoints(rewritten_query: str = "") -> str
     返回内容包括：端点路径、HTTP 方法、参数格式说明、简要描述。
     """
     return await list_endpoints(rewritten_query, ORDER_CENTER_SCHEDULE_UPDATE_ENDPOINTS_PATH)
+
+
+@tool(
+    category="buildin",
+    tags=["MES Order", "API"],
+    display_name="获得'订单分析功能'操作流程",
+)
+async def get_order_analyse_flows() -> str:
+    """获得'订单分析功能'操作流程相关信息
+
+    返回内容包括：功能流程执行步骤、端点路径、HTTP 方法、参数格式说明、简要描述。
+    """
+    scenario_name = "订单分析流程"
+    records = graph.get_with_scenario(scenario_name)
+    md = scenario_result_to_markdown(scenario_name, records)
+    return md
