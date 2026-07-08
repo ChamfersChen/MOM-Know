@@ -28,7 +28,7 @@ __all__ = [
     # 触发各模块的 @tool 装饰器执行，自动注册工具
     "buildin",
     "debug",
-    "get_mysql_tools"
+    "get_mysql_tools",
 ]
 
 if java_config.enabled:

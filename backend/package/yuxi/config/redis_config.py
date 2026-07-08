@@ -114,4 +114,5 @@ class RedisConfig(BaseSettings):
         default=False,
     )
 
+
 redis_cfg = RedisConfig()

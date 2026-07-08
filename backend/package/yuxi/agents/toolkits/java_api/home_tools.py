@@ -11,8 +11,18 @@ from yuxi.agents.toolkits.registry import tool
 from .tools import list_endpoints
 
 HTTP_METHODS = ["GET", "POST", "PUT", "DELETE"]
-REMOVE_KEYS = ["files", "updateTime", "createTime", "updateBy", "createBy", "remark", "tenantId", 
-               "organizationId", "parentId", "weight"]  # 需要从结果中移除的字段，避免返回过多无用信息
+REMOVE_KEYS = [
+    "files",
+    "updateTime",
+    "createTime",
+    "updateBy",
+    "createBy",
+    "remark",
+    "tenantId",
+    "organizationId",
+    "parentId",
+    "weight",
+]  # 需要从结果中移除的字段，避免返回过多无用信息
 
 # 端点注册表文件路径
 HOME_ENDPOINTS_PATH = os.path.join(os.path.dirname(__file__), "endpoints/home/home_endpoints.json")

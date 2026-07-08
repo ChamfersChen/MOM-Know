@@ -393,9 +393,7 @@ async def test_insert_chunks_to_stores_rolls_back_file_when_milvus_insert_fails(
 async def test_update_content_uses_streaming_chunk_store(monkeypatch):
     kb = MilvusKB.__new__(MilvusKB)
     kb.databases_meta = {"db": {"embedding_model_spec": "test-provider:test-embedding", "metadata": {}}}
-    file_repo = FakeKnowledgeFileRepository(
-        {"file-1": make_file_record(markdown_file=None, status=FileStatus.INDEXED)}
-    )
+    file_repo = FakeKnowledgeFileRepository({"file-1": make_file_record(markdown_file=None, status=FileStatus.INDEXED)})
     patch_file_repository(monkeypatch, file_repo)
     collection = FakeCollection()
     refreshed_kbs = []

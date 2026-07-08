@@ -19,6 +19,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from yuxi.storage.postgres.models_business import Base
 
+
 class Terminology(Base):
     __tablename__ = "terminology"
     id = Column(BigInteger, Identity(always=True), primary_key=True)
@@ -29,7 +30,7 @@ class Terminology(Base):
     embedding = Column(VECTOR(), nullable=True)
     specific_ds = Column(Boolean, default=False)
     datasource_host = Column(String(255), nullable=False)
-    datasource_port= Column(Integer, nullable=False)
+    datasource_port = Column(Integer, nullable=False)
     enabled = Column(Boolean, default=True)
 
 

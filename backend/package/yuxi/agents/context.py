@@ -308,7 +308,7 @@ class BaseContext:
             "auth": "admin",
         },
     )
-    
+
     username: str | None = field(
         default=None,
         metadata={"name": "用户名称", "configurable": False, "description": "用来显示用户名称"},

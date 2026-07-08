@@ -16,20 +16,14 @@ class SqlDatabaseRepository:
 
     async def get_activated(self) -> list[SqlDatabase]:
         async with pg_manager.get_async_session_context() as session:
-            result = await session.execute(
-                select(SqlDatabase).where(SqlDatabase.is_activate == True)
-            )
+            result = await session.execute(select(SqlDatabase).where(SqlDatabase.is_activate == True))
             return list(result.scalars().all())
 
     async def deactivate_all_except(self, active_ids: list[str]) -> None:
         if not active_ids:
             return
         async with pg_manager.get_async_session_context() as session:
-            stmt = (
-                sa_update(SqlDatabase)
-                .where(~SqlDatabase.db_id.in_(active_ids))
-                .values(is_activate=False)
-            )
+            stmt = sa_update(SqlDatabase).where(~SqlDatabase.db_id.in_(active_ids)).values(is_activate=False)
             await session.execute(stmt)
 
     async def get_by_id(self, db_id: str) -> SqlDatabase | None:

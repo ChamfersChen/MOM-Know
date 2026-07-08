@@ -83,6 +83,7 @@
 - 收敛 AgentRun 数据模型与输入语义：运行记录统一使用 `agent_slug`、`conversation_thread_id`、`created_by_run_id`、`input_message_id` 等字段，子智能体通过 `subagent_threads` 关系表维护 parent/child conversation 归属；补齐旧库升级时 `agent_runs` 旧字段到新字段、`subagent_threads.subagent_slug/created_by_run_id` 的静默回填与约束收敛，并在创建部分唯一索引前终结重复活跃 run，避免早期分支库保留 nullable schema 或历史重复活跃数据阻塞升级；Agent 状态中的 `subagent_runs` 改为以 `run_id` 作为执行身份，`resume` 请求字段明确为 `Command(resume=...)` 输入载荷。
 - 精简旧链路与失败语义：恢复审批统一走 `POST /api/agent/runs` 的 `resume` 载荷，移除旧 `POST /api/chat/thread/{id}/resume` 流式接口和已废弃的 `chat_service.agent_chat`；子智能体运行缺少必要线程上下文时直接报错，状态查询只在真实缺失或无权访问时返回 404，内部运行记录格式异常返回 500。
 - 统一流式事件线程 ID 提取契约：新增共享 `extract_thread_id` 工具，`BaseAgent`、聊天服务和 run worker 统一只读取规范化事件的一层稳定路径，并通过显式 fallback 处理父线程归属，避免递归扫描嵌套 metadata 导致父/子线程事件路由分歧。
+- 智能体元数据新增「示例问题」字段：在 `Agent` 表新增 `suggested_questions JSONB` 列，存储每个智能体的推荐示例问题列表；编辑智能体「基本信息」窗口使用 `a-select mode="tags"` 维护示例问题（与 MCP 表单的标签/参数控件保持同一视觉），支持回车、中英文逗号与分号分隔批量录入，单条上限 200 字、最多 20 条，前后端统一在保存时清洗空字符串、空白和重复项；该字段先落到元数据，运行时聊天页的渲染与点击使用留待后续迭代。
 
 ## v0.7.0 (2026-06-13)
 

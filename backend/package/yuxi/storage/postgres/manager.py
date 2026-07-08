@@ -386,7 +386,7 @@ class PostgresManager(metaclass=SingletonMeta):
                 "CREATE INDEX IF NOT EXISTS ix_knowledge_graph_triple_mentions_chunk_id "
                 "ON knowledge_graph_triple_mentions(chunk_id)"
             ),
-            "CREATE EXTENSION IF NOT EXISTS vector;"
+            "CREATE EXTENSION IF NOT EXISTS vector;",
         ]
 
         async with self.async_engine.begin() as conn:
@@ -452,6 +452,10 @@ class PostgresManager(metaclass=SingletonMeta):
             "ALTER TABLE IF EXISTS agents ADD COLUMN IF NOT EXISTS backend_id VARCHAR(64)",
             "ALTER TABLE IF EXISTS agents ADD COLUMN IF NOT EXISTS share_config JSONB NOT NULL DEFAULT '{}'::jsonb",
             "ALTER TABLE IF EXISTS agents ADD COLUMN IF NOT EXISTS is_subagent BOOLEAN NOT NULL DEFAULT FALSE",
+            (
+                "ALTER TABLE IF EXISTS agents ADD COLUMN IF NOT EXISTS "
+                "suggested_questions JSONB NOT NULL DEFAULT '[]'::jsonb"
+            ),
             "ALTER TABLE IF EXISTS user_config ADD COLUMN IF NOT EXISTS enable_memory BOOLEAN NOT NULL DEFAULT FALSE",
             """
             UPDATE cli_auth_sessions

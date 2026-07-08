@@ -84,7 +84,6 @@ class ChatbotAgent(BaseAgent):
         super().__init__(**kwargs)
 
     async def get_graph(self, context=None, **kwargs):
-
         context = await prepare_agent_runtime_context(
             context or self.context_schema(),
             context_schema=self.context_schema,

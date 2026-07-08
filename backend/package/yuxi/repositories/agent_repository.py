@@ -171,6 +171,29 @@ def _slugify(value: str | None) -> str:
     return base[:56] or f"agent-{uuid.uuid4().hex[:12]}"
 
 
+SUGGESTED_QUESTIONS_MAX_ITEMS = 20
+SUGGESTED_QUESTION_MAX_LENGTH = 200
+
+
+def _sanitize_suggested_questions(values: list[str] | None) -> list[str]:
+    if not values:
+        return []
+    cleaned: list[str] = []
+    for v in values:
+        if v is None:
+            continue
+        text = str(v).strip()
+        if not text:
+            continue
+        if len(text) > SUGGESTED_QUESTION_MAX_LENGTH:
+            text = text[:SUGGESTED_QUESTION_MAX_LENGTH]
+        if text not in cleaned:
+            cleaned.append(text)
+        if len(cleaned) >= SUGGESTED_QUESTIONS_MAX_ITEMS:
+            break
+    return cleaned
+
+
 class AgentRepository:
     def __init__(self, db_session: AsyncSession):
         self.db = db_session
@@ -416,6 +439,7 @@ class AgentRepository:
         description: str | None = None,
         icon: str | None = None,
         pics: list[str] | None = None,
+        suggested_questions: list[str] | None = None,
         config_json: dict | None = None,
         share_config: dict | None = None,
         is_default: bool = False,
@@ -442,6 +466,7 @@ class AgentRepository:
             description=description,
             icon=icon,
             pics=pics or [],
+            suggested_questions=_sanitize_suggested_questions(suggested_questions),
             config_json=config_json or {"context": {}},
             share_config=normalized_share_config,
             is_default=False,
@@ -466,6 +491,7 @@ class AgentRepository:
         description: str | None = None,
         icon: str | None = None,
         pics: list[str] | None = None,
+        suggested_questions: list[str] | None = None,
         config_json: dict | None = None,
         share_config: dict | None = None,
         is_subagent: bool | None = None,
@@ -482,6 +508,8 @@ class AgentRepository:
             agent.icon = icon
         if pics is not None:
             agent.pics = pics
+        if suggested_questions is not None:
+            agent.suggested_questions = _sanitize_suggested_questions(suggested_questions)
         if config_json is not None:
             agent.config_json = config_json
         if share_config is not None:

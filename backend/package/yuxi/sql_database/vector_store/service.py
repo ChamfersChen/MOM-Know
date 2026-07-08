@@ -112,7 +112,9 @@ class SqlTableVectorStore:
             if dim_field is not None and dim_field.params.get("dim") == embedding_dim and has_is_choose:
                 logger.info(f"Reusing existing Milvus collection {SQL_TABLES_COLLECTION}")
                 return collection
-            logger.warning(f"Schema changed (dim_match={dim_field is not None and dim_field.params.get('dim') == embedding_dim}, has_is_choose={has_is_choose}), dropping and recreating {SQL_TABLES_COLLECTION}")
+            logger.warning(
+                f"Schema changed (dim_match={dim_field is not None and dim_field.params.get('dim') == embedding_dim}, has_is_choose={has_is_choose}), dropping and recreating {SQL_TABLES_COLLECTION}"
+            )
             utility.drop_collection(SQL_TABLES_COLLECTION, using=self.connection_alias)
         return self._create_collection(embedding_dim)
 
@@ -131,6 +133,7 @@ class SqlTableVectorStore:
     async def initialize_collection(self, embedding_model_spec: str | None = None):
         if embedding_model_spec is None:
             from yuxi.config import config
+
             embedding_model_spec = config.embed_model
         model_info = model_cache.get_model_info(embedding_model_spec)
         if not model_info or model_info.model_type != "embedding":
@@ -142,6 +145,7 @@ class SqlTableVectorStore:
 
     def _get_embedding_function(self, embedding_model_spec: str):
         from yuxi.models.embed import select_embedding_model
+
         model = select_embedding_model(embedding_model_spec)
         batch_size = int(getattr(model, "batch_size", 40) or 40)
         return partial(model.abatch_encode, batch_size=batch_size)
@@ -160,6 +164,7 @@ class SqlTableVectorStore:
             await self.initialize_collection(embedding_model_spec)
         if embedding_model_spec is None:
             from yuxi.config import config
+
             embedding_model_spec = config.embed_model
         embed_fn = self._get_embedding_function(embedding_model_spec)
         embeddings = await embed_fn([content])
@@ -192,6 +197,7 @@ class SqlTableVectorStore:
             await self.initialize_collection(embedding_model_spec)
         if embedding_model_spec is None:
             from yuxi.config import config
+
             embedding_model_spec = config.embed_model
         embed_fn = self._get_embedding_function(embedding_model_spec)
         texts = [e["content"] for e in entries]
@@ -259,7 +265,10 @@ class SqlTableVectorStore:
             results = await self._keyword_search(query, expr, top_k, output_fields)
         else:
             results = await self._hybrid_search(
-                query, expr, top_k, output_fields,
+                query,
+                expr,
+                top_k,
+                output_fields,
                 vector_weight=vector_weight,
                 bm25_weight=bm25_weight,
                 bm25_drop_ratio_search=bm25_drop_ratio_search,
@@ -282,6 +291,7 @@ class SqlTableVectorStore:
 
     async def _vector_search(self, query: str, expr: str | None, top_k: int, output_fields: list[str]) -> list[dict]:
         from yuxi.config import config
+
         embedding_model_spec = config.embed_model
         embed_fn = self._get_embedding_function(embedding_model_spec)
 
@@ -328,6 +338,7 @@ class SqlTableVectorStore:
         bm25_drop_ratio_search: float = 0.0,
     ) -> list[dict]:
         from yuxi.config import config
+
         embedding_model_spec = config.embed_model
         embed_fn = self._get_embedding_function(embedding_model_spec)
 
@@ -364,13 +375,15 @@ class SqlTableVectorStore:
         results = []
         for hit in raw[0]:
             entity = hit.entity
-            results.append({
-                "table_id": entity.get("table_id"),
-                "table_name": entity.get("table_name"),
-                "db_id": entity.get("db_id"),
-                "db_name": entity.get("db_name"),
-                "is_choose": entity.get("is_choose"),
-                "content": entity.get("content"),
-                "score": float(hit.distance or 0.0),
-            })
+            results.append(
+                {
+                    "table_id": entity.get("table_id"),
+                    "table_name": entity.get("table_name"),
+                    "db_id": entity.get("db_id"),
+                    "db_name": entity.get("db_name"),
+                    "is_choose": entity.get("is_choose"),
+                    "content": entity.get("content"),
+                    "score": float(hit.distance or 0.0),
+                }
+            )
         return results

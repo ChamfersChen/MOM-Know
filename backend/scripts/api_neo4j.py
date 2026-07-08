@@ -105,7 +105,7 @@ def scenario_result_to_markdown(scenario_name: str, records: Iterable[Any]) -> s
     # ---- 第一遍: 建立 "字段名 -> 产出它的 step 序号" 索引, 用于后面做字段溯源 ----
     field_source_step = {}
     for s in steps:
-        for f in (s.get("produced_fields") or []):
+        for f in s.get("produced_fields") or []:
             if f and f not in field_source_step:
                 field_source_step[f] = s["call_order"]
 
@@ -126,7 +126,7 @@ def scenario_result_to_markdown(scenario_name: str, records: Iterable[Any]) -> s
         if s["call_order"] not in visited_steps:
             lines.append(f"### Step {s['call_order']}\n")
             visited_steps.add(s["call_order"])
-        
+
         lines.append(f"- **接口**: `{s['method']}: {s['endpoint']}`")
         lines.append(f"- **描述**: {s.get('description') or '无'}")
 
@@ -164,7 +164,6 @@ def scenario_result_to_markdown(scenario_name: str, records: Iterable[Any]) -> s
 
 
 class Neo4jApiGraph:
-
     def __init__(self, uri: str, user: str, password: str):
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
         self._init_constraints()
@@ -187,68 +186,102 @@ class Neo4jApiGraph:
 
     # ================= CREATE =================
 
-    def add_api(self, category: list, endpoint: str, method: str,
-                description: str, params=None, body=None,
-                response_note: str = "",
-                produces: Optional[list] = None,
-                requires: Optional[list] = None):
+    def add_api(
+        self,
+        category: list,
+        endpoint: str,
+        method: str,
+        description: str,
+        params=None,
+        body=None,
+        response_note: str = "",
+        produces: Optional[list] = None,
+        requires: Optional[list] = None,
+    ):
         produces = produces or []
         requires = requires or []
 
         def _tx(tx):
-            tx.run("""
+            tx.run(
+                """
                 MERGE (a:API {endpoint: $endpoint})
                 SET a.method = $method,
                     a.description = $description,
                     a.params = $params,
                     a.body = $body,
                     a.response_note = $response_note
-            """, endpoint=endpoint, method=method, description=description,
-                 params=_to_storable(params), body=_to_storable(body),
-                 response_note=response_note)
+            """,
+                endpoint=endpoint,
+                method=method,
+                description=description,
+                params=_to_storable(params),
+                body=_to_storable(body),
+                response_note=response_note,
+            )
 
             for cat in category:
-                tx.run("""
+                tx.run(
+                    """
                     MERGE (c:Category {name: $cat})
                     WITH c
                     MATCH (a:API {endpoint: $endpoint})
                     MERGE (a)-[:BELONGS_TO]->(c)
-                """, cat=cat, endpoint=endpoint)
+                """,
+                    cat=cat,
+                    endpoint=endpoint,
+                )
 
             for f in produces:
-                tx.run("""
+                tx.run(
+                    """
                     MERGE (f:Field {name: $f})
                     WITH f
                     MATCH (a:API {endpoint: $endpoint})
                     MERGE (a)-[:PRODUCES]->(f)
-                """, f=f, endpoint=endpoint)
+                """,
+                    f=f,
+                    endpoint=endpoint,
+                )
 
             for f in requires:
-                tx.run("""
+                tx.run(
+                    """
                     MERGE (f:Field {name: $f})
                     WITH f
                     MATCH (a:API {endpoint: $endpoint})
                     MERGE (a)-[:REQUIRES]->(f)
-                """, f=f, endpoint=endpoint)
+                """,
+                    f=f,
+                    endpoint=endpoint,
+                )
 
         with self.driver.session() as session:
             session.execute_write(_tx)
 
     def add_scenario(self, name: str, description: str, steps: list):
         """steps: [(endpoint, order), ...]"""
-        import pdb; pdb.set_trace()
+        import pdb
+
+        pdb.set_trace()
+
         def _tx(tx):
-            tx.run("MERGE (s:Scenario {name: $name}) SET s.description = $description",
-                   name=name, description=description)
+            tx.run(
+                "MERGE (s:Scenario {name: $name}) SET s.description = $description", name=name, description=description
+            )
             for endpoint, order in steps:
                 res = tx.run("MATCH (a:API {endpoint: $endpoint}) RETURN a", endpoint=endpoint).single()
                 if res is None:
                     raise ValueError(f"接口不存在, 请先 add_api: {endpoint}")
-                tx.run("""
+                tx.run(
+                    """
                     MATCH (a:API {endpoint: $endpoint}), (s:Scenario {name: $name})
                     MERGE (a)-[r:STEP_OF]->(s)
                     SET r.order = $order
-                """, endpoint=endpoint, name=name, order=order)
+                """,
+                    endpoint=endpoint,
+                    name=name,
+                    order=order,
+                )
 
         with self.driver.session() as session:
             session.execute_write(_tx)
@@ -258,6 +291,7 @@ class Neo4jApiGraph:
         清空旧的 DEPENDS_ON 关系, 按 REQUIRES + PRODUCES 重新推导。
         每次新增/修改接口的 produces/requires 后调用一次。
         """
+
         def _tx(tx):
             tx.run("MATCH (:API)-[r:DEPENDS_ON]->(:API) DELETE r")
             tx.run("""
@@ -281,36 +315,50 @@ class Neo4jApiGraph:
         with self.driver.session() as session:
             session.run(
                 f"MATCH (a:API {{endpoint: $endpoint}}) SET {set_clause}",
-                endpoint=endpoint, **storable,
+                endpoint=endpoint,
+                **storable,
             )
 
-    def update_api_io(self, endpoint: str,
-                       produces: Optional[list] = None,
-                       requires: Optional[list] = None):
+    def update_api_io(self, endpoint: str, produces: Optional[list] = None, requires: Optional[list] = None):
         """整体重设某接口的 produces/requires, 然后自动重新推导依赖"""
+
         def _tx(tx):
-            tx.run("""
+            tx.run(
+                """
                 MATCH (a:API {endpoint: $endpoint})-[r:PRODUCES]->(:Field)
                 DELETE r
-            """, endpoint=endpoint)
-            tx.run("""
+            """,
+                endpoint=endpoint,
+            )
+            tx.run(
+                """
                 MATCH (a:API {endpoint: $endpoint})-[r:REQUIRES]->(:Field)
                 DELETE r
-            """, endpoint=endpoint)
-            for f in (produces or []):
-                tx.run("""
+            """,
+                endpoint=endpoint,
+            )
+            for f in produces or []:
+                tx.run(
+                    """
                     MERGE (f:Field {name: $f})
                     WITH f
                     MATCH (a:API {endpoint: $endpoint})
                     MERGE (a)-[:PRODUCES]->(f)
-                """, f=f, endpoint=endpoint)
-            for f in (requires or []):
-                tx.run("""
+                """,
+                    f=f,
+                    endpoint=endpoint,
+                )
+            for f in requires or []:
+                tx.run(
+                    """
                     MERGE (f:Field {name: $f})
                     WITH f
                     MATCH (a:API {endpoint: $endpoint})
                     MERGE (a)-[:REQUIRES]->(f)
-                """, f=f, endpoint=endpoint)
+                """,
+                    f=f,
+                    endpoint=endpoint,
+                )
 
         with self.driver.session() as session:
             session.execute_write(_tx)
@@ -341,28 +389,37 @@ class Neo4jApiGraph:
 
     def get_apis_by_category(self, category: str) -> list:
         with self.driver.session() as session:
-            res = session.run("""
+            res = session.run(
+                """
                 MATCH (a:API)-[:BELONGS_TO]->(:Category {name: $category})
                 RETURN a.endpoint AS endpoint
-            """, category=category)
+            """,
+                category=category,
+            )
             return [r["endpoint"] for r in res]
 
     def get_dependencies(self, endpoint: str) -> list:
         """该接口直接依赖哪些接口"""
         with self.driver.session() as session:
-            res = session.run("""
+            res = session.run(
+                """
                 MATCH (a:API {endpoint: $endpoint})-[dep:DEPENDS_ON]->(b:API)
                 RETURN b.endpoint AS depends_on, dep.via_field AS via_field
-            """, endpoint=endpoint)
+            """,
+                endpoint=endpoint,
+            )
             return [dict(r) for r in res]
 
     def get_dependents(self, endpoint: str) -> list:
         """哪些接口依赖了该接口"""
         with self.driver.session() as session:
-            res = session.run("""
+            res = session.run(
+                """
                 MATCH (a:API)-[dep:DEPENDS_ON]->(b:API {endpoint: $endpoint})
                 RETURN a.endpoint AS dependent, dep.via_field AS via_field
-            """, endpoint=endpoint)
+            """,
+                endpoint=endpoint,
+            )
             return [dict(r) for r in res]
 
     def get_call_chain(self, endpoint: str) -> list:
@@ -374,11 +431,14 @@ class Neo4jApiGraph:
         import networkx as nx
 
         with self.driver.session() as session:
-            res = session.run("""
+            res = session.run(
+                """
                 MATCH p = (start:API {endpoint: $endpoint})-[:DEPENDS_ON*0..]->(a:API)
                 UNWIND relationships(p) AS rel
                 RETURN DISTINCT startNode(rel).endpoint AS src, endNode(rel).endpoint AS dst
-            """, endpoint=endpoint)
+            """,
+                endpoint=endpoint,
+            )
             edges = [(r["src"], r["dst"]) for r in res]
 
         sub = nx.DiGraph()
@@ -389,16 +449,20 @@ class Neo4jApiGraph:
 
     def get_scenario_steps(self, scenario_name: str) -> list:
         with self.driver.session() as session:
-            res = session.run("""
+            res = session.run(
+                """
                 MATCH (a:API)-[r:STEP_OF]->(:Scenario {name: $name})
                 RETURN a.endpoint AS endpoint, r.order AS order
                 ORDER BY r.order
-            """, name=scenario_name)
+            """,
+                name=scenario_name,
+            )
             return [r["endpoint"] for r in res]
-        
+
     def get_with_scenario(self, scenario_name: str) -> list:
         with self.driver.session() as session:
-            res = session.run("""
+            res = session.run(
+                """
                 MATCH (a:API)-[step:STEP_OF]->(s:Scenario {name: $scenarioName})
                 OPTIONAL MATCH (a)-[:REQUIRES]->(req:Field)
                 OPTIONAL MATCH (a)-[:PRODUCES]->(prod:Field)
@@ -412,7 +476,9 @@ class Neo4jApiGraph:
                     required_fields,
                     produced_fields
                 ORDER BY step.order;
-            """, scenarioName=scenario_name)
+            """,
+                scenarioName=scenario_name,
+            )
             return [dict(r) for r in res]
 
     def clear_all(self):
@@ -429,6 +495,7 @@ class Neo4jApiGraph:
 def _to_storable(value):
     """Neo4j 属性不支持嵌套 dict, 复杂结构 (params/body) 统一存成 JSON 字符串"""
     import json
+
     if value is None:
         return None
     if isinstance(value, (dict, list)):
@@ -442,9 +509,9 @@ def _to_storable(value):
 def main():
     URI = "bolt://localhost:17687"
     USER = "neo4j"
-    PASSWORD = "0123456789"   # 改成你自己的密码
+    PASSWORD = "0123456789"  # 改成你自己的密码
     jsonl_path = "./test_apis.jsonl"
-    scenarios_filepath = 'test_scenarios.json'
+    scenarios_filepath = "test_scenarios.json"
 
     graph = Neo4jApiGraph(URI, USER, PASSWORD)
 
@@ -472,8 +539,6 @@ def main():
         #         except json.JSONDecodeError as e:
         #             raise ValueError(f"第 {line_no} 行 JSON 解析失败: {e}\n原始内容: {line}")
 
-
-        
         # graph.rebuild_dependencies()
 
         # for scenario_name, scenario in json.load(open(scenarios_filepath, "r", encoding="utf-8")).items():
@@ -493,12 +558,11 @@ def main():
         #     ],
         # )
 
-
         scenario_name = "工单修改删除流程"
         records = graph.get_with_scenario(scenario_name)
         md = scenario_result_to_markdown(scenario_name, records)
         print(md)
-        
+
         # print("=== 查询: admin/order/update 的完整前置调用链 ===")
         # print(graph.get_call_chain("admin/order/update"))
 

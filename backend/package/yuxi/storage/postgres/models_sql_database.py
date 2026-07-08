@@ -54,4 +54,3 @@ class SqlDatabaseTable(Base):
     is_choose = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=utc_now_naive)
     updated_at = Column(DateTime(timezone=True), default=utc_now_naive, onupdate=utc_now_naive)
-

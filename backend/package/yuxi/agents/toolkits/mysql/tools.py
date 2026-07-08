@@ -29,8 +29,9 @@ _connection_manager: MySQLConnectionManager | None = None
 host_set = set()
 port_set = set()
 
+
 async def init_tenant_organization_info(
-    runtime:ToolRuntime,
+    runtime: ToolRuntime,
 ):
     runtime_context = runtime.context
     user_id = getattr(runtime_context, "uid", None)
@@ -47,7 +48,11 @@ async def init_tenant_organization_info(
     # 从 Redis 获取 MOM Token
     token_data = await java_token_service.get_token_by_user(user_id)
     if not token_data:
-        return False, "error: MOM 系统认证未同步，请从 MOM 系统跳转登录后重试。用户尚未绑定 MOM 系统账号，或认证已过期。请在页面上方点击'前往同步'按钮。", ""
+        return (
+            False,
+            "error: MOM 系统认证未同步，请从 MOM 系统跳转登录后重试。用户尚未绑定 MOM 系统账号，或认证已过期。请在页面上方点击'前往同步'按钮。",
+            "",
+        )
 
     endpoint = "admin/modelFactory/organization/list"
     method = "GET"
@@ -70,7 +75,11 @@ async def init_tenant_organization_info(
 
         if response.status_code == 401:
             await java_token_service.delete_token(user_id, token_data.tenant_id)
-            return False, "error: MOM 系统认证已过期，请从 MOM 系统重新跳转登录。Token 已失效，需用户重新从 MOM 系统跳转。", ""
+            return (
+                False,
+                "error: MOM 系统认证已过期，请从 MOM 系统重新跳转登录。Token 已失效，需用户重新从 MOM 系统跳转。",
+                "",
+            )
 
         if response.status_code >= 400:
             error_detail = error_message
@@ -89,21 +98,29 @@ async def init_tenant_organization_info(
             result = response.json()
 
             # 对 dsScope 字段进行解释
-            data = result.get('data', [])
+            data = result.get("data", [])
             organization_info = []
             for d in data:
-                org_id = d.get('value')
-                org_name = d.get('label')
+                org_id = d.get("value")
+                org_name = d.get("label")
                 if org_id and org_name:
                     organization_info.append(f"{org_name} (ID: {org_id})")
-            result_str = f"当前用户所属的组织列表:\n{'\n'.join(organization_info)}" if organization_info else "未找到用户所属的组织信息，请确认 MOM 系统中该用户是否有组织信息。\n\n"
-            result_str += "\n注意在查询数据库表信息时，使用组织ID来过滤查询结果。\n如果存在多个组织ID，需要询问用户查询哪个组织的表信息\n\n" if organization_info else ""
+            result_str = (
+                f"当前用户所属的组织列表:\n{'\n'.join(organization_info)}"
+                if organization_info
+                else "未找到用户所属的组织信息，请确认 MOM 系统中该用户是否有组织信息。\n\n"
+            )
+            result_str += (
+                "\n注意在查询数据库表信息时，使用组织ID来过滤查询结果。\n如果存在多个组织ID，需要询问用户查询哪个组织的表信息\n\n"
+                if organization_info
+                else ""
+            )
             return True, tenant_info, result_str
 
         except Exception as e:
             logger.error(f"MOM API 返回值处理错误: {method} {url}, error={e}")
             result = response.text
-            return False, f"error: MOM API 返回值处理错误: {str(e)}\n\n返回内容: {result}", ""   
+            return False, f"error: MOM API 返回值处理错误: {str(e)}\n\n返回内容: {result}", ""
 
     except httpx.TimeoutException:
         return False, "error: MOM API 请求超时，请稍后重试", ""
@@ -124,20 +141,14 @@ def convert_structure(data):
         parent_id = parent["id"]
 
         # 找子节点
-        children = [
-            item["word"]
-            for item in data
-            if item["pid"] == parent_id
-        ]
+        children = [item["word"] for item in data if item["pid"] == parent_id]
 
-        result.append({
-            "id": parent_id,
-            "name": parent["word"],
-            "description": parent["description"],
-            "children": children
-        })
+        result.append(
+            {"id": parent_id, "name": parent["word"], "description": parent["description"], "children": children}
+        )
 
     return result
+
 
 def get_connection_manager() -> MySQLConnectionManager:
     """获取全局连接管理器"""
@@ -191,14 +202,16 @@ async def mysql_list_tables_with_query(
     port_set.clear()
     logger.info(f">> 查询表名及说明 {query}")
     extras = mysql_list_tables_with_query.extras
-    user_department = extras.get('user_department')
+    user_department = extras.get("user_department")
     success, tenant_info, organization_info = await init_tenant_organization_info(runtime)
     if not success:
         return tenant_info + organization_info
     try:
         await sql_database.initialize()
         query_results = await sql_database.search_tables(
-            query=query, search_terms=True, search_sqls=True,
+            query=query,
+            search_terms=True,
+            search_sqls=True,
         )
 
         tables = query_results.get("tables", [])
@@ -305,7 +318,9 @@ async def mysql_list_tables_with_query(
 
 class TableListModel(BaseModel):
     """获取表名列表的参数模型"""
+
     pass
+
 
 class TableDescribeModel(BaseModel):
     """获取表结构的参数模型"""
@@ -318,14 +333,15 @@ class TableDescribeModel(BaseModel):
     category="buildin",
     tags=["数据库", "结构"],
     display_name="描述MySQL表结构",
-    name_or_callable="mysql_describe_table", description="获得描述表",
+    name_or_callable="mysql_describe_table",
+    description="获得描述表",
     args_schema=TableDescribeModel,
 )
 async def mysql_describe_table(
-        database_name: Annotated[str, "要查询的数据库名"],
-        table_name: Annotated[str, "要查询结构的表名"],
-        runtime: ToolRuntime = None,
-    ) -> str:
+    database_name: Annotated[str, "要查询的数据库名"],
+    table_name: Annotated[str, "要查询结构的表名"],
+    runtime: ToolRuntime = None,
+) -> str:
     """获取指定表的详细结构信息
 
     这个工具用来查看表的字段信息、数据类型、是否允许NULL、默认值、键类型等。
@@ -437,11 +453,12 @@ class QueryModel(BaseModel):
     category="buildin",
     tags=["数据库", "SQL"],
     display_name="执行MySQL查询",
-    name_or_callable="mysql_query", description="执行 SQL 查询",
+    name_or_callable="mysql_query",
+    description="执行 SQL 查询",
     args_schema=QueryModel,
 )
 async def mysql_query(
-    database_names: Annotated[list[str], "要查询的数据库名称列表"], # noqa E501 TODO 可能存在同一个连接跨数据库表查询的问题，需要判断是否为一个连接
+    database_names: Annotated[list[str], "要查询的数据库名称列表"],  # noqa E501 TODO 可能存在同一个连接跨数据库表查询的问题，需要判断是否为一个连接
     sql: Annotated[str, "要执行的SQL查询语句（只能是SELECT语句, 且需要带上数据库名, 如：SELECT * FROM db1.table1）"],
     timeout: Annotated[int | None, "查询超时时间（秒），默认60秒，最大600秒"] = 60,
 ) -> str:
@@ -470,7 +487,7 @@ async def mysql_query(
         # conn_manager = get_connection_manager()
         # connection = conn_manager.get_connection()
 
-        database_name = database_names[0] # 获得同一个连接下的其中一个数据库名
+        database_name = database_names[0]  # 获得同一个连接下的其中一个数据库名
         # db_id = sql_database.db_name_to_id[database_name]
         host_port_name = f"{host}:{port}/{database_name}"
         db_id = sql_database.db_host_port_name_to_id[host_port_name]
@@ -585,9 +602,11 @@ def _inject_db_description(tools: list[Any]) -> None:
 
     _db_description_injected = True
 
+
 class StoreSQLResult(BaseModel):
     query: str = Field(..., description="用户问题")
     sql: str = Field(..., description="最终能够回答用户问题的SQL语句")
+
 
 # @tool(
 #     category="mysql",
@@ -597,7 +616,7 @@ class StoreSQLResult(BaseModel):
 #     args_schema=StoreSQLResult,
 # )
 async def store_query_result(
-    query: Annotated[str, "用户问题描述"], # noqa E501 TODO 可能存在同一个连接跨数据库表查询的问题，需要判断是否为一个连接
+    query: Annotated[str, "用户问题描述"],  # noqa E501 TODO 可能存在同一个连接跨数据库表查询的问题，需要判断是否为一个连接
     sql: Annotated[str, "最终能够回答用户问题的SQL语句"],
 ) -> str:
     try:
@@ -605,7 +624,7 @@ async def store_query_result(
             SqlExampleInfo(
                 sql=sql,
                 description=query,
-                create_time=datetime.now(), # .strftime("%Y-%m-%d %H:%M:%S"),
+                create_time=datetime.now(),  # .strftime("%Y-%m-%d %H:%M:%S"),
                 datasource_host=deepcopy(host_set).pop() if len(host_set) == 1 else None,
                 datasource_port=deepcopy(port_set).pop() if len(port_set) == 1 else None,
                 enabled=True,
@@ -615,7 +634,6 @@ async def store_query_result(
     except Exception as e:
         logger.error(f"存储SQL示例失败: {e}, {traceback.format_exc()}")
         return f"存储SQL示例失败: {str(e)}"
-
 
 
 def get_mysql_tools() -> list[Any]:

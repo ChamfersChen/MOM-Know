@@ -29,10 +29,11 @@ class SqlDatabaseTableRepository:
             if table is None:
                 return None
             for key, value in data.items():
-                if key in ['updated_at', 'created_at']:
+                if key in ["updated_at", "created_at"]:
                     value = utc_now_naive()
                 setattr(table, key, value)
         return table
+
     async def get_by_table_id(self, table_id: str) -> SqlDatabaseTable | None:
         async with pg_manager.get_async_session_context() as session:
             result = await session.execute(select(SqlDatabaseTable).where(SqlDatabaseTable.table_id == table_id))

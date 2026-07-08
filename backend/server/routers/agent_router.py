@@ -37,6 +37,7 @@ class AgentCreate(BaseModel):
     description: str | None = None
     icon: str | None = None
     pics: list[str] | None = None
+    suggested_questions: list[str] | None = None
     config_json: dict | None = None
     share_config: dict | None = None
     is_subagent: bool | None = None
@@ -48,6 +49,7 @@ class AgentUpdate(BaseModel):
     description: str | None = None
     icon: str | None = None
     pics: list[str] | None = None
+    suggested_questions: list[str] | None = None
     config_json: dict | None = None
     share_config: dict | None = None
     is_subagent: bool | None = None
@@ -154,6 +156,7 @@ async def create_agent(
             description=payload.description,
             icon=payload.icon,
             pics=payload.pics,
+            suggested_questions=payload.suggested_questions,
             config_json=_filter_agent_config_json(payload.backend_id, payload.config_json, current_user.role),
             share_config=payload.share_config,
             is_default=payload.set_default,
@@ -204,6 +207,7 @@ async def update_agent(
             description=payload.description,
             icon=payload.icon,
             pics=payload.pics,
+            suggested_questions=payload.suggested_questions,
             config_json=_filter_agent_config_json(item.backend_id, payload.config_json, current_user.role)
             if payload.config_json is not None
             else None,

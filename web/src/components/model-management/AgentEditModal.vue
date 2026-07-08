@@ -33,6 +33,23 @@ const agentStore = useAgentStore()
 const DEFAULT_AGENT_BACKEND_ID = 'ChatbotAgent'
 const SUB_AGENT_BACKEND_ID = 'SubAgentBackend'
 const runtimeAgentModalTabs = ['model', 'tools', 'other']
+const SUGGESTED_QUESTIONS_MAX_ITEMS = 20
+const SUGGESTED_QUESTION_MAX_LENGTH = 200
+
+const sanitizeSuggestedQuestions = (values) => {
+  if (!Array.isArray(values)) return []
+  const seen = new Set()
+  const result = []
+  for (const raw of values) {
+    if (raw == null) continue
+    const text = String(raw).trim().slice(0, SUGGESTED_QUESTION_MAX_LENGTH)
+    if (!text || seen.has(text)) continue
+    seen.add(text)
+    result.push(text)
+    if (result.length >= SUGGESTED_QUESTIONS_MAX_ITEMS) break
+  }
+  return result
+}
 
 const showAgentModal = ref(false)
 const editingAgentId = ref(null)
@@ -48,7 +65,8 @@ const agentForm = reactive({
   name: '',
   backend_id: DEFAULT_AGENT_BACKEND_ID,
   description: '',
-  icon: ''
+  icon: '',
+  suggested_questions: []
 })
 
 const normalizeAgent = (agent) => {
@@ -126,7 +144,8 @@ const resetAgentForm = () => {
     name: '',
     backend_id: getDefaultBackendId(),
     description: '',
-    icon: ''
+    icon: '',
+    suggested_questions: []
   })
   agentShareConfig.value = getInitialShareConfig()
 }
@@ -165,7 +184,10 @@ const openEdit = async (agent) => {
     name: detail.name || '',
     backend_id: detail.backend_id || DEFAULT_AGENT_BACKEND_ID,
     description: detail.description || '',
-    icon: detail.icon || ''
+    icon: detail.icon || '',
+    suggested_questions: Array.isArray(detail.suggested_questions)
+      ? [...detail.suggested_questions]
+      : []
   })
   agentShareConfig.value = isBuiltinAgent(detail)
     ? { access_level: 'global', department_ids: [], user_uids: [] }
@@ -220,7 +242,8 @@ const buildAgentPayload = () => {
     description: agentForm.description.trim() || null,
     icon: agentForm.icon.trim() || null,
     share_config: normalizeShareConfigForPayload(),
-    is_subagent: isSubAgentBackend(agentForm.backend_id)
+    is_subagent: isSubAgentBackend(agentForm.backend_id),
+    suggested_questions: sanitizeSuggestedQuestions(agentForm.suggested_questions)
   }
 
   if (!editingAgentId.value) {
@@ -422,6 +445,21 @@ defineExpose({
                 placeholder="可选"
               />
             </label>
+            <div class="form-label full-width">
+              <span>示例问题</span>
+              <a-select
+                v-model:value="agentForm.suggested_questions"
+                mode="tags"
+                class="suggested-questions-select"
+                placeholder="输入示例问题后按回车添加"
+                :max-tag-text-length="SUGGESTED_QUESTION_MAX_LENGTH"
+                :token-separating="['\n', ',', '，', '；']"
+              />
+              <span class="form-label-hint">
+                最多 {{ SUGGESTED_QUESTIONS_MAX_ITEMS }} 条，单条不超过
+                {{ SUGGESTED_QUESTION_MAX_LENGTH }} 字
+              </span>
+            </div>
           </div>
 
           <div v-if="canEditAgentShareConfig" class="share-config-block">
@@ -906,6 +944,21 @@ defineExpose({
     color: var(--gray-700);
     font-size: 12px;
     font-weight: 500;
+  }
+}
+
+.form-label-hint {
+  color: var(--gray-500);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.suggested-questions-select {
+  width: 100%;
+
+  :deep(.ant-select-selection-overflow-item-rest) {
+    color: var(--gray-500);
   }
 }
 

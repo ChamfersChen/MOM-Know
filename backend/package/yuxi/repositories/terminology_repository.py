@@ -20,6 +20,7 @@ ORDER BY similarity DESC
 LIMIT 10;
 """
 
+
 class TerminologyRepository:
     async def get_all(self) -> list[Terminology]:
         async with pg_manager.get_async_session_context() as session:
@@ -36,18 +37,20 @@ class TerminologyRepository:
             result = await session.execute(select(Terminology).where(Terminology.pid == pid))
             return list(result.scalars().all())
 
-
-    async def get_by_host_port(self, host: str, port:int) -> list[Terminology]:
+    async def get_by_host_port(self, host: str, port: int) -> list[Terminology]:
         async with pg_manager.get_async_session_context() as session:
-            result = await session.execute(select(Terminology).where(Terminology.datasource_host==host, 
-                                                                     Terminology.datasource_port==port))
+            result = await session.execute(
+                select(Terminology).where(Terminology.datasource_host == host, Terminology.datasource_port == port)
+            )
             return list(result.scalars().all())
 
     async def check_exists(self, word: str, host: str, port: int) -> Terminology | None:
         async with pg_manager.get_async_session_context() as session:
-            result = await session.execute(select(Terminology).where(Terminology.word == word, 
-                                                                     Terminology.datasource_host == host,
-                                                                     Terminology.datasource_port == port))
+            result = await session.execute(
+                select(Terminology).where(
+                    Terminology.word == word, Terminology.datasource_host == host, Terminology.datasource_port == port
+                )
+            )
             return result.scalar_one_or_none()
 
     async def create(self, data: dict[str, Any]) -> Terminology:
@@ -68,12 +71,12 @@ class TerminologyRepository:
 
             if term is None:
                 return None
-            
+
             for key, value in data.items():
                 setattr(term, key, value)
         return term
 
-    async def enable_terminology(self, id:int, enable:bool) -> Terminology | None:
+    async def enable_terminology(self, id: int, enable: bool) -> Terminology | None:
         async with pg_manager.get_async_session_context() as session:
             result = await session.execute(select(Terminology).where(Terminology.id == id))
             term = result.scalar_one_or_none()
@@ -88,7 +91,7 @@ class TerminologyRepository:
             term = result.scalar_one_or_none()
             if term is not None:
                 await session.delete(term)
-            
+
             children = await session.execute(select(Terminology).where(Terminology.pid == id))
             for child in children.scalars().all():
                 await session.delete(child)
@@ -101,11 +104,13 @@ class TerminologyRepository:
 
     async def get_terms_with_embedding(self, embedding, ds_host: str, ds_port: int) -> list[dict[str, Any]]:
         async with pg_manager.get_async_session_context() as session:
-            result = await session.execute(text(embedding_sql),
-                            {
-                                'embedding_array': str(embedding),
-                                'ds_host': str(ds_host),
-                                'ds_port': ds_port,
-                            })
-            
+            result = await session.execute(
+                text(embedding_sql),
+                {
+                    "embedding_array": str(embedding),
+                    "ds_host": str(ds_host),
+                    "ds_port": ds_port,
+                },
+            )
+
             return result.mappings().all()

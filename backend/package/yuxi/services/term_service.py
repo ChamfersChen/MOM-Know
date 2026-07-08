@@ -199,6 +199,7 @@ class TermService:
 
         from yuxi.models.embed import select_embedding_model
         from yuxi.config import config
+
         model = select_embedding_model(config.embed_model)
         embedding = await model.aencode([query])
         if ds_host and ds_port is not None:

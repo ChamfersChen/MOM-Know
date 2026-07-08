@@ -15,30 +15,49 @@ from yuxi.agents.toolkits.registry import tool
 from .tools import list_endpoints
 
 HTTP_METHODS = ["GET", "POST", "PUT", "DELETE"]
-REMOVE_KEYS = ["files", "updateTime", "createTime", "updateBy", "createBy", "remark", "tenantId", 
-               "organizationId", "parentId", "weight"]  # 需要从结果中移除的字段，避免返回过多无用信息
+REMOVE_KEYS = [
+    "files",
+    "updateTime",
+    "createTime",
+    "updateBy",
+    "createBy",
+    "remark",
+    "tenantId",
+    "organizationId",
+    "parentId",
+    "weight",
+]  # 需要从结果中移除的字段，避免返回过多无用信息
 
 # 端点注册表文件路径
 ORDER_CENTER_ORDER_ENDPOINTS_PATH = os.path.join(os.path.dirname(__file__), "endpoints/order_center/order_analyse.json")
-ORDER_CENTER_SCHEDULE_ENDPOINTS_PATH = os.path.join(os.path.dirname(__file__), "endpoints/order_center/order_schedule.json")
-ORDER_CENTER_SCHEDULE_UPDATE_ENDPOINTS_PATH = os.path.join(os.path.dirname(__file__), "endpoints/order_center/order_schedule_update.json")
+ORDER_CENTER_SCHEDULE_ENDPOINTS_PATH = os.path.join(
+    os.path.dirname(__file__), "endpoints/order_center/order_schedule.json"
+)
+ORDER_CENTER_SCHEDULE_UPDATE_ENDPOINTS_PATH = os.path.join(
+    os.path.dirname(__file__), "endpoints/order_center/order_schedule_update.json"
+)
 
 
 def fuzzy_match_keywords(rewritten_query: str, content: List[dict], top_k: int = 5) -> List[dict]:
     """
     将 rewritten_query 中的查询与 content 中的value字段进行模糊匹配，取 top_k 并去重后返回。
-    
+
     Args:
         rewritten_query: 改写后的查询字符串
         content: 待匹配的内容列表
         top_k: 每个关键词取前 k 个匹配结果
-    
+
     Returns:
         去重后的匹配结果列表
     """
     results = []
     scores = [
-        (item, fuzz.partial_ratio(rewritten_query, f"{item.get('category', '')} {item.get('endpoint', '')} {item.get('description', '')}"))
+        (
+            item,
+            fuzz.partial_ratio(
+                rewritten_query, f"{item.get('category', '')} {item.get('endpoint', '')} {item.get('description', '')}"
+            ),
+        )
         for item in content
     ]
     top_matches = sorted(scores, key=lambda x: x[1], reverse=True)[:top_k]
@@ -47,6 +66,7 @@ def fuzzy_match_keywords(rewritten_query: str, content: List[dict], top_k: int =
         results.append(item)
 
     return results
+
 
 class ListMomEndpointsInput(BaseModel):
     """查询系统端点列表的参数"""
@@ -83,6 +103,7 @@ async def list_order_schedule_endpoints(rewritten_query: str = "") -> str:
     返回内容包括：端点路径、HTTP 方法、参数格式说明、简要描述。
     """
     return await list_endpoints(rewritten_query, ORDER_CENTER_SCHEDULE_ENDPOINTS_PATH)
+
 
 @tool(
     category="buildin",

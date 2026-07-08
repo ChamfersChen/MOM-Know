@@ -20,6 +20,7 @@ ORDER BY similarity DESC
 LIMIT 10;
 """
 
+
 class SqlExampleRepository:
     async def get_all(self) -> list[SqlExample]:
         async with pg_manager.get_async_session_context() as session:
@@ -36,18 +37,20 @@ class SqlExampleRepository:
             result = await session.execute(select(SqlExample).where(SqlExample.pid == pid))
             return list(result.scalars().all())
 
-
-    async def get_by_host_port(self, host: str, port:int) -> list[SqlExample]:
+    async def get_by_host_port(self, host: str, port: int) -> list[SqlExample]:
         async with pg_manager.get_async_session_context() as session:
-            result = await session.execute(select(SqlExample).where(SqlExample.datasource_host==host, 
-                                                                     SqlExample.datasource_port==port))
+            result = await session.execute(
+                select(SqlExample).where(SqlExample.datasource_host == host, SqlExample.datasource_port == port)
+            )
             return list(result.scalars().all())
 
     async def check_exists(self, sql: str, host: str, port: int) -> SqlExample | None:
         async with pg_manager.get_async_session_context() as session:
-            result = await session.execute(select(SqlExample).where(SqlExample.sql == sql, 
-                                                                     SqlExample.datasource_host == host,
-                                                                     SqlExample.datasource_port == port))
+            result = await session.execute(
+                select(SqlExample).where(
+                    SqlExample.sql == sql, SqlExample.datasource_host == host, SqlExample.datasource_port == port
+                )
+            )
             return result.scalar_one_or_none()
 
     async def create(self, data: dict[str, Any]) -> SqlExample:
@@ -68,12 +71,12 @@ class SqlExampleRepository:
 
             if term is None:
                 return None
-            
+
             for key, value in data.items():
                 setattr(term, key, value)
         return term
 
-    async def enable(self, id:int, enable:bool) -> SqlExample | None:
+    async def enable(self, id: int, enable: bool) -> SqlExample | None:
         async with pg_manager.get_async_session_context() as session:
             result = await session.execute(select(SqlExample).where(SqlExample.id == id))
             term = result.scalar_one_or_none()
@@ -88,7 +91,7 @@ class SqlExampleRepository:
             sql = result.scalar_one_or_none()
             if sql is not None:
                 await session.delete(sql)
-            
+
     async def delete_by_pid(self, pid: int) -> None:
         async with pg_manager.get_async_session_context() as session:
             children = await session.execute(select(SqlExample).where(SqlExample.pid == pid))
@@ -97,11 +100,13 @@ class SqlExampleRepository:
 
     async def get_with_embedding(self, embedding, ds_host: str, ds_port: int) -> list[dict[str, Any]]:
         async with pg_manager.get_async_session_context() as session:
-            result = await session.execute(text(embedding_sql),
-                            {
-                                'embedding_array': str(embedding),
-                                'ds_host': str(ds_host),
-                                'ds_port': ds_port,
-                            })
-            
+            result = await session.execute(
+                text(embedding_sql),
+                {
+                    "embedding_array": str(embedding),
+                    "ds_host": str(ds_host),
+                    "ds_port": ds_port,
+                },
+            )
+
             return result.mappings().all()

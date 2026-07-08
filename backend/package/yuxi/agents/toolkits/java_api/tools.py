@@ -19,24 +19,40 @@ from yuxi.services.java_token_service import java_token_service
 from yuxi.utils.logging_config import logger
 
 HTTP_METHODS = ["GET", "POST", "PUT", "DELETE"]
-REMOVE_KEYS = ["files", "updateTime", "createTime", "updateBy", "createBy", "remark", "tenantId", 
-               "organizationId", "parentId", "weight"]  # 需要从结果中移除的字段，避免返回过多无用信息
+REMOVE_KEYS = [
+    "files",
+    "updateTime",
+    "createTime",
+    "updateBy",
+    "createBy",
+    "remark",
+    "tenantId",
+    "organizationId",
+    "parentId",
+    "weight",
+]  # 需要从结果中移除的字段，避免返回过多无用信息
+
 
 def fuzzy_match_keywords(rewritten_query: str, content: List[dict], top_k: int = 5) -> List[dict]:
     """
     将 rewritten_query 中的查询与 content 中的value字段进行模糊匹配，取 top_k 并去重后返回。
-    
+
     Args:
         rewritten_query: 改写后的查询字符串
         content: 待匹配的内容列表
         top_k: 每个关键词取前 k 个匹配结果
-    
+
     Returns:
         去重后的匹配结果列表
     """
     results = []
     scores = [
-        (item, fuzz.partial_ratio(rewritten_query, f"{item.get('category', '')} {item.get('endpoint', '')} {item.get('description', '')}"))
+        (
+            item,
+            fuzz.partial_ratio(
+                rewritten_query, f"{item.get('category', '')} {item.get('endpoint', '')} {item.get('description', '')}"
+            ),
+        )
         for item in content
     ]
     top_matches = sorted(scores, key=lambda x: x[1], reverse=True)[:top_k]
@@ -59,6 +75,7 @@ def _load_endpoint_registry(endpoint_path: str) -> list[dict]:
         logger.error(f"加载端点注册表失败: {e}")
         return []
 
+
 async def list_endpoints(rewritten_query: str, endpoint_json_filepath: str) -> str:
     registry = _load_endpoint_registry(endpoint_json_filepath)
     if not registry:
@@ -80,7 +97,7 @@ async def list_endpoints(rewritten_query: str, endpoint_json_filepath: str) -> s
                 "error": f"未找到与 {rewritten_query} 相关的端点",
             },
             ensure_ascii=False,
-            )
+        )
 
     return json.dumps(
         {"success": True, "endpoints": filtered, "count": len(registry)},
@@ -88,13 +105,13 @@ async def list_endpoints(rewritten_query: str, endpoint_json_filepath: str) -> s
         default=str,
     )
 
+
 class MomApiInput(BaseModel):
     """MOM 系统 API 调用参数"""
 
     endpoint: str = Field(
         description=(
-            "API 端点路径，不要包含前导斜杠。\n"
-            "如果不确定端点或参数格式，请先调用 list_mom_endpoints 工具查询。"
+            "API 端点路径，不要包含前导斜杠。\n如果不确定端点或参数格式，请先调用 list_mom_endpoints 工具查询。"
         ),
     )
     method: str = Field(
@@ -144,6 +161,7 @@ async def call_api(
     - 如果提示认证过期，需要通知用户从 MOM 系统重新跳转登录
 
     """
+
     def remove_none_fields(obj, remove_keys=None):
         """
         递归删除:
@@ -155,9 +173,7 @@ async def call_api(
 
         if isinstance(obj, dict):
             return {
-                k: remove_none_fields(v, remove_keys)
-                for k, v in obj.items()
-                if v is not None and k not in remove_keys
+                k: remove_none_fields(v, remove_keys) for k, v in obj.items() if v is not None and k not in remove_keys
             }
 
         elif isinstance(obj, list):
@@ -213,7 +229,7 @@ async def call_api(
             body = json.loads(body)
         if isinstance(query_params, str):
             query_params = json.loads(query_params)
-        
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.request(
                 method=method,
@@ -256,21 +272,23 @@ async def call_api(
             logger.debug(f"MOM API 返回值: {method} {url}, result={result}")
 
             # 移除结果中的权限信息
-            if data:=result.get('data', {}):
+            if data := result.get("data", {}):
                 if isinstance(data, dict):
-                    if 'permissions' in data:
-                        del result['data']['permissions']
-                    if 'sysUser' in data and isinstance(data['sysUser'], dict):
+                    if "permissions" in data:
+                        del result["data"]["permissions"]
+                    if "sysUser" in data and isinstance(data["sysUser"], dict):
                         # 对 dsScope 字段进行解释
-                        ds_scope = data.get('sysUser',{}).get('dsScope')
+                        ds_scope = data.get("sysUser", {}).get("dsScope")
                         if ds_scope is not None:
                             extra_message = f"\n\n注意：返回结果中的 dsScope 字段值({ds_scope})为“当前用户能够访问的组织ID列表”, 可请求"
-            
+
             # 清理结果中的 None 值，避免返回过多无用信息
 
             result = remove_none_fields(result, remove_keys=REMOVE_KEYS)
-            if method not in ['GET']:
-                result_str = json.dumps({"success": True, "data": result,'refresh': True}, ensure_ascii=False, default=str)
+            if method not in ["GET"]:
+                result_str = json.dumps(
+                    {"success": True, "data": result, "refresh": True}, ensure_ascii=False, default=str
+                )
             else:
                 result_str = json.dumps({"success": True, "data": result}, ensure_ascii=False, default=str)
         except Exception as e:
@@ -304,6 +322,7 @@ async def call_api(
             ensure_ascii=False,
         )
 
+
 async def list_endpoints(rewritten_query: str, endpoint_json_filepath: str) -> str:
     registry = _load_endpoint_registry(endpoint_json_filepath)
     if not registry:
@@ -325,7 +344,7 @@ async def list_endpoints(rewritten_query: str, endpoint_json_filepath: str) -> s
                 "error": f"未找到与 {rewritten_query} 相关的端点",
             },
             ensure_ascii=False,
-            )
+        )
 
     return json.dumps(
         {"success": True, "endpoints": filtered, "count": len(registry)},

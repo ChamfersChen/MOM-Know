@@ -6,6 +6,7 @@ from yuxi.utils import logger, hashstr
 from yuxi.utils.datetime_utils import coerce_any_to_utc_datetime, utc_isoformat
 from yuxi.utils.sql_password_crypto import sql_password_crypto
 
+
 class DnowledgeBaseException(Exception):
     """数据库库统一异常基类"""
 
@@ -153,12 +154,9 @@ class ConnectorBase(ABC):
         pass
 
     @abstractmethod
-    def update_database(self,
-                        db_id: str,
-                        name: str,
-                        description: str,
-                        share_config:dict=None,
-                        related_db_ids: str=None) -> dict:
+    def update_database(
+        self, db_id: str, name: str, description: str, share_config: dict = None, related_db_ids: str = None
+    ) -> dict:
         """
         更新数据库
 
@@ -184,7 +182,6 @@ class ConnectorBase(ABC):
     @abstractmethod
     def get_cursor(self):
         pass
-
 
     async def move_table(self, db_id: str, table_id: str, new_parent_id: str | None) -> dict:
         """
@@ -225,7 +222,6 @@ class ConnectorBase(ABC):
         await self._save_metadata()
         return meta
 
-
     async def create_database(
         self,
         database_name: str,
@@ -255,7 +251,7 @@ class ConnectorBase(ABC):
 
         # 创建数据库记录
         # 确保 Pydantic 模型被转换为字典，以便 JSON 序列化
-        connect_info['port'] = int(connect_info['port'])
+        connect_info["port"] = int(connect_info["port"])
         self.databases_meta[db_id] = {
             "name": database_name,
             "description": description,
@@ -294,8 +290,7 @@ class ConnectorBase(ABC):
             for table_id in tables_to_delete:
                 del self.tables_meta[table_id]
             tables_to_delete = [
-                fid for fid, finfo in self.selected_tables_meta.items()
-                if finfo.get("database_id") == db_id
+                fid for fid, finfo in self.selected_tables_meta.items() if finfo.get("database_id") == db_id
             ]
             for table_id in tables_to_delete:
                 del self.selected_tables_meta[table_id]
@@ -392,7 +387,7 @@ class ConnectorBase(ABC):
                 "db_type": meta.get("db_type") or self.db_type,
                 "connect_info": sql_password_crypto.encrypt_connect_info_for_storage(meta.get("connect_info")),
                 "share_config": meta.get("share_config"),
-                "related_db_ids": ";".join(meta.get("related_db_ids",[])),
+                "related_db_ids": ";".join(meta.get("related_db_ids", [])),
             }
             if existing is None:
                 payload["is_activate"] = False
@@ -406,7 +401,7 @@ class ConnectorBase(ABC):
                         "db_type": payload["db_type"],
                         "connect_info": payload["connect_info"],
                         "share_config": payload["share_config"],
-                        "related_db_ids": payload["related_db_ids"]
+                        "related_db_ids": payload["related_db_ids"],
                     },
                 )
 
@@ -435,12 +430,11 @@ class ConnectorBase(ABC):
                     },
                 )
 
-
     def prepare_table_metadata(self, db_id: str) -> dict:
         """
         准备文件或URL的元数据
         """
-        db_name = self.databases_meta[db_id]['name']
+        db_name = self.databases_meta[db_id]["name"]
         table_id = f"table_{hashstr(str(db_name) + str(time.time()), 6)}"
 
         return {
@@ -455,8 +449,4 @@ class ConnectorBase(ABC):
         """
         table_id = f"table_{hashstr(str(table_name) + str(time.time()), 6)}"
 
-        return {
-            "database_id": db_id,
-            "table_id": table_id,
-            'is_choose': False
-        }
+        return {"database_id": db_id, "table_id": table_id, "is_choose": False}

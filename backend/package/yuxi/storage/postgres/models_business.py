@@ -198,6 +198,7 @@ class Agent(Base):
     icon = Column(String(255), nullable=True)
 
     pics = Column(JSON, nullable=False, default=list)
+    suggested_questions = Column(JSON, nullable=False, default=list)
     config_json = Column(JSON, nullable=False, default=dict)
     share_config = Column(JSON, nullable=False, default=dict)
 
@@ -221,6 +222,7 @@ class Agent(Base):
             "description": self.description,
             "icon": self.icon,
             "pics": self.pics or [],
+            "suggested_questions": self.suggested_questions or [],
             "config_json": self.config_json or {},
             "share_config": self.share_config or {},
             "is_default": bool(self.is_default),

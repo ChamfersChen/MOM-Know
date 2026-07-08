@@ -174,6 +174,7 @@ class ChangePasswordRequest(BaseModel):
 
     new_password: str
 
+
 class CLIAuthSessionCreate(BaseModel):
     key_name: str | None = Field(default=None, max_length=100)
 
@@ -346,6 +347,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         "require_password_change": user.require_password_change,
         "java_token_status": java_token_status,
     }
+
 
 # =============================================================================
 # === CLI 浏览器登录授权分组 ===

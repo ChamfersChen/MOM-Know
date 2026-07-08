@@ -19,6 +19,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from yuxi.storage.postgres.models_business import Base
 
+
 class SqlExample(Base):
     __tablename__ = "sql_examples"
     id = Column(BigInteger, Identity(always=True), primary_key=True)
@@ -27,7 +28,7 @@ class SqlExample(Base):
     embedding = Column(VECTOR(), nullable=True)
     sql = Column(Text, nullable=True)
     datasource_host = Column(String(255), nullable=False)
-    datasource_port= Column(Integer, nullable=False)
+    datasource_port = Column(Integer, nullable=False)
     enabled = Column(Boolean, default=True)
 
 

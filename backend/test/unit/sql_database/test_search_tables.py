@@ -3,10 +3,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from yuxi.sql_database.manager import SqlDataBaseManager
 
 
-def _make_manager(vector_terms: list[dict] | None = None,
-                  term_results: list[dict] | None = None,
-                  sql_results: list[dict] | None = None,
-                  host_ports: list[tuple[str, int]] | None = None) -> SqlDataBaseManager:
+def _make_manager(
+    vector_terms: list[dict] | None = None,
+    term_results: list[dict] | None = None,
+    sql_results: list[dict] | None = None,
+    host_ports: list[tuple[str, int]] | None = None,
+) -> SqlDataBaseManager:
     """创建一个 SqlDataBaseManager 实例，所有外部依赖均为 AsyncMock。"""
     manager = object.__new__(SqlDataBaseManager)
     manager.vector_store = AsyncMock()
@@ -26,13 +28,17 @@ def _make_manager(vector_terms: list[dict] | None = None,
     return manager
 
 
-FakeTable = {"table_id": "1", "db_id": "db1", "db_name": "test_db",
-             "table_name": "users", "is_choose": True,
-             "content": "user table", "score": 0.9}
-FakeTerm = {"id": "10", "word": "客户", "description": "customer",
-            "other_words": ["client"], "score": 0.85}
-FakeSql = {"id": "20", "sql": "SELECT * FROM users",
-           "description": "query all users", "score": 0.8}
+FakeTable = {
+    "table_id": "1",
+    "db_id": "db1",
+    "db_name": "test_db",
+    "table_name": "users",
+    "is_choose": True,
+    "content": "user table",
+    "score": 0.9,
+}
+FakeTerm = {"id": "10", "word": "客户", "description": "customer", "other_words": ["client"], "score": 0.85}
+FakeSql = {"id": "20", "sql": "SELECT * FROM users", "description": "query all users", "score": 0.8}
 
 
 class TestSearchTables:
@@ -52,8 +58,7 @@ class TestSearchTables:
         manager.sql_example_vector_store.search.assert_not_called()
 
     async def test_search_tables_with_terms(self):
-        manager = _make_manager(vector_terms=[FakeTable], term_results=[FakeTerm],
-                                host_ports=[("192.168.1.1", 3306)])
+        manager = _make_manager(vector_terms=[FakeTable], term_results=[FakeTerm], host_ports=[("192.168.1.1", 3306)])
         result = await manager.search_tables("test query", search_terms=True)
 
         assert len(result["tables"]) == 1
@@ -62,12 +67,15 @@ class TestSearchTables:
         assert result["terms"][0]["word"] == "客户"
         # 应使用 host_ports 过滤
         manager.term_vector_store.search.assert_called_once_with(
-            query="test query", datasource_host="192.168.1.1", datasource_port=3306,
+            query="test query",
+            datasource_host="192.168.1.1",
+            datasource_port=3306,
         )
 
     async def test_search_tables_with_terms_and_sqls(self):
-        manager = _make_manager(vector_terms=[FakeTable], term_results=[FakeTerm],
-                                sql_results=[FakeSql], host_ports=[("192.168.1.1", 3306)])
+        manager = _make_manager(
+            vector_terms=[FakeTable], term_results=[FakeTerm], sql_results=[FakeSql], host_ports=[("192.168.1.1", 3306)]
+        )
         result = await manager.search_tables("test query", search_terms=True, search_sqls=True)
 
         assert len(result["tables"]) == 1
@@ -77,8 +85,7 @@ class TestSearchTables:
 
     async def test_search_tables_no_db_ids_searches_all_terms(self):
         """db_ids=None 且 host_ports 为空时，terms/sqls 应全局搜索（不传 host/port）。"""
-        manager = _make_manager(vector_terms=[FakeTable], term_results=[FakeTerm],
-                                host_ports=[])
+        manager = _make_manager(vector_terms=[FakeTable], term_results=[FakeTerm], host_ports=[])
         result = await manager.search_tables("test query", search_terms=True)
 
         assert len(result["terms"]) == 1
@@ -86,8 +93,7 @@ class TestSearchTables:
 
     async def test_search_tables_uses_active_db_ids(self):
         """当 db_ids=None 但 active_db_ids 有值时，应自动使用 active_db_ids。"""
-        manager = _make_manager(vector_terms=[FakeTable], term_results=[FakeTerm],
-                                host_ports=[("10.0.0.1", 5432)])
+        manager = _make_manager(vector_terms=[FakeTable], term_results=[FakeTerm], host_ports=[("10.0.0.1", 5432)])
         manager.active_db_ids = ["db1", "db2"]
 
         result = await manager.search_tables("test query", search_terms=True)

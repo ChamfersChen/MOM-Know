@@ -13,7 +13,7 @@ from yuxi.utils import logger, hashstr
 class MySQLConnector(ConnectorBase):
     """MySQL 数据库连接器"""
 
-    def __init__(self, work_dir:str, **kwargs):
+    def __init__(self, work_dir: str, **kwargs):
         super().__init__(work_dir)
         # self.host = kwargs.get("host", os.getenv("MYSQL_HOST") or "")
         # self.user = kwargs.get("user", os.getenv("MYSQL_USER") or "")
@@ -24,19 +24,20 @@ class MySQLConnector(ConnectorBase):
         # 存储集合映射
         self.connections: dict[str, pymysql.Connection] = {}
 
-
         self._lock = threading.Lock()
         self.last_connection_time = 0
         self.max_connection_age = 3600  # 1小时后重新连接
         self._metadata_lock = asyncio.Lock()
-
 
     def _flush_connection(self):
         current_time = time.time()
         db_ids = list(self.connections.keys())
         with self._lock:
             for db_id in db_ids:
-                if not self.connections[db_id].open or current_time - self.last_connection_time > self.max_connection_age: # noqa E501
+                if (
+                    not self.connections[db_id].open
+                    or current_time - self.last_connection_time > self.max_connection_age
+                ):  # noqa E501
                     self.connections[db_id].close()
                     del self.connections[db_id]
 
@@ -53,13 +54,9 @@ class MySQLConnector(ConnectorBase):
         """
         table_id = f"table_{hashstr(str(table_name) + str(time.time()), 6)}"
 
-        return {
-            "database_id": db_id,
-            "table_id": table_id,
-            'is_choose': False
-        }
+        return {"database_id": db_id, "table_id": table_id, "is_choose": False}
 
-    def _describe_table(self, cursor, database_name, table_name, table_desc:str) -> tuple[str, list[dict], dict]:
+    def _describe_table(self, cursor, database_name, table_name, table_desc: str) -> tuple[str, list[dict], dict]:
         """获取指定表的详细结构信息
 
         这个工具用来查看表的字段信息、数据类型、是否允许NULL、默认值、键类型等。
@@ -106,15 +103,17 @@ class MySQLConnector(ConnectorBase):
                 default_str = col.get("Default") or ""
                 extra_str = col.get("Extra") or ""
                 comment_str = column_comments.get(field, "")
-                result_columns.append({
-                    "field": field,
-                    "type": type_str,
-                    "null": null_str,
-                    "key": key_str,
-                    "default": default_str,
-                    "extra": extra_str,
-                    "comment": comment_str
-                })
+                result_columns.append(
+                    {
+                        "field": field,
+                        "type": type_str,
+                        "null": null_str,
+                        "key": key_str,
+                        "default": default_str,
+                        "extra": extra_str,
+                        "comment": comment_str,
+                    }
+                )
 
                 # 格式化输出
                 result_str += (
@@ -153,11 +152,10 @@ class MySQLConnector(ConnectorBase):
             return error_msg, None, None
 
     async def initalize_table(self, db_id):
-
-        db_name = self.databases_meta[db_id]['connect_info']['database']
+        db_name = self.databases_meta[db_id]["connect_info"]["database"]
         with self.get_cursor(db_id) as cursor:
             # 获取表名
-            sql = f"SELECT TABLE_NAME AS table_name, TABLE_COMMENT AS table_comment FROM  information_schema.tables WHERE table_schema = '{db_name}';" # noqa E501
+            sql = f"SELECT TABLE_NAME AS table_name, TABLE_COMMENT AS table_comment FROM  information_schema.tables WHERE table_schema = '{db_name}';"  # noqa E501
             cursor.execute(sql)
             # logger.debug("Executed `SHOW TABLES` query")
             tables = cursor.fetchall()
@@ -165,16 +163,16 @@ class MySQLConnector(ConnectorBase):
             if not tables:
                 return "数据库中没有找到任何表"
             for table in tables:
-                table_name = table['table_name']
-                table_comment = table['table_comment']
+                table_name = table["table_name"]
+                table_comment = table["table_comment"]
                 metadata = self.prepare_table_name_metadata(db_id, table_name)
-                metadata['tablename'] = f"{db_name}.{table_name}"
-                metadata['description'] = table_comment
-                metadata['database_name'] = db_name
+                metadata["tablename"] = f"{db_name}.{table_name}"
+                metadata["description"] = table_comment
+                metadata["database_name"] = db_name
 
                 table_description, is_none, _ = self._describe_table(cursor, db_name, table_name, table_comment)
-                metadata['total_description'] = table_description if is_none is not None else table_comment
-                table_id = metadata['table_id']
+                metadata["total_description"] = table_description if is_none is not None else table_comment
+                table_id = metadata["table_id"]
 
                 table_record = metadata.copy()
 
@@ -182,12 +180,9 @@ class MySQLConnector(ConnectorBase):
 
             await self._save_metadata()
 
-    def update_database(self,
-                        db_id: str,
-                        name: str,
-                        description: str,
-                        share_config:dict=None,
-                        related_db_ids: str=None) -> dict:
+    def update_database(
+        self, db_id: str, name: str, description: str, share_config: dict = None, related_db_ids: str = None
+    ) -> dict:
         """
         更新数据库
 
@@ -222,11 +217,10 @@ class MySQLConnector(ConnectorBase):
 
         asyncio.create_task(self._save_metadata())
 
-
     def _create_connection(self, db_id) -> pymysql.Connection | None:
         """创建新的数据库连接"""
         max_retries = 3
-        config = self.databases_meta[db_id]['connect_info']
+        config = self.databases_meta[db_id]["connect_info"]
         for attempt in range(max_retries):
             try:
                 connection = pymysql.connect(
@@ -267,7 +261,7 @@ class MySQLConnector(ConnectorBase):
     #         pass
     #     return False
 
-    def _invalidate_connection(self, db_id = None):
+    def _invalidate_connection(self, db_id=None):
         """关闭并清理失效的连接"""
         try:
             if db_id:
@@ -379,13 +373,12 @@ class MySQLConnector(ConnectorBase):
         cursors = {}
         for db_id, meta in self.databases_meta.items():
             cursors[db_id] = {
-                "db_name": meta["connection_info"]['database'],
+                "db_name": meta["connection_info"]["database"],
                 "description": meta["description"],
                 "cursor": self.get_cursor(db_id),
                 "metadata": meta,
             }
         return cursors
-
 
     def close(self):
         """关闭数据库连接"""
@@ -408,7 +401,6 @@ class MySQLConnector(ConnectorBase):
     #     """返回当前配置的数据库名称"""
     #     return self.config["database"]
 
-
     @property
     def db_type(self) -> str:
         """数据库类型标识"""
@@ -419,18 +411,16 @@ class MySQLConnector(ConnectorBase):
         if db_id not in self.databases_meta:
             raise ValueError(f"Database {db_id} not found")
 
-
         # 删除db_id的表
         del_table_ids = []
         for table_id in self.selected_tables_meta.keys():
-            if self.selected_tables_meta[table_id]['database_id'] == db_id:
+            if self.selected_tables_meta[table_id]["database_id"] == db_id:
                 del_table_ids.append(table_id)
         for did in del_table_ids:
             del self.selected_tables_meta[did]
 
         processed_items_info = []
         for table_id in table_ids:
-
             # table_name = table['table_name']
             assert table_id in self.tables_meta.keys(), "Table not found"
 
@@ -465,7 +455,6 @@ class MySQLConnector(ConnectorBase):
         """获取文件完整信息（基本信息+内容信息）- 保持向后兼容"""
         # 合并基本信息和内容信息
         return {"meta": self.tables_meta}
-
 
     async def get_table_info(self, table_id: str) -> dict:
         """获取文件完整信息（基本信息+内容信息）- 保持向后兼容"""
@@ -514,10 +503,10 @@ class MySQLConnector(ConnectorBase):
 
             # 修改相关联的数据库信息
             for id, values in self.databases_meta.items():
-                related_db_ids = values['related_db_ids']
+                related_db_ids = values["related_db_ids"]
                 if db_id in related_db_ids:
                     related_db_ids.remove(db_id)
-                    await SqlDatabaseRepository().update(id, {'related_db_ids': ';'.join(related_db_ids)})
+                    await SqlDatabaseRepository().update(id, {"related_db_ids": ";".join(related_db_ids)})
             await self._save_metadata()
 
         # 删除工作目录

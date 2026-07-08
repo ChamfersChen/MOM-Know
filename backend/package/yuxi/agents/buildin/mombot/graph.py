@@ -56,7 +56,7 @@ class MOMbotAgent(BaseAgent):
         "examples": [
             "请基于知识库中的内容，解释一下什么是MOM",
             "查看当前用户可访问的工厂，并查看合肥工厂的订单情况。",
-            "订单SO-26-05-B-002还没有排产，请基于已排产的订单和日期进行分析，并为订单：SO-26-05-B-002进行排产。"
+            "订单SO-26-05-B-002还没有排产，请基于已排产的订单和日期进行分析，并为订单：SO-26-05-B-002进行排产。",
         ]
     }
 
@@ -64,7 +64,6 @@ class MOMbotAgent(BaseAgent):
         super().__init__(**kwargs)
 
     async def get_graph(self, context=None, **kwargs):
-
         context = context or self.context_schema()  # 获取上下文配置
 
         # 使用 create_agent 创建智能体

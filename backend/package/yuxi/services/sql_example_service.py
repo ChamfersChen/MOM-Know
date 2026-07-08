@@ -114,9 +114,7 @@ class SqlExampleService:
 
         return row
 
-    async def get_with_query(
-        self, query: str, ds_host: str | None = None, ds_port: int | None = None
-    ) -> list[dict]:
+    async def get_with_query(self, query: str, ds_host: str | None = None, ds_port: int | None = None) -> list[dict]:
         if self.vector_store is not None:
             try:
                 await self.vector_store.initialize_collection()
@@ -134,6 +132,7 @@ class SqlExampleService:
 
         from yuxi.models.embed import select_embedding_model
         from yuxi.config import config
+
         model = select_embedding_model(config.embed_model)
         embedding = await model.aencode([query])
         if ds_host and ds_port is not None:

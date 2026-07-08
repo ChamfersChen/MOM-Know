@@ -155,3 +155,96 @@ def test_shared_agent_is_accessible_but_not_manageable_for_normal_user():
 
     assert user_can_access_agent(user, agent) is True
     assert user_can_manage_agent(user, agent) is False
+
+
+@pytest.mark.asyncio
+async def test_create_agent_persists_suggested_questions(monkeypatch):
+    db = FakeDb()
+    repo = AgentRepository(db)
+
+    async def fake_unique_slug(_slug, _name):
+        return "qa-bot"
+
+    monkeypatch.setattr(repo, "_unique_slug", fake_unique_slug)
+
+    creator = User(username="admin", uid="admin", password_hash="x", role="admin", department_id=1)
+    agent = await repo.create(
+        name="QA Bot",
+        backend_id="ChatbotAgent",
+        slug="qa-bot",
+        suggested_questions=[
+            "  你好，请介绍一下自己  ",
+            "你好，请介绍一下自己",
+            "",
+            "  今天的天气如何？  ",
+            None,
+        ],
+        creator=creator,
+    )
+
+    assert agent.suggested_questions == ["你好，请介绍一下自己", "今天的天气如何？"]
+    assert db.added is agent
+    db.commit.assert_awaited_once()
+    db.refresh.assert_awaited_once_with(agent)
+
+
+@pytest.mark.asyncio
+async def test_create_agent_suggested_questions_caps_at_max_items(monkeypatch):
+    db = FakeDb()
+    repo = AgentRepository(db)
+
+    async def fake_unique_slug(_slug, _name):
+        return "qa-bot"
+
+    monkeypatch.setattr(repo, "_unique_slug", fake_unique_slug)
+
+    creator = User(username="admin", uid="admin", password_hash="x", role="admin", department_id=1)
+    payload = [f"问题 {i}" for i in range(30)]
+    agent = await repo.create(
+        name="QA Bot",
+        backend_id="ChatbotAgent",
+        slug="qa-bot",
+        suggested_questions=payload,
+        creator=creator,
+    )
+
+    from yuxi.repositories.agent_repository import SUGGESTED_QUESTIONS_MAX_ITEMS
+
+    assert len(agent.suggested_questions) == SUGGESTED_QUESTIONS_MAX_ITEMS
+    assert agent.suggested_questions[0] == "问题 0"
+    assert agent.suggested_questions[-1] == f"问题 {SUGGESTED_QUESTIONS_MAX_ITEMS - 1}"
+
+
+@pytest.mark.asyncio
+async def test_update_agent_applies_suggested_questions_and_drops_empty_entries():
+    db = FakeDb()
+    repo = AgentRepository(db)
+    agent = Agent(
+        slug="qa-bot",
+        name="QA Bot",
+        backend_id="ChatbotAgent",
+        suggested_questions=["旧问题"],
+    )
+
+    await repo.update(
+        agent,
+        suggested_questions=["  新问题  ", "", "  ", "另一个问题", "新问题"],
+    )
+
+    assert agent.suggested_questions == ["新问题", "另一个问题"]
+
+
+@pytest.mark.asyncio
+async def test_update_agent_omitted_suggested_questions_does_not_overwrite():
+    db = FakeDb()
+    repo = AgentRepository(db)
+    agent = Agent(
+        slug="qa-bot",
+        name="QA Bot",
+        backend_id="ChatbotAgent",
+        suggested_questions=["保留问题"],
+    )
+
+    await repo.update(agent, description="新描述")
+
+    assert agent.suggested_questions == ["保留问题"]

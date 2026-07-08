@@ -3,7 +3,6 @@ from yuxi.sql_database.base import DBNotFoundError
 from yuxi.sql_database.base import ConnectorBase
 
 
-
 class DBConnectorBaseFactory:
     """知识库工厂类，负责创建不同类型的知识库实例"""
 

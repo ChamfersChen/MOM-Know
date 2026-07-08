@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from server.utils.auth_middleware import get_admin_user
 
 from yuxi.storage.postgres.models_business import User
+
 # from yuxi.knowledge import graph_base
 from yuxi.utils.logging_config import logger
 from yuxi.storage.postgres.models_terminology import TerminologyInfo
@@ -42,9 +43,11 @@ def _normalize_connect_info(connect_info: dict) -> dict:
 
     return connect_info_dict
 
+
 class DatasourceConnectionInfo(BaseModel):
     host: str
     port: int
+
 
 class TermQueryInfo(BaseModel):
     query: str
@@ -62,10 +65,9 @@ async def get_sql_password_public_key(
         "public_key": sql_password_crypto.get_public_key_pem(),
     }
 
+
 @sql_database_router.get("/databases")
-async def get_databases(
-    current_user: User = Depends(get_admin_user)
-    ):
+async def get_databases(current_user: User = Depends(get_admin_user)):
     """获取所有数据库"""
     try:
         user_info = {"role": current_user.role, "department_id": current_user.department_id}
@@ -74,11 +76,9 @@ async def get_databases(
         logger.error(f"获取数据库列表失败 {e}, {traceback.format_exc()}")
         return {"message": f"获取数据库列表失败 {e}", "databases": []}
 
+
 @sql_database_router.post("/databases/reupload")
-async def reupload(
-    datasource_group: list[str] = Body(None),
-    current_user: User = Depends(get_admin_user)
-    ):
+async def reupload(datasource_group: list[str] = Body(None), current_user: User = Depends(get_admin_user)):
     """清空全部旧数据，根据选择的数据源组重新导入 Milvus + Neo4j 并激活。"""
     if not datasource_group:
         return {"message": "未选择数据源", "data": [], "code": 1}
@@ -92,6 +92,7 @@ async def reupload(
 
     # 2. 更新激活状态
     from yuxi.repositories.sql_database_repository import SqlDatabaseRepository
+
     repo = SqlDatabaseRepository()
     await repo.deactivate_all_except(datasource_group)
     for db_id in datasource_group:
@@ -120,9 +121,7 @@ async def check_connection(
     current_user: User = Depends(get_admin_user),
 ):
     """创建数据库"""
-    logger.debug(
-        f"Check connection connect_info {_mask_connect_info_for_log(connect_info)}, datasource_type {db_type}"
-    )
+    logger.debug(f"Check connection connect_info {_mask_connect_info_for_log(connect_info)}, datasource_type {db_type}")
     try:
         connect_info_dict = _normalize_connect_info(connect_info)
 
@@ -135,8 +134,9 @@ async def check_connection(
     except Exception as e:
         logger.error(f"创建数据库失败 {e}, {traceback.format_exc()}")
         return {"message": f"数据库连接校验失败，请检查连接信息是否正确。", "status": "failed"}
-    
+
     return {"message": "连接成功", "status": "success"}
+
 
 @sql_database_router.post("/database")
 async def create_database(
@@ -171,10 +171,11 @@ async def create_database(
             db_type,
             connect_info=connect_info_dict,
             share_config=share_config,
-            )
+        )
 
         # 需要重新加载所有智能体，因为工具刷新了
         from yuxi.agents.buildin import agent_manager
+
         await agent_manager.reload_all()
 
         return database_info
@@ -184,21 +185,16 @@ async def create_database(
 
 
 @sql_database_router.get("/database/{db_id}")
-async def get_database_info(
-    db_id: str,
-    current_user: User = Depends(get_admin_user)
-    ):
+async def get_database_info(db_id: str, current_user: User = Depends(get_admin_user)):
     """获取数据库详细信息"""
     database = await sql_database.get_database_info(db_id)
     if database is None:
         raise HTTPException(status_code=404, detail="Database not found")
     return database
 
+
 @sql_database_router.delete("/database/{db_id}")
-async def delete_database(
-    db_id: str,
-    current_user: User = Depends(get_admin_user)
-    ):
+async def delete_database(db_id: str, current_user: User = Depends(get_admin_user)):
     """删除数据库"""
     logger.debug(f"Delete database {db_id}")
     try:
@@ -214,12 +210,9 @@ async def delete_database(
         logger.error(f"删除数据库失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"删除数据库失败: {e}")
 
+
 @sql_database_router.put("/database/{db_id}/tables")
-async def update_tables(
-    db_id: str,
-    table_info: dict = Body(...),
-    current_user: User = Depends(get_admin_user)
-    ):
+async def update_tables(db_id: str, table_info: dict = Body(...), current_user: User = Depends(get_admin_user)):
     """更新数据库表信息"""
     try:
         info = await sql_database.update_tables(db_id, table_info)
@@ -227,6 +220,7 @@ async def update_tables(
     except Exception as e:
         logger.error(f"更新数据库表失败 {e}, {db_id=}, {traceback.format_exc()}")
         return {"message": f"更新失败: {e}", "code": 1}
+
 
 @sql_database_router.post("/tables/search")
 async def search_tables(
@@ -267,6 +261,7 @@ async def search_tables(
         logger.error(f"搜索数据库表失败 {e}, {traceback.format_exc()}")
         return {"message": f"搜索失败: {e}", "data": {"tables": [], "terms": [], "sqls": []}, "code": 1}
 
+
 @sql_database_router.put("/database/{db_id}")
 async def update_database_info(
     db_id: str,
@@ -299,6 +294,8 @@ async def update_database_info(
 class HostPostInfo(BaseModel):
     host: str
     port: int
+
+
 # 术语接口
 @sql_database_router.post("/term")
 async def create_term_info(
@@ -312,6 +309,7 @@ async def create_term_info(
         logger.error(f"添加术语失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"添加术语失败: {e}")
 
+
 @sql_database_router.put("/term")
 async def update_term_info(
     term_model: TerminologyInfo = Body(...),
@@ -323,6 +321,7 @@ async def update_term_info(
     except Exception as e:
         logger.error(f"更新术语失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"更新术语失败: {e}")
+
 
 @sql_database_router.delete("/term/{id}")
 async def delete_database_info(
@@ -336,21 +335,24 @@ async def delete_database_info(
         logger.error(f"删除术语失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"删除术语失败: {e}")
 
+
 @sql_database_router.get("/term/query")
 async def get_terms_info_with_query(
     term_query_info: TermQueryInfo = Body(...),
 ):
     """根据查询语句获取术语"""
     try:
-        terms = await term_service.get_terms_with_query(term_query_info.query, term_query_info.ds_host, term_query_info.ds_port)
+        terms = await term_service.get_terms_with_query(
+            term_query_info.query, term_query_info.ds_host, term_query_info.ds_port
+        )
         return {"message": "success", "data": terms, "code": 0}
     except Exception as e:
         logger.error(f"获取术语失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"获取术语失败: {e}")
 
+
 @sql_database_router.get("/terms")
-async def get_terms_info(
-):
+async def get_terms_info():
     """根据查询语句获取术语"""
     try:
         all_terms = await term_service.get_all_terminology()
@@ -359,11 +361,9 @@ async def get_terms_info(
         logger.error(f"获取术语失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"获取术语失败: {e}")
 
+
 @sql_database_router.get("/term/{host}/{port}")
-async def get_terms_with_host_port_info(
-    host: str,
-    port: int
-):
+async def get_terms_with_host_port_info(host: str, port: int):
     """根据查询语句获取术语"""
     try:
         all_terms = await term_service.get_terminologies_by_host_port(host=host, port=port)
@@ -372,11 +372,9 @@ async def get_terms_with_host_port_info(
         logger.error(f"获取术语失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"获取术语失败: {e}")
 
+
 @sql_database_router.put("/term/{term_id}/enable/{enable}")
-async def enable_term(
-    term_id: int,
-    enable: bool
-):
+async def enable_term(term_id: int, enable: bool):
     """根据查询语句获取术语"""
     try:
         term = await term_service.enable_terminology(term_id, enable)
@@ -385,10 +383,10 @@ async def enable_term(
         logger.error(f"启用术语失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"启用术语失败: {e}")
 
+
 # sql示例接口
 @sql_database_router.get("/sqls")
-async def get_sqls(
-):
+async def get_sqls():
     """根据查询语句获取术语"""
     try:
         all_sqls = await sql_example_service.get_all_sql_examples()
@@ -397,11 +395,9 @@ async def get_sqls(
         logger.error(f"获取术语失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"获取术语失败: {e}")
 
+
 @sql_database_router.get("/sqls/{host}/{port}")
-async def get_sqls_by_host_port(
-    host: str,
-    port: int
-):
+async def get_sqls_by_host_port(host: str, port: int):
     """根据查询语句获取术语"""
     try:
         all_sqls = await sql_example_service.get_sql_example_by_host_port(host=host, port=port)
@@ -409,6 +405,7 @@ async def get_sqls_by_host_port(
     except Exception as e:
         logger.error(f"获取术语失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"获取术语失败: {e}")
+
 
 @sql_database_router.post("/sql")
 async def create_sql(
@@ -422,11 +419,9 @@ async def create_sql(
         logger.error(f"添加SQL示例失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"添加SQL示例失败: {e}")
 
+
 @sql_database_router.put("/sql/{sql_id}/enable/{enable}")
-async def enable_sql(
-    sql_id: int,
-    enable: bool
-):
+async def enable_sql(sql_id: int, enable: bool):
     """根据查询语句获取术语"""
     try:
         sql = await sql_example_service.enable_sql_example(sql_id, enable)
@@ -434,6 +429,7 @@ async def enable_sql(
     except Exception as e:
         logger.error(f"启用SQL示例失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"启用SQL示例失败: {e}")
+
 
 @sql_database_router.put("/sql")
 async def update_sql_info(
@@ -447,6 +443,7 @@ async def update_sql_info(
         logger.error(f"更新SQL示例失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"更新SQL示例失败: {e}")
 
+
 @sql_database_router.delete("/sql/{id}")
 async def delete_sql_example(
     id: int,
@@ -458,6 +455,7 @@ async def delete_sql_example(
     except Exception as e:
         logger.error(f"删除SQL示例失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"删除SQL示例失败: {e}")
+
 
 @sql_database_router.post("/sql")
 async def create_sql_example(

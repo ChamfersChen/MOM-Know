@@ -462,12 +462,15 @@ async def test_stream_agent_chat_maps_custom_compression_event_to_context_compre
         async def stream_messages_with_state(self, messages, input_context=None, **kwargs):
             yield "custom", {"type": "yuxi.context_compression", "status": "started"}
             yield "messages", (AIMessageChunk(content="hi"), {"node": "llm"})
-            yield "custom", {
-                "type": "yuxi.context_compression",
-                "status": "completed",
-                "cutoff_index": 5,
-                "file_path": "/conv/x.md",
-            }
+            yield (
+                "custom",
+                {
+                    "type": "yuxi.context_compression",
+                    "status": "completed",
+                    "cutoff_index": 5,
+                    "file_path": "/conv/x.md",
+                },
+            )
 
         async def stream_messages(self, messages, input_context=None, **kwargs):
             raise AssertionError("stream_messages fallback should not be used")

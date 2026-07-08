@@ -267,3 +267,40 @@ async def test_save_thread_artifact_to_workspace_rejects_invalid_paths(test_clie
         headers=headers,
     )
     assert directory_response.status_code == 400, directory_response.text
+
+
+async def test_admin_can_update_agent_suggested_questions(test_client, admin_headers):
+    create_response = await test_client.post(
+        "/api/agent",
+        json={
+            "name": f"QA 智能体 {uuid.uuid4().hex[:6]}",
+            "backend_id": "ChatbotAgent",
+            "suggested_questions": ["  你好  ", ""],
+        },
+        headers=admin_headers,
+    )
+    assert create_response.status_code == 200, create_response.text
+    agent = create_response.json()["agent"]
+    agent_id = agent["agent_id"]
+    assert agent["suggested_questions"] == ["你好"]
+
+    update_response = await test_client.put(
+        f"/api/agent/{agent_id}",
+        json={
+            "name": agent["name"],
+            "description": agent.get("description") or "test",
+            "icon": agent.get("icon") or "test",
+            "suggested_questions": ["  问题 A  ", "问题 B", "问题 A", ""],
+        },
+        headers=admin_headers,
+    )
+    assert update_response.status_code == 200, update_response.text
+    updated = update_response.json()["agent"]
+    assert updated["suggested_questions"] == ["问题 A", "问题 B"]
+
+    detail_response = await test_client.get(f"/api/agent/{agent_id}", headers=admin_headers)
+    assert detail_response.status_code == 200
+    assert detail_response.json()["agent"]["suggested_questions"] == ["问题 A", "问题 B"]
+
+    delete_response = await test_client.delete(f"/api/agent/{agent_id}", headers=admin_headers)
+    assert delete_response.status_code == 200
