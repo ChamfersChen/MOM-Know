@@ -24,5 +24,21 @@
             "meswms/orderForAi/getOrderInfo;2",
             "meswms/orderForAi/getProductionBomWithOrderId;2"
         ]
+    },
+	"仓储查询分析流程": {
+        "description": "仓储中心数据查询和分析流程的完整链路",
+        "steps": [
+            "admin/modelFactory/organization/list;1",
+            "meswms/warehouseForAi/deliveryNoteList;2",
+            "meswms/warehouseForAi/incomingList;2",
+			"meswms/warehouseForAi/materialInboundList;2",
+			"meswms/warehouseForAi/productInboundList;2",
+			"meswms/warehouseForAi/materialOutboundList;2",
+			"meswms/warehouseForAi/productOutboundList;2",
+			"meswms/warehouseForAi/semiFinishedProductOutboundList;2",
+			"meswms/warehouseForAi/warehouseSemiProductList;2",
+			"meswms/warehouseForAi/warehouseMaterialList;2",
+			"meswms/warehouseForAi/warehouseProductList;2"
+        ]
     }
 }

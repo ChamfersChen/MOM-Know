@@ -145,3 +145,19 @@ async def get_order_analyse_flows() -> str:
     records = graph.get_with_scenario(scenario_name)
     md = scenario_result_to_markdown(scenario_name, records)
     return md
+
+
+@tool(
+    category="buildin",
+    tags=["WMS", "API"],
+    display_name="获得'WMS仓储数据接口'信息",
+)
+async def get_wms_info_flows() -> str:
+    """获得'WMS仓储数据接口'相关信息
+
+    返回内容包括：功能流程执行步骤、端点路径、HTTP 方法、参数格式说明、简要描述。
+    """
+    scenario_name = "仓储查询分析流程"
+    records = graph.get_with_scenario(scenario_name)
+    md = scenario_result_to_markdown(scenario_name, records)
+    return md
