@@ -6,6 +6,7 @@ from datetime import datetime
 
 from yuxi.config import java_config
 from yuxi.storage.redis.client import redis_client
+from yuxi.storage.redis.java_client import java_redis_client
 from yuxi.utils.datetime_utils import utc_now_naive
 from yuxi.utils.logging_config import logger
 
@@ -17,15 +18,15 @@ class JavaTokenData:
     access_token: str
     refresh_token: str | None
     tenant_id: str
-    tenant_name: str | None
-    created_at: str
+    tenant_name: str | None = None
+    created_at: str | None = None
     expires_in: int | None = None
 
 
 class JavaTokenService:
     """Java Token 管理服务"""
 
-    KEY_PREFIX = "java_token"
+    KEY_PREFIX = "java_token"        
 
     def _get_key(self, uid: str, tenant_id: str) -> str:
         """生成 Redis key"""
@@ -82,14 +83,13 @@ class JavaTokenService:
             return None
 
         pattern = f"{self.KEY_PREFIX}:{uid}:*"
-        keys = redis_client.raw.keys(pattern)
-
+        keys = java_redis_client.raw.keys(pattern)
+        logger.info(f"JavaTokenKeys: {pattern}: {keys}")
         if not keys:
             return None
 
         key = keys[0]
-        data = await redis_client.get_json_async(key)
-
+        data = await java_redis_client.get_json_async(key)
         if not data:
             return None
 

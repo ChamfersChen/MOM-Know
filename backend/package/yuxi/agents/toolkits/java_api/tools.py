@@ -250,6 +250,15 @@ async def call_api(
                 ensure_ascii=False,
             )
         if response.status_code >= 400:
+            if response.status_code == 424:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": f"MOM API 请求失败 (HTTP {response.status_code})",
+                        "detail": "请求失败: “用户凭证已过期”。请先登录 MOM云平台 系统",
+                    },
+                    ensure_ascii=False,
+                )
             error_detail = error_message
             try:
                 error_data = response.json()
