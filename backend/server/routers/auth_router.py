@@ -74,7 +74,7 @@ class Token(BaseModel):
 
 class UserCreate(BaseModel):
     username: str
-    password: str
+    password: str = Field(min_length=8)
     role: str = "user"
     phone_number: str | None = None
     department_id: int | None = None
@@ -82,7 +82,7 @@ class UserCreate(BaseModel):
 
 class UserUpdate(BaseModel):
     username: str | None = None
-    password: str | None = None
+    password: str | None = Field(default=None, min_length=8)
     role: str | None = None
     phone_number: str | None = None
     avatar: str | None = None
@@ -118,7 +118,7 @@ class UserAccessOption(BaseModel):
 
 class InitializeAdmin(BaseModel):
     uid: str  # 直接输入用户ID
-    password: str
+    password: str = Field(min_length=8)
     phone_number: str | None = None
 
 
