@@ -15,9 +15,19 @@
 
 ### 开发记录
 
+- 修复线程文件接口的同步文件 I/O 阻塞：交付物预览仅异步读取媒体类型识别所需的 512 字节文件头，不再同步加载完整文件；线程文件全文读取和目录扫描下沉到工作线程，避免大文件或大目录并发访问时阻塞 API 事件循环。
+- 修复应用 lifespan 关闭时未释放共享 Neo4j driver 的问题，避免同进程重载或重复启动后残留图数据库连接。
+- 修复删除 Milvus 知识库阻塞事件循环：`MilvusKB.delete_database` 恢复异步基类契约，并将同步的主集合与图集合清理下沉到工作线程，避免删除期间阻塞其他对话和 SSE 推送。
+- 修复 Agent 对话流式输出时的前端性能问题：自动滚动改为监听 `conversations` computed 的顶层引用变化，不再对完整对话与消息树执行深度 watch，避免每个 token 到达时递归遍历全部历史消息。
+- 修复删除知识库文件图谱时清理范围过宽：Neo4j 仅删除本次文件 `MENTIONS` 边触及且已无任何 `MENTIONS` 引用的实体，不再顺带删除同知识库内其他文件遗留的孤儿实体。
+- 对照当前解析器、知识库工具和 Agent 运行链路重整正式文档：补充默认 OCR、文件级处理参数、工作区 `AGENTS.md` / `USER.md` / `MEMORY.md`、知识库 `knowledge-base` Skill、`search_file`、`ocr_parse_file`、子智能体进度和图片 OCR 回退语义；更正知识库工具使用 `kb_id`、MCP 配置按数据库实时读取等过时描述；移除正式文档中的问答式栏目。
+- 统一用户菜单的设置入口：管理员与普通用户均显示“设置”，打开后默认进入账户设置；管理员专属的基本设置、用户管理等标签继续按原权限展示。
+- 工作区 `agents` 目录新增 `USER.md` 与 `MEMORY.md` 上下文文件，并与 `AGENTS.md` 一起在 Agent 运行开始时加载；三个默认文件首次创建时均写入对应标题和说明，不再生成空文件，已有内容保持不变。
 - 新增 Summary 上下文压缩实时状态流式同步：`YuxiSummarizationMiddleware` 触发压缩时通过 `langgraph.config.get_stream_writer()` 推送 `yuxi.context_compression` 自定义事件（started/completed/failed），复用 DeepAgents 已有 `_summarization_event` 作为完成数据源；`base.py` 通过 `astream_events(version="v3")` 的 `CustomTransformer` 透传 custom 流，`chat_service`/`agent_run_service` 将事件映射为 `context_compression` chunk 并透传到前端；前端收到 `started` 时将"正在生成回复"加载态文案切换为"正在压缩上下文"，压缩结束（`completed`/`finished`）即切回，不额外渲染分隔符、不保留压缩完成态。为避免摘要 LLM 调用的 token 流被 LangGraph messages stream 捕获并广播成 phantom 摘要消息，重写 `_create_summary`/`_acreate_summary` 在摘要模型 invoke 的 config 上挂 `TAG_NOSTREAM`，让流式层在源头跳过该调用，主 messages 流天然只含用户可见回复，无需 `chat_service` 下游过滤（参考 DeerFlow 实现）。异步 L2 压缩路径的 `_aoffload_to_backend` 与 `_acreate_summary` 改回 `asyncio.gather` 并发执行，与 DeepAgents 父类一致，避免串行等待一次文件 I/O 与一次摘要 LLM 调用；两路复用 `_SUMMARY_SANITIZED_MESSAGES` 的 id 缓存。L1-only 调用若仍触发 provider context overflow，会回落到 L2 summary 后重试；`summary_tool_result_token_limit` 默认改为 300，并同时作为 L1 工具结果 offload 阈值和预览上限，L2 只消费 L1 视图，不再对工具结果做第二轮 offload；L2 摘要模型的待摘要历史输入上限改为与 `summary_threshold` 对齐，避免固定 4000 token 裁剪丢失早期历史；新增 `summary_l2_trigger_ratio` 管理 L1 后进入 L2 的比例阈值，默认 `0.4`。
 
 - 知识库详情页新增整页内容加载态：切换或首次进入详情时，在知识库信息返回前仅展示居中 loading，避免标题、标签页和文件区域先渲染旧数据或空状态。
+- 修复知识库文件处理中频繁刷新时，旧目录请求覆盖当前子目录列表并造成列表抖动的问题。
+- `InfoCard` 新增统一的 `card-more-action-corner` 菜单插槽，并在组件内部固定渲染横向三点按钮；更多操作从卡片绝对定位改为进入 header 的正常 flex 布局，与图标、标题和 `status` 共享同一垂直中心线，业务页面只能提供菜单内容；智能体、知识库和用户管理卡片均改为复用该组件与菜单能力，用户部门/角色标签使用现有 `status` 插槽展示在标题区右侧，菜单图标与文字使用统一行高居中，知识库菜单支持复制 ID、直接打开编辑弹窗，以及确认后删除并刷新列表。
 - 智能体管理页的普通智能体卡片新增“去对话”入口，点击后进入新建对话并预选对应智能体；子智能体卡片不展示该入口。
 - 修复 API/Worker Docker 镜像构建失败：后端项目要求 Python `>=3.12,<3.14`，Dockerfile 基础镜像与 `.python-version` 同步到 `python:3.13-slim`，并将 `docker/api.Dockerfile` 的 `COPY` 源路径改为相对仓库根目录的 `backend/...`，与 `docker-compose` 中 `build.context: .` 保持一致；同时移除 `uv sync` 对 BuildKit `--mount` 的依赖并启用 `--no-cache`，避免分别因 Python 版本不兼容、`../backend/...` 越出 build context、未启用 BuildKit 或 uv 缓存残留导致镜像构建失败或体积膨胀。
 - 新增用户级配置：保留现有全局配置链路不变，新增 `user_config` 表、`UserConfigSchema` 与无缓存的 `UserConfig` PostgreSQL 读取/保存入口；新增 `/api/user/config`，所有登录用户可读写自己的配置。首个字段为 `enable_memory`（是否启用 Memory），作为预留开关仅持久化与展示，不接入运行逻辑；设置弹窗新增“用户配置” Tab 展示并保存该开关。
@@ -27,8 +37,8 @@
 - 新增 Markdown `html:preview` 辅助可视化预览：仅显式标记的围栏会渲染为 sandboxed iframe，普通 `html` 继续展示源码；预览使用清洗后的静态 HTML/CSS `srcdoc`，按内容自适应高度并最高限制为 700px，超高时保留 iframe 内滚动，流式输出期间复用预览节点避免闪烁；内置 Agent Prompt 同步约束 Markdown 仍为回答主体，HTML 只补齐指标、对比、时间线、关系结构等可视化短板，不承载大段叙事、完整报告或正文解释。
 - 新增历史对话搜索：侧边栏增加“搜索对话”入口，打开命令面板式弹窗，支持默认最近对话、新对话入口、搜索中骨架屏、结果列表、方向键选择与 Enter 跳转；后端新增 `/api/chat/threads/search`，按当前用户 active 对话中的非工具消息 `content` 检索并按对话聚合返回命中片段，同时将侧边栏导航项高度统一调整为 32px。
 - 模型供应商管理前端开放 Anthropic provider type：Provider Type 下拉仅保留 OpenAI Completions API 与 Anthropic Messages API 两种可选项，保存值继续使用后端枚举，并在供应商卡片中展示友好类型名称。
-- 优化 Agent 状态面板子智能体弹窗：弹窗消息列表复用对话消息渲染路径，打开运行中的子智能体时会展示主 run SSE 已路由到 child thread 的流式消息，并在生成中保持与主对话一致的处理态；修复当前 run 的历史半成品消息与 ongoing 流式片段叠加导致同一个子智能体在主对话中重复展示的问题，子智能体状态/事件轮询工具不再渲染成独立 Agent 卡片，弹窗会随子智能体条目补齐 run_id 后订阅对应 SSE，并复用主对话的流式平滑输出与底部跟随滚动控制；已完成的子智能体改为直接读取持久化 Message 历史，不再从 Redis run event 重放渲染。
-- 增强异步子智能体 `subagent_status`：状态查询会从子 run 的 Redis 事件流反向提取最近 3 条可读进度摘要，并在工具卡中优先展示，终态结果读取语义保持不变。
+- 优化 Agent 状态面板子智能体弹窗：弹窗消息列表复用对话消息渲染路径，打开运行中的子智能体时会展示主 run SSE 已路由到 child thread 的流式消息，并在生成中保持与主对话一致的处理态；修复当前 run 的历史半成品消息与 ongoing 流式片段叠加导致同一个子智能体在主对话中重复展示的问题，子智能体状态查询工具不再渲染成独立 Agent 卡片，弹窗会随子智能体条目补齐 run_id 后订阅对应 SSE，并复用主对话的流式平滑输出与底部跟随滚动控制；已完成的子智能体改为直接读取持久化 Message 历史，不再从 Redis run event 重放渲染。
+- 增强异步子智能体 `subagent_status`：状态查询会从子 run 的 Redis 事件流反向提取最近 3 条可读进度摘要，并在工具卡中优先展示，终态结果读取语义保持不变；同时移除模型侧 `subagent_events` 工具，Redis 原始事件流继续仅供运行基础设施与前端 SSE 使用，避免包含重复 metadata、query 与嵌套 payload 的事件信封进入模型上下文并被写入 `large_tool_results`。
 - 优化任务中心（Tasker）定位为「后台作业实体 + 只读进度面板」。前端修正失效的任务类型标签、状态判断收敛、任务详情补充参数/结果，并把轮询收敛到 store 修复抽屉关闭后角标不更新；后端 `TaskContext` 暴露 `payload` 消除私有穿透，进度更新按增量节流降低写放大，新增终态任务保留上限自动裁剪内存与数据库，`_load_state` 恢复历史任务使任务中心重启后仍可见。
 - 知识库访问能力迁移为内置 Skill：新增 `knowledge-base` Skill，绑定 `list_kbs`、`query_kb`、`find_kb_document`、`open_kb_document`、`get_mindmap` 等知识库工具；内置 Agent 不再默认挂载知识库工具，改为读取并激活 Skill 后按需加载，同时保留 `knowledges` 作为知识库资源范围与权限边界。Agent 配置页在启用知识库但显式未选择 `knowledge-base` Skill 时实时展示提示，保存时不阻断。修复 Skill 依赖工具的可执行性：`create_agent` 中「模型可见工具」与「ToolNode 可执行工具」是两套，仅靠 `awrap_model_call` 动态追加工具只会绑定给模型、不进 ToolNode，导致激活 Skill 后调用 `list_kbs`/`query_kb` 报 `not a valid tool`；现由 `resolve_configured_runtime_tools` 统一把所有可见 Skill 依赖的本地工具随基础工具一起注册进 ToolNode（可执行），`SkillsMiddleware` 运行期再按 Skill 激活状态门控模型可见性（保持按需加载）。新增 `search_file` 工具支持按文件名关键词跨/指定知识库搜索文件，并已加入 `knowledge-base` Skill 的依赖工具；其分页统计基于全量扫描结果计算 `total`/`has_more`，避免按 `limit+offset` 截断导致计数失真。
 - 增强知识库工具结果豁免：`open_kb_document` 工具结果加入 Summary 卸载豁免名单，避免大文档窗口被摘要后丢失上下文。
@@ -40,6 +50,7 @@
 - 新增 `yuxi kb upload` 上传命令：默认仅包含 `.md/.txt/.docx/.html/.htm`，省略 `--kb-id` 时会从 remote 拉取并只展示支持文档上传的知识库，支持非全屏的方向键单选知识库与多选文件类型；支持 `--include-ext/--exclude-ext` 与 `--concurrency` 控制本地并发队列，并发默认 10、上限 300；交互终端上传阶段显示进度条，非交互输出保留文本进度；每个并发单元默认会先按相对路径调用 `/documents/exists` 检查知识库中是否已有文件，存在则直接跳过，传入 `--force-upload-file` 时跳过该预检并完全依赖上传接口的重复文件校验；单文件上传成功后立即调用 `/documents/add` 添加该文件记录，不触发解析/OCR/入库；目录上传通过 `source_paths` 保留相对路径，后端创建文件记录时使用该路径作为展示文件名以保持前端目录层级；上传接口返回“同内容文件已存在”时按已上传过跳过，不再作为错误展示；大批量上传调度改为有界提交，避免数十万文件时一次性创建全部 future 导致资源峰值过高。
 - 发布 `yuxi-cli` 到 PyPI，并新增 GitHub Release 触发的 PyPI Trusted Publishing 工作流；文档新增命令行工具使用说明；CLI 运行访问 remote 的命令前会先输出当前 CLI 版本、remote 名称和 URL。
 - 修复知识库文件入库/解析成功却被统计为失败（#793）：成功的文件元数据会固定携带 `error: None`，而后台任务此前以「结果中是否存在 `error` 键」判定失败，导致成功项也被计入失败数并在全部成功时仍抛出「处理完成，失败 N 个」。改为统一通过 `_is_failed_item` 按「显式 `status == failed` 或非空 `error`」判定，覆盖入库、解析、单独解析/入库三处统计。
+- 修复 Windows 初始化脚本自动生成 JWT 配置失败（#804）：`init.ps1` 改用 Windows PowerShell 兼容的 `RandomNumberGenerator.Create().GetBytes(...)` 生成随机字节，避免旧 .NET 环境缺少 `RandomNumberGenerator.Fill()` 导致按 Enter 自动生成时报错。
 - 优化知识库文件列表状态流转与文件预览边界：`uploaded/parsed/error_parsing/error_indexing` 状态分别展示解析、入库或重试操作；源文件预览与解析后的 Markdown 查看分离，txt/图片/Markdown/HTML/PDF/代码类按源文件类型预览；Office 源文件仅支持 `.docx/.pptx`，点击预览时按需生成并缓存 PDF 预览内容，由同一个预览接口直接返回，不再把解析 Markdown 产物当作源文件预览。
 - 收敛知识库分块策略选项来源：后端以单一 `CHUNK_PRESETS` 配置派生 preset id、描述和选项列表，并新增 `/api/knowledge/chunk-presets`；前端分块策略选择器改为通过接口读取选项，避免前后端重复维护同一份文案。
 - 优化大规模知识库文件列表加载：知识库详情接口默认不再返回全量 `files`，新增按 `parent_id/path_prefix/page/page_size/status` 查询的轻量文件列表接口；前端文件管理页改为目录懒加载与服务端分页，后端按 `source_path`/路径型文件名聚合虚拟目录，列表项只保留交互所需字段，顶部统计改用后端聚合结果，避免数十万文件场景下前端全量建树和传输压力。工作区知识库文件浏览统一改用同一套分页懒加载查询，支持真实目录和虚拟目录页码分页，非文档型知识库不再出现在工作区文件源中；文件浏览组件和后端列表接口均不再承载文件名搜索，后续搜索能力由独立后端接口和组件实现；文件列表展示抽出共享 `FileBrowserTable`，知识库详情和工作区共用展示层，并移除原知识库文件列表拖拽移动入口。
@@ -58,8 +69,8 @@
 - 对话消息图片支持点击全屏预览：对话中用户上传的图片支持点击放大查看，复用文件预览的全屏蒙层交互（Teleport 蒙层，点击图片/空白处或按 Esc 关闭），不引入额外依赖。
 - 新增 Agent token usage 状态快照，在状态面板中作为普通可折叠分组展示完整 `messages`、当前传给 LLM 的 `messages`、system/tools 构成、输入构成堆叠条和上下文窗口占用估算。
 - 优化 Agent token usage 状态面板展示：后端补充 LLM 内容消息与工具消息的 token/count 拆分字段，前端将内容消息、工具消息、系统消息与工具定义分开展示，并修正上下文窗口/剩余信息换行与对话流式输出期间的底部跟随滚动。
-- 对齐 DeepAgents `read_file` 的非文本读取边界：已知非文本扩展和小型未知二进制返回 base64，多模态工具结果可直接携带图片；二进制预览沿用 DeepAgents 500 KiB 上限，OpenAI 兼容模型请求会把 tool-role 图片额外镜像为 user-role 图片消息。
-- 新增默认 OCR 解析引擎配置 `default_ocr_engine`，普通登录用户可读取系统配置；知识库上传弹窗与临时附件解析弹窗默认选中系统默认 OCR，解析入口仅在未显式传入 `ocr_engine` 时使用该默认值。
+- 收敛 Agent `read_file` 多模态边界：仅 UTF-8 文本和图片可读，PDF/Office 文档会引导使用 `ocr_parse_file` 转为 Markdown，音视频及未知二进制不再注入模型消息；OpenAI 兼容链路的 tool-role 图片桥接从私有 payload 覆盖迁移到公开模型中间件，Provider 明确拒绝图片输入时会自动调用 `ocr_parse_file` 提取文字，并在后续请求中移除同一张历史图片，避免文本模型重复报错。
+- 新增默认 OCR 解析引擎配置 `default_ocr_engine`，普通登录用户可读取系统配置；知识库上传弹窗与临时附件解析弹窗默认选中系统默认 OCR，解析入口仅在未显式传入 `ocr_engine` 时使用该默认值。修复读取该配置时因反向导入知识库模块导致配置初始化循环、并中断后续配置加载的问题；OCR 注册表改为轻量模块，知识库单例迁移到显式 runtime 入口，解析器调用方直接导入真实定义模块，包初始化不再加载运行对象。
 - 新增 Agent 内置 `ocr_parse_file` 工具：只允许解析 `/home/gem/user-data/{workspace,uploads,outputs}` 下的沙盒虚拟路径文件，使用指定或系统默认 OCR 引擎生成 Markdown，并把结果写入 `outputs/ocr/*.md`；工具返回结果文件路径、字符数和短预览，不写入知识库 MinIO，也不创建知识库文件记录。
 - 收敛 Agent Invocation 服务边界：新增 `agent_invocation_service.py` 承接 agent-call/eval 的外部调用语义、同步等待、异步响应与 OpenAI-compatible 响应装配；`agent_invocation_router.py` 收敛为 HTTP 适配层，`agent_run_service.py` 只保留通用 AgentRun 生命周期能力，`subagent_run_service.py` 改为调用公开 AgentRun 创建 API，不再穿透私有函数。
 - 修复 Agent 状态读取与消息落库在重新读取 LangGraph checkpoint 时未传入运行时 context 的问题，避免主智能体或子智能体线程因系统默认模型已不可用而查询状态/保存历史失败；模型供应商管理页新增默认模型保护，阻止删除、停用默认模型所属供应商或移除当前默认模型。
@@ -68,6 +79,8 @@
 - 统一 Redis 客户端管理：新增 `yuxi.storage.redis` 作为 Redis 配置、短生命周期同步客户端、共享异步客户端与 ARQ RedisSettings 的唯一基础设施入口；运行队列、系统配置快照同步、模型缓存和 worker 不再各自散落读取 `REDIS_URL` 或直接创建 Redis 客户端，Redis 连接失败日志统一使用脱敏 URL。
 - 新增系统配置 Redis 快照同步：管理员保存配置时仍以 `saves/config/base.toml` 作为唯一持久化来源，成功写入后将可运行时同步的公开配置字段写入 `yuxi:runtime_config`；API 与 worker 进程在启动时各拉起一个后台同步线程，按 5 秒间隔从快照刷新内存值，读取端按普通属性访问、无需感知，Redis 不可用时继续使用当前内存值。`save_dir` 是启动期内部路径配置，不在管理员配置中展示、不从 `base.toml` 读取、不写入 Redis 快照且不支持通过管理员配置接口修改；sandbox 相关配置仍属于启动期敏感配置，运行中的已初始化组件不承诺完整热更新，修改后仍需重启保证生效；移除已无运行时调用点的 `enable_reranker` 与 `default_agent_id` 配置字段。
 - 优化 FastAPI 请求链路并发能力：Milvus 知识库检索中的同步 embedding、向量/BM25/混合检索调用，以及图谱查询中的同步 Milvus/Neo4j 读操作（含连接建立）统一通过有界 `asyncio.to_thread` 在线程中执行，避免阻塞 API 事件循环；并发上限按事件循环懒加载信号量控制，不改变检索默认行为与参数上限。
+- 修复 AgentRun worker 在 LLM 流式响应期间长期占用 PostgreSQL 连接：chat 与 resume 在完成运行时解析、会话和附件等预处理后，进入流式执行前显式提交事务并归还业务连接，最终消息保存时再按需获取连接。
+- 修复异步文档解析阻塞 API 事件循环：DOCX、PPTX、XLS/XLSX、DOC、CSV 与 HTML 的同步转换统一下沉到工作线程，文本读取改用异步文件 I/O；Docling 单例转换增加线程互斥，避免并发解析共享转换器，并补充事件循环可继续调度的回归测试。
 - 改进 OpenAI 兼容提供商流式工具调用兼容（替代 v0.7.0 的按 provider 禁流式处理）：根因是 LangGraph v3 流式累积对 tool_call 字段“后值覆盖”，SiliconFlow、阿里云百炼等在参数续片里把 `name`/`id` 下发为空字符串覆盖首片真实值。改为 `_ToolCallChunkFixChatOpenAI` 把续片空串 `name`/`id` 归一化为 `None`，对所有 OpenAI 兼容 provider 通用生效且保留流式，移除原 `_NON_STREAMING_TOOL_CALL_PROVIDERS` 名单。
 - 新增 Agent 评估运行入口：`POST /api/agent-invocation/eval/runs` 会创建正常对话与 AgentRun，复用 worker 执行链路，并以 `source=agent_evaluation` 与 `agent_invocation_meta.evaluation` 标记写入 conversation、AgentRun 输入消息与 Langfuse trace；接口阻塞至运行结束后直接返回最终结果（状态、最终 assistant 输出、Langfuse trace id），并支持通过 `include_trajectory_summary` 按需返回轻量工具调用轨迹摘要。`yuxi-cli` 新增 `yuxi agent eval` 命令，用于从 Langfuse 数据集读取输入并回传实验输出
 - 对话消息点赞/点踩反馈接入 Langfuse score：本地 `MessageFeedback` 保存成功后，如助手消息已关联 Langfuse trace，则同步写入 `user-feedback` score，点赞为 `1`、点踩为 `0`，点踩原因写入 comment，便于在 Langfuse 中按用户反馈筛选 trace。
@@ -76,7 +89,7 @@
 - 下沉 AgentRun 基础能力：将「读取某个 run 的最终结果」（`get_agent_run_result`/`load_agent_run_result`，含状态、最终 assistant 输出、Langfuse trace id 与错误）与「阻塞至 run 终结再取结果」（`await_agent_run_result`，复用有限事件流、无额外轮询）提升进 `agent_run_service`，供 chat/eval 及未来定时任务统一复用；eval 运行入口改为非流式复用该能力（不再做 SSE 封装），移除其私有结果构建逻辑（结果不变）。
 - 重构 AgentRun 接口底座：`agent_run_service` 拆出内部 `create_agent_run`、`enqueue_agent_run` 与 `request_cancel_agent_run`，保留现有 `/api/agent/runs` 行为并新增 `/api/agent/runs/{run_id}/result` 结果读取接口；`AgentRunRepository` 增加按 `parent_agent_run_id` 查询 child run 的能力，为后续异步 subagent 生命周期控制预留统一入口。
 - 修复子智能体流式事件兼容：Yuxi task middleware 的 DeepAgents 子智能体 transformer 改用专用 `yuxi_subagents` projection，避免与 LangChain `create_agent` 默认注册的 `subagents` projection 冲突导致运行流式消息时报错；子线程路由收集优先读取 Yuxi projection，并保留原 `subagents` fallback。
-- 重构 AgentRun 与子智能体运行链路：保留现有 `/api/agent/runs` 行为并新增 `/api/agent/runs/{run_id}/result` 结果读取接口；子智能体新增 `subagent_start/status/events/cancel/await` 工具，支持后台启动、事件读取、等待结果、取消运行和已完成 child thread 续跑；同一用户、同一子智能体、同一 conversation thread 存在运行中 run 时返回 busy，不做隐藏排队。
+- 重构 AgentRun 与子智能体运行链路：保留现有 `/api/agent/runs` 行为并新增 `/api/agent/runs/{run_id}/result` 结果读取接口；子智能体新增 `subagent_start/status/cancel/await` 工具，支持后台启动、轻量进度查询、等待结果、取消运行和已完成 child thread 续跑；同一用户、同一子智能体、同一 conversation thread 存在运行中 run 时返回 busy，不做隐藏排队。
 - 修复子智能体同步等待超时语义：`await_agent_run_result` 在有限 SSE 等待结束后会校验 run 终态，非终态时抛出明确等待超时；`task` 与 `subagent_await` 不再把仍在运行的子智能体误报为“已完成但无文本结果”，同步 Agent Call / Eval 入口遇到等待超时返回 504 和当前 run 快照。
 - 收紧子智能体运行创建边界：`SubagentRunService` 显式拒绝以子智能体 run 作为父 run 创建新的子智能体，固化“不支持孙子智能体”的架构约束。
 - 修复 AgentRun busy 检查的并发窗口：为同一用户、智能体和 conversation thread 的非终态 run 增加数据库部分唯一索引，并在插入冲突时返回现有 `run_busy` 结构，避免不同 `request_id` 并发启动绕过忙碌检查；AgentRun 创建冲突改用局部 savepoint 处理，避免 `_create_agent_run` 在共享 session 上 rollback 撤销调用方刚创建的子智能体线程关系或输入消息。
