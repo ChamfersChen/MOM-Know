@@ -48,7 +48,12 @@ def normalize_public_minio_url(value: str | None) -> str | None:
     except ValueError:
         return value
     public_base_url = (os.getenv("MINIO_PUBLIC_URL") or "/minio").rstrip("/")
-    return f"{public_base_url}{parsed.path}"
+    normalized = f"{public_base_url}{parsed.path}"
+    if parsed.query:
+        normalized = f"{normalized}?{parsed.query}"
+    if parsed.fragment:
+        normalized = f"{normalized}#{parsed.fragment}"
+    return normalized
 
 
 class MinIOClient:

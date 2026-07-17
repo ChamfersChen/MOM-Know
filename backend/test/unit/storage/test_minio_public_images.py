@@ -43,3 +43,12 @@ def test_legacy_public_minio_url_is_normalized_to_same_origin(monkeypatch):
     assert normalize_public_minio_url("https://cdn.example.test/public/user.png") == (
         "https://cdn.example.test/public/user.png"
     )
+
+
+def test_legacy_public_minio_url_preserves_query_and_fragment(monkeypatch):
+    monkeypatch.setenv("MINIO_PUBLIC_URL", "/minio")
+
+    assert (
+        normalize_public_minio_url("http://example.test:9000/public/avatar/user.png?v=123#preview")
+        == "/minio/public/avatar/user.png?v=123#preview"
+    )

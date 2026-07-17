@@ -251,10 +251,18 @@ def test_authenticated_proxy_forwards_request_without_management_token(monkeypat
 
     real_async_client = httpx.AsyncClient
     transport = httpx.MockTransport(upstream)
+
+    clients = []
+
+    def create_client(**kwargs):
+        client = real_async_client(transport=transport, **kwargs)
+        clients.append(client)
+        return client
+
     monkeypatch.setattr(
         module.httpx,
         "AsyncClient",
-        lambda **kwargs: real_async_client(transport=transport, **kwargs),
+        create_client,
     )
 
     with TestClient(module.app) as client:
@@ -272,10 +280,18 @@ def test_authenticated_proxy_forwards_request_without_management_token(monkeypat
             headers=headers,
             params={"detail": "full"},
         )
+        second_response = client.get(
+            "/api/sandboxes/sandbox-proxy-test/proxy/v1/sandbox",
+            headers=headers,
+        )
 
     assert response.status_code == 200
     assert response.json() == {"ok": True}
+    assert second_response.status_code == 200
+    assert len(clients) == 1
+    assert clients[0].is_closed
     assert str(captured[0].url) == "http://agent-sandbox:8000/v1/sandbox?detail=full"
+    assert str(captured[1].url) == "http://agent-sandbox:8000/v1/sandbox"
     assert "authorization" not in captured[0].headers
     assert "x-ignored" not in response.headers
 
@@ -302,12 +318,9 @@ async def test_proxy_discovers_sandbox_outside_event_loop_thread(monkeypatch):
 
     real_async_client = httpx.AsyncClient
     transport = httpx.MockTransport(lambda _request: httpx.Response(200, json={"ok": True}))
+    http_client = real_async_client(transport=transport, timeout=None, follow_redirects=False, trust_env=False)
+    module.app.state.http_client = http_client
     monkeypatch.setattr(module, "backend_impl", SimpleNamespace(discover=discover))
-    monkeypatch.setattr(
-        module.httpx,
-        "AsyncClient",
-        lambda **kwargs: real_async_client(transport=transport, **kwargs),
-    )
     request = module.Request(
         {
             "type": "http",
@@ -315,12 +328,16 @@ async def test_proxy_discovers_sandbox_outside_event_loop_thread(monkeypatch):
             "path": "/api/sandboxes/sandbox-proxy-test/proxy/v1/sandbox",
             "headers": [],
             "query_string": b"",
+            "app": module.app,
         },
         receive,
     )
 
-    response = await module.proxy_sandbox_request("sandbox-proxy-test", request, "v1/sandbox")
-    body = b"".join([chunk async for chunk in response.body_iterator])
+    try:
+        response = await module.proxy_sandbox_request("sandbox-proxy-test", request, "v1/sandbox")
+        body = b"".join([chunk async for chunk in response.body_iterator])
+    finally:
+        await http_client.aclose()
 
     assert body == b'{"ok":true}'
     assert discover_threads and discover_threads[0] != event_loop_thread
@@ -440,3 +457,79 @@ def test_docker_backend_assigns_each_sandbox_a_distinct_network(monkeypatch):
         SimpleNamespace(attrs={"NetworkSettings": {"Networks": {first_network: {}, second_network: {}}}}),
         "sandbox-1",
     )
+
+
+def test_docker_backend_reconnects_provisioner_before_reusing_sandbox(monkeypatch, tmp_path):
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    monkeypatch.setitem(sys.modules, "docker.errors", SimpleNamespace(NotFound=RuntimeError))
+    module = _load_module()
+    connected = []
+
+    class FakeNetwork:
+        name = "yuxi-know-sandbox-sandbox-1"
+        attrs = {
+            "Labels": {"managed-by": "yuxi-sandbox-provisioner", "sandbox-id": "sandbox-1"},
+            "Containers": {},
+        }
+
+        def reload(self):
+            return None
+
+        def connect(self, container, aliases):
+            connected.append((container.id, aliases))
+
+    class FakeContainer:
+        name = "yuxi-sandbox-sandbox-1"
+        status = "running"
+        attrs = {"State": {"Status": "running"}}
+
+        def reload(self):
+            return None
+
+    backend = _docker_backend(module, tmp_path, lambda *_args, **_kwargs: pytest.fail("sandbox was recreated"))
+    backend._client.networks = SimpleNamespace(get=lambda _name: FakeNetwork())
+    backend._provisioner_container = SimpleNamespace(id="provisioner-id")
+    monkeypatch.setattr(backend, "_get_container", lambda _sandbox_id: FakeContainer())
+    monkeypatch.setattr(backend, "_is_expected_skills_mount", lambda _container, _thread_id: True)
+    monkeypatch.setattr(backend, "_is_on_expected_network", lambda _container, _sandbox_id: True)
+    monkeypatch.setattr(backend, "_has_expected_user_data_mounts", lambda _container, _thread_id, _uid: True)
+    monkeypatch.setattr(backend, "_ensure_user_data_writable", lambda _container: None)
+    monkeypatch.setattr(module, "wait_for_sandbox_ready", lambda _url, timeout_seconds: bool(connected))
+
+    record = backend.create("sandbox-1", "thread-1", "user-1")
+
+    assert record.sandbox_url == "http://yuxi-sandbox-sandbox-1:8080"
+    assert connected == [("provisioner-id", ["sandbox-provisioner"])]
+
+
+def test_docker_backend_does_not_remove_unowned_network(monkeypatch, tmp_path):
+    monkeypatch.setenv("PROVISIONER_BACKEND", "memory")
+    monkeypatch.setitem(sys.modules, "docker.errors", SimpleNamespace(NotFound=RuntimeError))
+    module = _load_module()
+    disconnected = []
+    removed = []
+
+    class FakeNetwork:
+        name = "yuxi-know-sandbox-sandbox-1"
+        attrs = {
+            "Labels": {"managed-by": "operator", "sandbox-id": "sandbox-1"},
+            "Containers": {"provisioner-id": {}},
+        }
+
+        def reload(self):
+            return None
+
+        def disconnect(self, container, force):
+            disconnected.append((container.id, force))
+
+        def remove(self):
+            removed.append(True)
+
+    backend = _docker_backend(module, tmp_path, lambda *_args, **_kwargs: None)
+    backend._client.networks = SimpleNamespace(get=lambda _name: FakeNetwork())
+    backend._provisioner_container = SimpleNamespace(id="provisioner-id")
+
+    backend._delete_network("sandbox-1")
+
+    assert disconnected == []
+    assert removed == []

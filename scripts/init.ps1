@@ -49,11 +49,17 @@ function Ensure-SandboxEnv {
     }
 
     $SANDBOX_PROVISIONER_TOKEN = New-RandomHex 32
-    @"
+    if (Select-String -Path ".env" -Pattern "^SANDBOX_PROVISIONER_TOKEN=" -Quiet) {
+        $envContent = Get-Content -Path ".env" -Raw
+        $envContent = $envContent -replace "(?m)^SANDBOX_PROVISIONER_TOKEN=.*$", "SANDBOX_PROVISIONER_TOKEN=$SANDBOX_PROVISIONER_TOKEN"
+        Set-Content -Path ".env" -Value $envContent -NoNewline -Encoding UTF8
+    } else {
+        @"
 
 # Sandbox provisioner authentication
 SANDBOX_PROVISIONER_TOKEN=$SANDBOX_PROVISIONER_TOKEN
 "@ | Add-Content -Path ".env" -Encoding UTF8
+    }
     Write-Host "Generated SANDBOX_PROVISIONER_TOKEN and saved it to .env." -ForegroundColor Green
 }
 

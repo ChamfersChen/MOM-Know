@@ -348,6 +348,11 @@ class LocalContainerProvisionerBackend:
         networks = (container.attrs.get("NetworkSettings") or {}).get("Networks") or {}
         return set(networks) == {self._network_name(sandbox_id)}
 
+    @staticmethod
+    def _has_expected_network_ownership(network, sandbox_id: str) -> bool:
+        labels = network.attrs.get("Labels") or {}
+        return labels.get("managed-by") == "yuxi-sandbox-provisioner" and labels.get("sandbox-id") == sandbox_id
+
     def _ensure_network(self, sandbox_id: str) -> str:
         from docker.errors import NotFound
 
@@ -365,8 +370,7 @@ class LocalContainerProvisionerBackend:
             )
 
         network.reload()
-        labels = network.attrs.get("Labels") or {}
-        if labels.get("managed-by") != "yuxi-sandbox-provisioner" or labels.get("sandbox-id") != sandbox_id:
+        if not self._has_expected_network_ownership(network, sandbox_id):
             raise RuntimeError(f"sandbox network {network_name} has unexpected ownership")
 
         containers = network.attrs.get("Containers") or {}
@@ -382,6 +386,9 @@ class LocalContainerProvisionerBackend:
         except NotFound:
             return
         network.reload()
+        if not self._has_expected_network_ownership(network, sandbox_id):
+            logger.warning("Skipping removal of sandbox network %s with unexpected ownership", network.name)
+            return
         containers = network.attrs.get("Containers") or {}
         if self._provisioner_container.id in containers:
             network.disconnect(self._provisioner_container, force=True)
@@ -455,6 +462,7 @@ class LocalContainerProvisionerBackend:
                     self.delete(sandbox_id)
                     existing = None
             if existing is not None:
+                self._ensure_network(sandbox_id)
                 if existing.status == "running":
                     try:
                         self._ensure_user_data_writable(existing)
@@ -548,6 +556,7 @@ class LocalContainerProvisionerBackend:
             except Exception as exc:
                 logger.warning("Failed to delete stale sandbox %s during discover: %s", sandbox_id, exc)
             return None
+        self._ensure_network(sandbox_id)
         if not self._is_expected_skills_mount(container, safe_skills_thread_id):
             logger.info("Discarding stale sandbox %s with unexpected skills mount", sandbox_id)
             try:
@@ -1047,13 +1056,17 @@ idle_reaper = SandboxIdleReaper(backend_impl)
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(app: FastAPI):
     provisioner_token()
-    idle_reaper.start()
+    app.state.http_client = httpx.AsyncClient(timeout=None, follow_redirects=False, trust_env=False)
     try:
+        idle_reaper.start()
         yield
     finally:
-        idle_reaper.shutdown()
+        try:
+            idle_reaper.shutdown()
+        finally:
+            await app.state.http_client.aclose()
 
 
 app = FastAPI(title="Yuxi Sandbox Provisioner", lifespan=lifespan)
@@ -1191,7 +1204,7 @@ async def proxy_sandbox_request(sandbox_id: str, request: Request, path: str = "
         for key, value in request.headers.items()
         if key.lower() != "authorization" and key.lower() not in HOP_BY_HOP_HEADERS
     }
-    client = httpx.AsyncClient(timeout=None, follow_redirects=False, trust_env=False)
+    client: httpx.AsyncClient = request.app.state.http_client
     try:
         upstream_request = client.build_request(
             request.method,
@@ -1202,7 +1215,6 @@ async def proxy_sandbox_request(sandbox_id: str, request: Request, path: str = "
         )
         upstream_response = await client.send(upstream_request, stream=True)
     except Exception as exc:  # noqa: BLE001
-        await client.aclose()
         raise HTTPException(status_code=502, detail="sandbox request failed") from exc
 
     async def response_body() -> AsyncIterator[bytes]:
@@ -1211,7 +1223,6 @@ async def proxy_sandbox_request(sandbox_id: str, request: Request, path: str = "
                 yield chunk
         finally:
             await upstream_response.aclose()
-            await client.aclose()
 
     response_headers = {
         key: value for key, value in upstream_response.headers.items() if key.lower() in PROXY_RESPONSE_HEADERS
