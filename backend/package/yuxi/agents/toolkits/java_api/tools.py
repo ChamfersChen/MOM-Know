@@ -291,9 +291,9 @@ async def call_api(
                         if ds_scope is not None:
                             extra_message = f"\n\n注意：返回结果中的 dsScope 字段值({ds_scope})为“当前用户能够访问的组织ID列表”, 可请求"
 
-            # 清理结果中的 None 值，避免返回过多无用信息
+            # 清理结果中的 None 值，避免返回过多无用信息(后端已经做了字段筛选)
+            # result = remove_none_fields(result, remove_keys=REMOVE_KEYS)
 
-            result = remove_none_fields(result, remove_keys=REMOVE_KEYS)
             if method not in ["GET"]:
                 result_str = json.dumps(
                     {"success": True, "data": result, "refresh": True}, ensure_ascii=False, default=str

@@ -130,7 +130,7 @@ services:
       context: ./docker/sandbox_provisioner
       dockerfile: Dockerfile
     # platform: linux/amd64
-    image: momai-sandbox-provisioner:0.6.1
+    image: momai-sandbox-provisioner:0.7.1
     container_name: momai-sandbox-provisioner
     volumes:
       - ./docker/volumes/yuxi:/app/saves
@@ -160,10 +160,9 @@ services:
       - HTTPS_PROXY=${SANDBOX_HTTPS_PROXY:-}
       - NO_PROXY=localhost,127.0.0.1,host.docker.internal
       # Docker backend only
-      - DOCKER_NETWORK=${SANDBOX_DOCKER_NETWORK:-mom-know_app-network}
+      - DOCKER_NETWORK_PREFIX=${SANDBOX_DOCKER_NETWORK_PREFIX:-yuxi-know-sandbox}
       - DOCKER_THREADS_HOST_PATH=${SANDBOX_DOCKER_THREADS_HOST_PATH:-}
       - DOCKER_SANDBOX_PREFIX=${SANDBOX_DOCKER_SANDBOX_PREFIX:-momai-sandbox}
-      - DOCKER_SANDBOX_HOST=${SANDBOX_DOCKER_SANDBOX_HOST:-host.docker.internal}
       # Kubernetes backend only
       - K8S_NAMESPACE=${SANDBOX_K8S_NAMESPACE:-momai-know}
       - NODE_HOST=${SANDBOX_NODE_HOST:-host.docker.internal}
