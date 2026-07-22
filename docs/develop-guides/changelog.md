@@ -4,14 +4,28 @@
 
 同一版本的多次功能更新时，应以功能为单位进行更新，比如之前添加了 A 功能的更新，在后续的更新中修复了因 A 功能引入的 bug，那么这个修复说明应该和 A 功能描述放在一起，而不是新增一条修复记录，功能更新同理。
 
-## v0.7.1 (current)
+## v0.7.2 (current)
+
+- 丰富模型选型参考信息：接入 `@opencode-ai/models` 内置 snapshot，补充模型上下文、能力和价格等信息；模型选择器移除价格悬浮提示并关闭搜索自动完成，模型供应商候选列表支持美元与人民币价格切换，默认美元，人民币按固定汇率 `1 USD = ¥7` 换算，并明确 models.dev 数据与固定汇率仅供参考；候选模型工具栏统一靠右排列搜索、币种和类型筛选控件，类型文案改为“对话 / 向量 / 重排”。DashScope 中国站内置标识修正为 `alibaba-cn`，`alibaba` 改为使用 `dashscope-intl.aliyuncs.com` 的国际站定义。
+- 优化 Agent 会话与设置页多项交互细节：修复文件侧栏重新展开丢失预览、审批模式改为本地记忆最近选择、下拉面板点击外部区域自动收起、输入框添加内容入口改为 `+` 并可直接引用知识库与 Skill、Skill 图标统一为 Lucide `WandSparkles`、账户设置合并 Memory 开关等；侧栏导航“智能体管理”简化为“智能体”，路由由 `/model-manage` 重命名为 `/agent-manage`；同步优化首页首屏视觉细节。
+- 新增 Agent backend 工具审批与完全信任模式：Agent 配置可定义默认模式，聊天 run、Agent Call 与评估请求可用 `tool_approval_mode` 做单次覆盖，实际模式固化到 `AgentRun` 并由 resume/子智能体继承；默认审批仅拦截 `write_file`、`edit_file`、`execute`，只读 filesystem 工具直接执行，完全信任保持自动执行。前端输入框左下角新增线程级“请求审批 / 完全信任”选择器，支持刷新恢复显式选择；智能体配置页将带选项的 `string` 字段正确渲染为选择控件，模式解析按“线程显式选择、智能体显式配置、本地最近选择、系统默认值”依次回退，避免本地缓存覆盖智能体配置。同轮多个工具调用按顺序一次展示一项，参数默认只显示单行摘要，点击后带轻量动画在卡片内展开完整内容，展开区最大高度为 300px。审批卡进一步调整为直接覆盖输入区，按工具类型优先展示命令或目标路径，操作固定为“拒绝 / 允许”，审批期间底层输入控件不可交互。默认模式下子智能体隐藏敏感 backend 工具，避免绕过主线程审批。补充模式解析、middleware、run 继承、事件压缩、子智能体过滤、前端状态恢复测试，并在真实页面验证刷新恢复、逐项批准或拒绝、参数点击展开与完全信任自动执行。模式解析合并为单次 context 共享（resolve_agent_run_config）避免 run 创建/intake 重复加载上下文；resume 与子智能体继承统一读取固化快照，前端审批弹窗参数序列化改为 computed，并清理 `reviewConfigs` 等未消费状态。resume 解析 tool_approval_mode 时对旧版本固化、缺少该字段的 interrupted 运行回退默认值而非报错，避免历史中断会话升级后无法恢复。
+- 新增智能体请求队列（Phase 1/2）：同一线程运行中提交的新请求默认持久化排队，并按 FIFO 顺序自动执行；支持实时查看排队位置、单条取消和刷新恢复，也可通过 `reject` 策略保持“不能立即执行就拒绝”。聊天、Agent Call 和评估统一接入该队列，前端会分开展示排队请求与当前回复，并修复连续请求交接时的流状态和消息顺序问题；同步 Agent Call 遇到忙线程时会直接返回拒绝结果，不再因缺少 `run_id` 进入等待逻辑并返回 500。failed/cancelled 时已有积压请求会明确进入暂停状态，用户可手动继续 FIFO 队头；队列为空后的新请求可正常执行。interrupted 必须先完成 resume，前端会禁用普通消息发送，后端也会在持久化 Message/Request 前返回 `run_interrupted` 冲突，不能被继续动作或绕过前端的请求破坏恢复顺序；completed 自动接力的故障窗口会在 worker 重试和启动恢复时补齐。Phase 2.1 进一步使用 Conversation 行锁串行化 intake、resume、continue 和自动接力，保证并发 enqueue 仍严格遵守 FIFO；`pending` AgentRun 作为持久化投递意图，completed job 重试和 worker startup 会优先重新投递已有 run，不再依赖重启修复提交后 ARQ 投递失败；终态写入增加单赢家语义，后到的 cancelled/failed/completed 不再造成 AgentRun、Message 与 SSE 状态分裂；request_id 幂等绑定 uid、agent、thread、source 和 queue policy，跨作用域复用返回结构化冲突。并发 `reject` 现在会在锁定 FIFO 队头后确认当前请求确实能够立即派发，竞争失败的请求原子转为 rejected；终态 run 缺少 `finished_at` 时显式暴露数据不变量，实时进入 interrupted 后也会立即刷新队列提示。Request SSE 恢复时会复用已有连接，开发容器也会在有长连接时按时完成热重载。新增《Agent 请求队列与调度设计》文档，说明调度目标、策略、状态、异常处理和当前范围。补充队列、取消、暂停恢复、消息排序、流交接及接口测试。
+- 新增知识库 external API 与 `yuxi kb` 查询类命令：后端在 `/api/knowledge/databases/external/*` 下暴露列库、文件搜索、检索、打开和文件内查找接口，统一走认证身份校验；CLI 新增 `yuxi kb list/files/query/open/find`，补充后端 external API 集成测试与 CLI client/命令测试。管理端同步新增 `GET /api/knowledge/databases/{kb_id}/documents/search`，复用底层文件名搜索能力供前端调用；知识库详情页工具栏新增「搜索文件」按钮，打开命令面板式弹窗（与历史对话搜索弹窗同风格），输入关键词按文件名搜索并在结果列表展示状态/大小/更新时间，placeholder 明确标注仅匹配文件名、不搜索文件内容，点击结果可直接打开文件详情。搜索请求增加序号校验，连续回车与快速重搜时丢弃过期响应，避免后发先至覆盖当前关键词结果。文件名搜索改为数据库侧按 filename/status 过滤、`updated_at desc` 排序与 count 统计，避免大知识库超过仓储单页上限时静默漏结果；管理端搜索先做当前用户可见性校验再判断文档能力，external open/find 统一清晰处理只读源与预期参数错误；CLI 查询结果从 `metadata.score` 读取并展示检索得分。
+- 新增 `download_kb_file` 知识库工具：通过 `file_id` 调用 `knowledge_base.get_file_download(variant="original")` 从 MinIO 拉取原始二进制（pdf/docx/xlsx 等），落盘到沙盒 `outputs` 目录并返回沙盒内可见的虚拟路径，供后续代码工具以文件对象方式读取（`openpyxl.load_workbook`、`pdfplumber.open` 等），弥补 `query_kb`/`open_kb_document` 只返回文本切片、丢失原始文件结构的不足。复用会话可见知识库校验与 `ocr_parse_file` 的落盘范式，支持 `save_as` 指定文件名（剥离目录防穿越，重名追加 `_N` 后缀），工具只搬运不解析、不自动登记交付物。工具已登记到 knowledge-base 内置 Skill 的 `tool_dependencies`，并在 SKILL.md 可用工具段补充说明；只读源拦截下沉到 `manager.get_file_download` 内部，与 `open_document`/`find_in_document` 落点一致，工具/router/CLI 所有调用方统一获得 dify 等只读检索源的拦截；返回的 `size_bytes` 与落盘统一用下标访问 `data["content"]`，避免回退掩盖契约异常。
+
+## v0.7.1 (2026-07-17)
 
 ### 安全
 
 - 生产 Compose 不再回退到公开的 Neo4j、MinIO 和 PostgreSQL 默认凭证，并要求显式配置 JWT 随机密钥与实例标识；相关配置缺失时会在解析阶段拒绝启动并提示具体变量名。管理员初始化、创建用户、创建部门管理员及修改用户密码在前后端统一要求密码不少于 8 位。
+- 修复沙箱执行边界：每个动态 Docker 沙箱使用只与 provisioner 相连的独立网络，沙箱之间不能互访，也不再加入业务 `app-network` 或发布随机宿主机端口；provisioner 重启后会重新接入已有沙箱网络，清理时只删除自身创建且标签匹配的网络。API/worker 使用至少 32 字符的 `SANDBOX_PROVISIONER_TOKEN` 调用 provisioner，并通过认证代理访问沙箱文件与命令接口，代理在应用生命周期内复用 HTTP 连接池。生产 Compose 同时移除 PostgreSQL 和解析服务的宿主机端口，阻断沙箱对其他租户、业务数据库、对象存储和无鉴权 provisioner 的横向访问。
+- 公开头像和 Agent 图片改用同源 `/minio/public/...` 地址，由开发 Vite 和生产 Nginx 只读代理 `public` bucket；MinIO `9000` 对象 API 与 `9001` 管理控制台无需对外开放，私有 bucket 不进入前端代理。
+- Markdown 渲染兼容历史 PDF 解析结果中的 `http(s)://<host>:9000/public/...` 图片链接，在展示时转换为同源 `/minio/public/...`，无需批量重写 MinIO 中已有的 `.md` 文件或重新解析文档。
+
 
 ### 破坏性变更
 
+- 沙箱 provisioner 现在强制要求 `SANDBOX_PROVISIONER_TOKEN`。升级前运行初始化脚本自动补生成，或手工使用 `openssl rand -hex 32` 生成并写入 `.env` / `.env.prod`；API、worker、provisioner 必须使用同一个值，但不能把它写入 `sandbox.env`。已有动态沙箱会因网络不匹配被 provisioner 删除并按新网络重建。
 - API Key 收紧到具体用户：`api_keys.user_id` 收紧为非空，启动 schema 演进会先清理 `cli_auth_sessions` 中对未绑定 API Key 的引用，再 `DELETE FROM api_keys WHERE user_id IS NULL`，最后 `ALTER COLUMN user_id SET NOT NULL`。**升级前请在 0.7.0 库执行 `SELECT id, name, department_id FROM api_keys WHERE user_id IS NULL;`**，决定每个未绑定 Key 的归属用户并手动 `UPDATE`，未绑定的 Key 升级后会被静默删除且无法恢复；清理前后端日志会输出 `Schema migration will delete N unbound API key(s)` 告警以便回溯。
 - Dashboard 收紧到 superadmin：所有 `/api/dashboard/*` 端点从 `get_admin_user` 收紧为 `get_superadmin_user`，前端路由同步收紧。0.7.0 中创建过 `role='admin'`（非 superadmin）的运维用户升级后将失去 Dashboard 访问权限，且应用内无自助提权路径；升级前请在数据库中将需要继续访问 Dashboard 的 admin 用户 `UPDATE users SET role='superadmin' WHERE uid=...`。首装场景的首个管理员始终是 superadmin，新部署不受影响。
 - CORS 生产环境默认拒绝跨域：CORS 改为通过 `YUXI_CORS_ORIGINS` 显式配置允许来源；`YUXI_ENV=production` 且未设置该变量时返回空列表（拒绝所有跨域），显式设为 `*` 时会自动关闭 credentials。**前后端跨域部署的运维请在升级前设置 `YUXI_CORS_ORIGINS=https://your-frontend.example.com`**，否则浏览器跨域请求将被拒绝；同源部署（前端与 API 同源）不需要额外配置。
@@ -62,6 +76,7 @@
 - 发布 `yuxi-cli` 到 PyPI，并新增 GitHub Release 触发的 PyPI Trusted Publishing 工作流；文档新增命令行工具使用说明；CLI 运行访问 remote 的命令前会先输出当前 CLI 版本、remote 名称和 URL。
 - 修复知识库文件入库/解析成功却被统计为失败（#793）：成功的文件元数据会固定携带 `error: None`，而后台任务此前以「结果中是否存在 `error` 键」判定失败，导致成功项也被计入失败数并在全部成功时仍抛出「处理完成，失败 N 个」。改为统一通过 `_is_failed_item` 按「显式 `status == failed` 或非空 `error`」判定，覆盖入库、解析、单独解析/入库三处统计。
 - 修复 Windows 初始化脚本自动生成 JWT 配置失败（#804）：`init.ps1` 改用 Windows PowerShell 兼容的 `RandomNumberGenerator.Create().GetBytes(...)` 生成随机字节，避免旧 .NET 环境缺少 `RandomNumberGenerator.Fill()` 导致按 Enter 自动生成时报错。
+- 优化 Bash 与 Windows 初始化脚本：目标镜像标签已存在时直接跳过重复拉取；已有 `.env` 会逐项检查必填 API Key、JWT 密钥、实例 ID 和 Sandbox Provisioner Token，缺失或为空时提示输入，安全配置支持回车生成，并避免写入重复键。
 - 优化知识库文件列表状态流转与文件预览边界：`uploaded/parsed/error_parsing/error_indexing` 状态分别展示解析、入库或重试操作；源文件预览与解析后的 Markdown 查看分离，txt/图片/Markdown/HTML/PDF/代码类按源文件类型预览；Office 源文件仅支持 `.docx/.pptx`，点击预览时按需生成并缓存 PDF 预览内容，由同一个预览接口直接返回，不再把解析 Markdown 产物当作源文件预览。
 - 收敛知识库分块策略选项来源：后端以单一 `CHUNK_PRESETS` 配置派生 preset id、描述和选项列表，并新增 `/api/knowledge/chunk-presets`；前端分块策略选择器改为通过接口读取选项，避免前后端重复维护同一份文案。
 - 优化大规模知识库文件列表加载：知识库详情接口默认不再返回全量 `files`，新增按 `parent_id/path_prefix/page/page_size/status` 查询的轻量文件列表接口；前端文件管理页改为目录懒加载与服务端分页，后端按 `source_path`/路径型文件名聚合虚拟目录，列表项只保留交互所需字段，顶部统计改用后端聚合结果，避免数十万文件场景下前端全量建树和传输压力。工作区知识库文件浏览统一改用同一套分页懒加载查询，支持真实目录和虚拟目录页码分页，非文档型知识库不再出现在工作区文件源中；文件浏览组件和后端列表接口均不再承载文件名搜索，后续搜索能力由独立后端接口和组件实现；文件列表展示抽出共享 `FileBrowserTable`，知识库详情和工作区共用展示层，并移除原知识库文件列表拖拽移动入口。

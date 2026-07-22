@@ -738,6 +738,31 @@ class PostgresManager(metaclass=SingletonMeta):
             "CREATE INDEX IF NOT EXISTS ix_model_providers_is_enabled ON model_providers(is_enabled)",
             "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS java_token_status VARCHAR(32)",
             "ALTER TABLE IF EXISTS sql_database ADD COLUMN IF NOT EXISTS is_activate BOOLEAN NOT NULL DEFAULT TRUE",
+            """
+            CREATE TABLE IF NOT EXISTS agent_run_requests (
+                id SERIAL PRIMARY KEY,
+                request_id VARCHAR(64) NOT NULL,
+                uid VARCHAR(64) NOT NULL,
+                agent_slug VARCHAR(64) NOT NULL,
+                conversation_thread_id VARCHAR(64) NOT NULL,
+                source VARCHAR(32) NOT NULL DEFAULT 'chat',
+                queue_policy VARCHAR(16) NOT NULL DEFAULT 'enqueue',
+                status VARCHAR(32) NOT NULL DEFAULT 'queued',
+                input_message_id INTEGER NOT NULL REFERENCES messages(id),
+                dispatched_run_id VARCHAR(64) REFERENCES agent_runs(id),
+                input_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+                error_message TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                dispatched_at TIMESTAMPTZ,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """,
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_agent_run_requests_request_id ON agent_run_requests(request_id)",
+            """
+            CREATE INDEX IF NOT EXISTS ix_agent_run_requests_queue
+            ON agent_run_requests(uid, agent_slug, conversation_thread_id, status, created_at, id)
+            """,
+            "CREATE INDEX IF NOT EXISTS ix_agent_run_requests_dispatched_run_id ON agent_run_requests(dispatched_run_id)",  # noqa: E501
         ]
         async with self.async_engine.begin() as conn:
             # 历史未绑定用户的 API Key 会在下方迁移语句里被静默删除，先计数告警

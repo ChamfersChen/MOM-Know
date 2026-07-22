@@ -158,6 +158,13 @@ const mainList = computed(() => {
   ]
 
   items.push({
+    name: '智能体',
+    path: '/agent-manage',
+    icon: Box,
+    activeIcon: Box
+  })
+
+  items.push({
     name: '工作区',
     path: '/workspace',
     icon: FolderKanban,
@@ -170,13 +177,6 @@ const mainList = computed(() => {
     activePaths: ['/extensions'],
     icon: LibraryBig,
     activeIcon: LibraryBig
-  })
-
-  items.push({
-    name: '智能体管理',
-    path: '/model-manage',
-    icon: Box,
-    activeIcon: Box
   })
   if (userStore.isSuperAdmin) {
     items.push({
@@ -644,7 +644,7 @@ div.header,
     justify-content: flex-start;
     align-items: stretch;
     position: relative;
-    gap: 4px;
+    gap: 0;
   }
 
   .sidebar-conversations {

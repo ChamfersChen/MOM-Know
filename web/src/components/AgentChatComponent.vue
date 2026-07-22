@@ -124,14 +124,6 @@
             </div>
           </div>
           <div class="bottom" :class="{ 'start-screen': !conversations.length }">
-            <!-- 人工审批弹窗 - 放在输入框上方 -->
-            <HumanApprovalModal
-              :visible="currentApprovalModalVisible"
-              :questions="currentApprovalQuestions"
-              @submit="handleQuestionSubmit"
-              @cancel="handleQuestionCancel"
-            />
-
             <div class="message-input-wrapper">
               <!-- 加载状态：加载消息 -->
               <div v-if="isLoadingMessages" class="chat-loading">
@@ -144,35 +136,112 @@
                 <h1>{{ randomGreeting }}</h1>
               </div>
 
-              <AgentInputArea
-                v-model="userInput"
-                :is-loading="isProcessing"
-                :disabled="!currentAgent"
-                :send-button-disabled="isSendButtonDisabled"
-                :mention="mentionConfig"
-                :thread-id="currentChatId"
-                :supports-file-upload="supportsFileUpload"
-                :attachments="currentPendingThreadAttachments"
-                @send="handleSendOrStop"
-                @upload-attachment="handleAttachmentUpload"
-                @remove-attachment="handleAttachmentRemove"
+              <section
+                v-if="currentQueuedRequests.length"
+                class="queued-request-panel"
+                aria-label="排队请求"
               >
-                <template #actions-left-extra>
-                  <slot name="input-actions-left" :has-active-thread="!!currentChatId"></slot>
-                </template>
-                <template #actions-right-extra>
-                  <div class="input-model-selector">
-                    <ModelSelectorComponent
-                      :model_spec="currentModelSpec"
-                      size="nano"
-                      display-name="mini"
-                      placeholder="选择模型"
-                      @select-model="handleModelSelect"
-                    />
+                <div class="queued-request-title">要求后续变更</div>
+                <div
+                  v-if="currentQueueSnapshot.status === 'paused'"
+                  class="queued-request-notice is-paused"
+                >
+                  <span>{{ queuePausedMessage }}</span>
+                  <button
+                    type="button"
+                    class="queued-request-continue"
+                    :disabled="currentThreadState?.continueQueueInFlight"
+                    @click="handleContinueQueue"
+                  >
+                    <Play :size="14" fill="currentColor" />
+                    继续队列
+                  </button>
+                </div>
+                <div
+                  v-else-if="currentQueueSnapshot.status === 'interrupted'"
+                  class="queued-request-notice"
+                >
+                  当前任务正在等待回答或审批，完成后将继续处理后续请求。
+                </div>
+                <div class="queued-request-list">
+                  <div
+                    v-for="request in currentQueuedRequests"
+                    :key="request.request_id"
+                    class="queued-request-row"
+                  >
+                    <CornerDownRight :size="16" class="queued-request-icon" aria-hidden="true" />
+                    <span class="queued-request-content" :title="request.content || '排队请求'">
+                      {{ request.content || '排队请求' }}
+                    </span>
+                    <span class="queued-request-position">
+                      排队 {{ request.queue_position || request.position || 1 }}
+                    </span>
+                    <button
+                      type="button"
+                      class="queued-request-delete lucide-icon-btn"
+                      :disabled="cancellingRequestIds.has(request.request_id)"
+                      :aria-label="`删除排队请求：${request.content || '排队请求'}`"
+                      @click="handleCancelQueuedRequest(request.request_id)"
+                    >
+                      <Trash2 :size="16" />
+                    </button>
                   </div>
-                  <slot name="input-actions-right" :has-active-thread="!!currentChatId"></slot>
-                </template>
-              </AgentInputArea>
+                </div>
+              </section>
+
+              <div
+                class="message-input-stage"
+                :class="{ 'has-tool-approval': currentToolApprovalVisible }"
+              >
+                <HumanApprovalModal
+                  :visible="currentApprovalModalVisible"
+                  :questions="currentApprovalQuestions"
+                  :kind="approvalState.kind"
+                  :action-requests="approvalState.actionRequests"
+                  @submit="handleQuestionSubmit"
+                  @cancel="handleQuestionCancel"
+                />
+
+                <div
+                  class="message-input-surface"
+                  :inert="currentToolApprovalVisible"
+                  :aria-hidden="currentToolApprovalVisible ? 'true' : undefined"
+                >
+                  <AgentInputArea
+                    v-model="userInput"
+                    :is-loading="shouldShowStopButton"
+                    :disabled="!currentAgent || currentToolApprovalVisible"
+                    :send-button-disabled="isSendButtonDisabled"
+                    :mention="mentionConfig"
+                    :thread-id="currentChatId"
+                    :supports-file-upload="supportsFileUpload"
+                    :attachments="currentPendingThreadAttachments"
+                    @send="handleSendOrStop"
+                    @upload-attachment="handleAttachmentUpload"
+                    @remove-attachment="handleAttachmentRemove"
+                  >
+                    <template #actions-left-extra>
+                      <ToolApprovalModeSelector
+                        :model-value="currentToolApprovalMode"
+                        @update:model-value="handleToolApprovalModeSelect"
+                      />
+                      <slot name="input-actions-left" :has-active-thread="!!currentChatId"></slot>
+                    </template>
+                    <template #actions-right-extra>
+                      <div class="input-model-selector">
+                        <ModelSelectorComponent
+                          :model_spec="currentModelSpec"
+                          size="nano"
+                          display-name="mini"
+                          placeholder="选择模型"
+                          @select-model="handleModelSelect"
+                        />
+                      </div>
+                      <slot name="input-actions-right" :has-active-thread="!!currentChatId"></slot>
+                    </template>
+                  </AgentInputArea>
+                </div>
+              </div>
 
               <AttachmentTmpUploadModal
                 v-model:open="attachmentUploadModalOpen"
@@ -206,7 +275,6 @@
             <div class="side-panel__header state-panel-header">
               <span class="state-panel-title">状态</span>
               <div class="state-panel-header-actions">
-                <span class="state-panel-summary">{{ stateSummaryLabel }}</span>
                 <button
                   type="button"
                   class="state-refresh-btn"
@@ -241,9 +309,6 @@
                       :class="{ 'is-collapsed': !isStateSectionExpanded('tokenUsage') }"
                     />
                   </span>
-                  <span class="state-section-meta">
-                    {{ tokenUsageHeaderPercentLabel }}
-                  </span>
                 </button>
                 <div
                   v-show="isStateSectionExpanded('tokenUsage')"
@@ -253,7 +318,7 @@
                   <div class="token-usage-content">
                     <div class="token-usage-stack">
                       <div class="token-usage-stack-head">
-                        <span>当前上下文</span>
+                        <span>{{ tokenUsageHeaderPercentLabel }}</span>
                         <strong>{{ tokenUsageStackHeadLabel }}</strong>
                       </div>
                       <div class="token-usage-stack-track" aria-label="Token 构成">
@@ -313,7 +378,7 @@
                     />
                   </span>
                   <span v-if="totalTodoCount" class="state-section-meta">
-                    {{ completedTodoCount }}/{{ totalTodoCount }} · {{ todoProgress }}%
+                    {{ completedTodoCount }}/{{ totalTodoCount }}
                   </span>
                 </button>
                 <div
@@ -580,7 +645,15 @@ import {
   onDeactivated
 } from 'vue'
 import { message } from 'ant-design-vue'
-import { ChevronDown, FolderKanban, LayoutList, RefreshCw } from 'lucide-vue-next'
+import {
+  ChevronDown,
+  CornerDownRight,
+  FolderKanban,
+  LayoutList,
+  Play,
+  RefreshCw,
+  Trash2
+} from 'lucide-vue-next'
 import { formatFileSize } from '@/utils/file_utils'
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 import { generatePixelAvatar } from '@/utils/pixelAvatar'
@@ -592,6 +665,7 @@ import {
   SyncOutlined
 } from '@ant-design/icons-vue'
 import AgentInputArea from '@/components/AgentInputArea.vue'
+import ToolApprovalModeSelector from '@/components/ToolApprovalModeSelector.vue'
 import ModelSelectorComponent from '@/components/ModelSelectorComponent.vue'
 import AgentMessageComponent from '@/components/AgentMessageComponent.vue'
 import RefsComponent from '@/components/RefsComponent.vue'
@@ -608,10 +682,11 @@ import { MessageProcessor } from '@/utils/messageProcessor'
 import { agentApi, threadApi } from '@/apis'
 import HumanApprovalModal from '@/components/HumanApprovalModal.vue'
 import { useApproval } from '@/composables/useApproval'
-import { useAgentThreadState } from '@/composables/useAgentThreadState'
+import { useAgentThreadState, IDLE_QUEUE_SNAPSHOT } from '@/composables/useAgentThreadState'
 import { useAgentRunStream } from '@/composables/useAgentRunStream'
 import { useAgentStreamHandler } from '@/composables/useAgentStreamHandler'
 import { useStreamSmoother } from '@/composables/useStreamSmoother'
+import { useAgentRequestQueue } from '@/composables/useAgentRequestQueue'
 import { useAgentMentionConfig } from '@/composables/useAgentMentionConfig'
 import AgentArtifactsCard from '@/components/AgentArtifactsCard.vue'
 import AgentPanel from '@/components/AgentPanel.vue'
@@ -621,6 +696,13 @@ import FallbackAvatar from '@/components/common/FallbackAvatar.vue'
 import { enrichTaskToolCalls, parseToolCallArgs } from '@/components/ToolCallingResult/toolRegistry'
 import { getConversationDisplayItems } from '@/utils/messageGrouping'
 import { makeChildThreadId } from '@/utils/subagentThread'
+import {
+  isThreadWaitingForUserAction,
+  isToolApprovalMode,
+  readToolApprovalModePreference,
+  resolveToolApprovalMode,
+  writeToolApprovalModePreference
+} from '@/utils/toolApproval'
 
 // ==================== PROPS & EMITS ====================
 const props = defineProps({
@@ -642,6 +724,7 @@ const { threads, currentThreadId, currentThread } = storeToRefs(chatThreadsStore
 // ==================== LOCAL CHAT & UI STATE ====================
 const userInput = ref('')
 const sendCooldownActive = ref(false)
+const cancellingRequestIds = reactive(new Set())
 let sendCooldownTimer = null
 // 预设的打招呼文本
 const greetingMessages = [
@@ -967,6 +1050,8 @@ const currentChatId = computed(() => currentThreadId.value)
 // 按线程记忆用户选择的模型；未选择时回退到智能体配置的模型。
 const DRAFT_MODEL_KEY = '__draft__'
 const selectedModelByThread = reactive({})
+const selectedToolApprovalModeByThread = reactive({})
+const savedToolApprovalMode = ref(readToolApprovalModePreference())
 const agentDefaultModel = computed(
   () =>
     agentConfig.value?.model ||
@@ -985,6 +1070,24 @@ const handleModelSelect = (spec) => {
       delete selectedModelByThread[currentChatId.value || DRAFT_MODEL_KEY]
     }
   }
+}
+
+const configuredAgentToolApprovalMode = computed(() => {
+  const configJson = currentAgent.value?.config_json
+  return configJson?.context?.tool_approval_mode || configJson?.tool_approval_mode || null
+})
+const currentToolApprovalMode = computed(() =>
+  resolveToolApprovalMode({
+    threadMode: selectedToolApprovalModeByThread[currentChatId.value || DRAFT_MODEL_KEY],
+    agentMode: configuredAgentToolApprovalMode.value,
+    savedMode: savedToolApprovalMode.value
+  })
+)
+const handleToolApprovalModeSelect = (mode) => {
+  if (!isToolApprovalMode(mode)) return
+  selectedToolApprovalModeByThread[currentChatId.value || DRAFT_MODEL_KEY] = mode
+  savedToolApprovalMode.value = mode
+  writeToolApprovalModePreference(mode)
 }
 
 const currentThreadAgentName = computed(() => {
@@ -1067,11 +1170,16 @@ const tokenUsageSegments = computed(() => {
   const inputTokens = Math.max(toFiniteNumber(usage.llm_input_tokens) || 0, 0)
   const rawSegments = [
     {
-      key: 'cut',
-      label: '已压缩',
-      value: cutMessageTokens,
-      messageCount: cutMessageCount,
-      tone: 'is-cut'
+      key: 'system',
+      label: '系统提示',
+      value: systemTokens,
+      tone: 'is-system'
+    },
+    {
+      key: 'tools',
+      label: `工具定义 (${usage.tool_count || 0})`,
+      value: toolsTokens,
+      tone: 'is-tools'
     },
     {
       key: 'messages',
@@ -1095,16 +1203,11 @@ const tokenUsageSegments = computed(() => {
       tone: 'is-summary'
     },
     {
-      key: 'system',
-      label: '系统消息',
-      value: systemTokens,
-      tone: 'is-system'
-    },
-    {
-      key: 'tools',
-      label: `工具定义 (${usage.tool_count || 0})`,
-      value: toolsTokens,
-      tone: 'is-tools'
+      key: 'cut',
+      label: '已压缩',
+      value: cutMessageTokens,
+      messageCount: cutMessageCount,
+      tone: 'is-cut'
     }
   ].filter((segment) => segment.value > 0)
 
@@ -1308,19 +1411,6 @@ const completedTodoCount = computed(
 )
 const showStateEntry = computed(() => Boolean(currentChatId.value))
 const showFileEntry = computed(() => Boolean(currentChatId.value))
-const todoProgress = computed(() => {
-  if (!totalTodoCount.value) return 0
-  return Math.round((completedTodoCount.value / totalTodoCount.value) * 100)
-})
-const stateSummaryLabel = computed(() => {
-  const total =
-    (currentTokenUsage.value ? 1 : 0) +
-    totalTodoCount.value +
-    currentStateFiles.value.length +
-    currentArtifactFiles.value.length +
-    displaySubagentRuns.value.length
-  return total ? `${total} 项` : '暂无内容'
-})
 const hasVisibleStateSections = computed(
   () =>
     Boolean(currentTokenUsage.value) ||
@@ -1352,6 +1442,9 @@ const currentApprovalModalVisible = computed(
 )
 const currentApprovalQuestions = computed(() =>
   currentApprovalModalVisible.value ? approvalState.questions : []
+)
+const currentToolApprovalVisible = computed(
+  () => currentApprovalModalVisible.value && approvalState.kind === 'tool_approval'
 )
 
 const shouldSuppressRefsForApproval = () =>
@@ -1775,22 +1868,47 @@ const isStreaming = computed(() => {
   const threadState = currentThreadState.value
   return threadState ? threadState.isStreaming : false
 })
+const currentQueuedRequests = computed(() => currentThreadState.value?.queuedRequests || [])
+const currentQueueSnapshot = computed(
+  () => currentThreadState.value?.queueSnapshot || IDLE_QUEUE_SNAPSHOT
+)
+const queuedRequestCount = computed(() => currentQueuedRequests.value.length)
+const hasQueuedRequests = computed(() => queuedRequestCount.value > 0)
+const isWaitingForUserAction = computed(() =>
+  isThreadWaitingForUserAction(currentThreadState.value)
+)
+const queuePausedMessage = computed(() =>
+  currentQueueSnapshot.value.paused_reason === 'cancelled'
+    ? '当前任务已停止，后续队列已暂停。'
+    : '上一个任务失败，后续队列已暂停。'
+)
+const shouldShowStopButton = computed(
+  () => isStreaming.value && !String(userInput.value || '').trim()
+)
 const shouldRefreshStateWhileStreaming = computed(
   () => Boolean(currentChatId.value) && isStreaming.value && statePanelOpen.value
 )
-const isProcessing = computed(() => isStreaming.value)
+const isProcessing = computed(
+  () =>
+    isStreaming.value || (hasQueuedRequests.value && currentQueueSnapshot.value.status !== 'paused')
+)
 const isReplyLoading = computed(() => {
   const threadState = currentThreadState.value
-  return Boolean(threadState?.replyLoadingVisible)
+  return Boolean(threadState?.replyLoadingVisible) && currentQueueSnapshot.value.status !== 'paused'
 })
-const replyLoadingText = computed(() =>
-  currentThreadState.value?.contextCompressing ? '正在压缩上下文...' : '正在生成回复...'
-)
+const replyLoadingText = computed(() => {
+  const threadState = currentThreadState.value
+  if (threadState?.contextCompressing) return '正在压缩上下文...'
+  if (hasQueuedRequests.value) return `排队中（${queuedRequestCount.value} 条）...`
+  return '正在生成回复...'
+})
 const isSendButtonDisabled = computed(() => {
   return (
     sendCooldownActive.value ||
-    (props.sendDisabled && !isProcessing.value) ||
-    ((!userInput.value || !currentAgent.value) && !isProcessing.value)
+    props.sendDisabled ||
+    isWaitingForUserAction.value ||
+    (!userInput.value && !isProcessing.value) ||
+    !currentAgent.value
   )
 })
 
@@ -2152,18 +2270,29 @@ const fetchThreadMessages = async ({ agentId, threadId, delay = 0 }) => {
   }
 }
 
-// 跨会话还原：用最近一条用户消息记录的 model_spec 还原模型选择
+// 把草稿线程的选择迁移到真实线程：真实线程未设值时才覆盖，迁移后删除草稿。
+const promoteDraftSelection = (selectionByThread, threadId) => {
+  const draft = selectionByThread[DRAFT_MODEL_KEY]
+  if (!draft) return
+  if (!selectionByThread[threadId]) selectionByThread[threadId] = draft
+  delete selectionByThread[DRAFT_MODEL_KEY]
+}
+
+// 跨会话还原：从最近一条显式携带覆盖值的用户消息恢复线程级选择。
 const restoreThreadModelSelection = (threadId, history) => {
-  if (selectedModelByThread[threadId]) return
-  for (let i = history.length - 1; i >= 0; i -= 1) {
-    const msg = history[i]
-    if (msg?.type !== 'human') continue
-    const modelSpec = msg?.extra_metadata?.model_spec
-    if (modelSpec) {
-      selectedModelByThread[threadId] = modelSpec
-      return
+  const restoreField = (target, accept, key) => {
+    if (target[key]) return
+    for (let i = history.length - 1; i >= 0; i -= 1) {
+      const msg = history[i]
+      if (msg?.type !== 'human') continue
+      const value = msg?.extra_metadata?.[key]
+      if (accept(value)) {
+        target[key] = value
+        return
+      }
     }
   }
+  restoreField(selectedModelByThread, (spec) => spec, 'model_spec')
 }
 
 const fetchThreadFiles = async (threadId) => {
@@ -2320,13 +2449,74 @@ const { startRunStream, resumeActiveRunForThread, stopRunStreamSubscription } = 
   streamSmoother,
   onInterruptDetected: ({ threadId }) => {
     restorePendingInterruptForThread(threadId)
+    void resumeQueuedRequestsForThread(threadId)
   },
   onTerminalDetected: ({ threadId, touchedThreadIds = [] }) => {
     if (approvalState.threadId === threadId || touchedThreadIds.includes(approvalState.threadId)) {
       hideApprovalState()
     }
+    void resumeQueuedRequestsForThread(threadId)
   }
 })
+const startDispatchedRequestRun = async (threadId, runId, requestId) => {
+  await fetchThreadMessages({ agentId: currentAgentId.value, threadId })
+  resetOnGoingConv(threadId, { preserveRequestStreams: true })
+  const onGoingConv = getThreadState(threadId)?.onGoingConv
+  if (onGoingConv) {
+    onGoingConv.currentRequestKey = requestId
+    onGoingConv.currentAssistantKey = null
+  }
+  await startRunStream(threadId, runId, '0-0')
+}
+
+const {
+  startRequestStream,
+  stopAllRequestStreams,
+  cancelRequest,
+  syncQueuedRequests,
+  continueQueue
+} = useAgentRequestQueue({
+  getThreadState,
+  startRunStream: startDispatchedRequestRun,
+  onStreamError: () => {}
+})
+
+const handleCancelQueuedRequest = async (requestId) => {
+  const threadId = currentChatId.value
+  if (!threadId || !requestId || cancellingRequestIds.has(requestId)) return
+
+  cancellingRequestIds.add(requestId)
+  const cancelled = await cancelRequest(threadId, requestId)
+  cancellingRequestIds.delete(requestId)
+  if (cancelled) {
+    await resumeQueuedRequestsForThread(threadId)
+    message.success('已删除排队请求')
+  }
+}
+
+const handleContinueQueue = async () => {
+  const threadId = currentChatId.value
+  const agentSlug =
+    threads.value.find((thread) => thread.id === threadId)?.agent_id || currentAgentId.value
+  if (!threadId || !agentSlug || currentThreadState.value?.continueQueueInFlight) return
+
+  if (await continueQueue(threadId, agentSlug)) {
+    message.success('队列已继续')
+  }
+}
+
+const resumeQueuedRequestsForThread = async (threadId) => {
+  const ts = getThreadState(threadId)
+  if (!ts) return
+  const agentSlug = threads.value.find((t) => t.id === threadId)?.agent_id || currentAgentId.value
+  if (!agentSlug) return
+  await syncQueuedRequests(threadId, agentSlug)
+  if (ts.queuedRequests && ts.queuedRequests.length > 0) {
+    for (const req of ts.queuedRequests) {
+      void startRequestStream(threadId, req.request_id)
+    }
+  }
+}
 
 const resumeCurrentRunForVisiblePage = async () => {
   if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
@@ -2335,6 +2525,7 @@ const resumeCurrentRunForVisiblePage = async () => {
 
   try {
     await resumeActiveRunForThread(threadId)
+    await resumeQueuedRequestsForThread(threadId)
     restorePendingInterruptForThread(threadId)
   } catch (error) {
     console.warn('Failed to resume current run after page became visible:', error)
@@ -2369,8 +2560,8 @@ const selectChat = async (chatId) => {
   // 中断之前线程的流式输出（如果存在）
   if (previousThreadId && previousThreadId !== chatId) {
     stopThreadStream(previousThreadId)
-    // run 模式下仅断开 SSE 订阅，不取消后台运行任务
     stopRunStreamSubscription(previousThreadId)
+    stopAllRequestStreams(previousThreadId)
   }
 
   if (previousThreadId !== chatId) {
@@ -2413,6 +2604,7 @@ const selectChat = async (chatId) => {
   await handleAgentStateRefresh(chatId)
   syncThreadConfigSnapshot(chatId, { overwrite: false })
   await resumeActiveRunForThread(chatId)
+  await resumeQueuedRequestsForThread(chatId)
   restorePendingInterruptForThread(chatId)
   await scrollController.scrollToBottomStaticForce()
 }
@@ -2427,6 +2619,7 @@ const selectThreadFromRoute = async (threadId) => {
     if (previousThreadId) {
       stopThreadStream(previousThreadId)
       stopRunStreamSubscription(previousThreadId)
+      stopAllRequestStreams(previousThreadId)
     }
     resetAgentPanelState()
     setCurrentThreadId(null)
@@ -2456,9 +2649,9 @@ const handleSendMessage = async ({ image } = {}) => {
   if (
     (!text && !image) ||
     !currentAgent.value ||
-    isProcessing.value ||
     sendCooldownActive.value ||
-    props.sendDisabled
+    props.sendDisabled ||
+    isWaitingForUserAction.value
   )
     return
 
@@ -2473,16 +2666,12 @@ const handleSendMessage = async ({ image } = {}) => {
       return
     }
     // 新建线程：把草稿态的模型选择迁移到真实线程，避免选择丢失
-    const draftModelSpec = selectedModelByThread[DRAFT_MODEL_KEY]
-    if (draftModelSpec) {
-      if (!selectedModelByThread[threadId]) {
-        selectedModelByThread[threadId] = draftModelSpec
-      }
-      delete selectedModelByThread[DRAFT_MODEL_KEY]
-    }
+    promoteDraftSelection(selectedModelByThread, threadId)
+    promoteDraftSelection(selectedToolApprovalModeByThread, threadId)
   }
   // 仅当用户显式选择过模型才下发覆盖；否则传 null，由后端使用智能体配置的模型
   const modelSpec = selectedModelByThread[threadId] || null
+  const toolApprovalMode = currentToolApprovalMode.value
 
   userInput.value = ''
 
@@ -2491,6 +2680,7 @@ const handleSendMessage = async ({ image } = {}) => {
 
   const threadState = getThreadState(threadId)
   if (!threadState) return
+  const hadActiveRun = Boolean(threadState.activeRunId && threadState.isStreaming)
   threadState.pendingInterrupt = null
   if (approvalState.threadId === threadId) {
     hideApprovalState()
@@ -2524,19 +2714,21 @@ const handleSendMessage = async ({ image } = {}) => {
     }
   }
 
-  resetOnGoingConv(threadId)
   const requestId = createClientRequestId()
   const previousAttachments = markAttachmentsRequestId(threadId, pendingAttachments, requestId)
-  insertOptimisticHumanMessage(threadState, {
-    requestId,
-    text,
-    imageContent,
-    attachments: pendingAttachments.map((attachment) => ({
-      ...attachment,
-      request_id: requestId
-    }))
-  })
-  threadState.isStreaming = true
+  if (!hadActiveRun) {
+    resetOnGoingConv(threadId)
+    insertOptimisticHumanMessage(threadState, {
+      requestId,
+      text,
+      imageContent,
+      attachments: pendingAttachments.map((attachment) => ({
+        ...attachment,
+        request_id: requestId
+      }))
+    })
+    threadState.isStreaming = true
+  }
 
   try {
     const runResp = await agentApi.createAgentRun({
@@ -2548,19 +2740,38 @@ const handleSendMessage = async ({ image } = {}) => {
         attachment_file_ids: pendingAttachmentFileIds
       },
       image_content: imageContent,
-      model_spec: modelSpec
+      model_spec: modelSpec,
+      tool_approval_mode: toolApprovalMode
     })
+    const status = runResp?.status
     const runId = runResp?.run_id
-    if (!runId) {
+    if (status === 'queued' || (!runId && status !== 'rejected')) {
+      threadState.queuedRequests = threadState.queuedRequests || []
+      threadState.queuedRequests.push({
+        request_id: requestId,
+        status: 'queued',
+        queue_position: runResp?.queue_position || 1,
+        content: text
+      })
+      if (!hadActiveRun) {
+        threadState.isStreaming = false
+        threadState.replyLoadingVisible = false
+      }
+      await resumeQueuedRequestsForThread(threadId)
+    } else if (runId) {
+      threadState.pendingRequestId = requestId
+      await startRunStream(threadId, runId, 0)
+    } else {
       throw new Error('创建 run 失败：缺少 run_id')
     }
-    await startRunStream(threadId, runId, 0)
   } catch (error) {
-    threadState.isStreaming = false
-    threadState.replyLoadingVisible = false
-    threadState.pendingRequestId = null
+    if (!hadActiveRun) {
+      threadState.isStreaming = false
+      threadState.replyLoadingVisible = false
+      threadState.pendingRequestId = null
+      resetOnGoingConv(threadId)
+    }
     rollbackAttachments(threadId, previousAttachments)
-    resetOnGoingConv(threadId)
     handleChatError(error, 'send')
   }
 }
@@ -2573,7 +2784,8 @@ const handleSendOrStop = async (payload) => {
 
   const threadId = currentChatId.value
   const threadState = getThreadState(threadId)
-  if (isProcessing.value && threadState?.activeRunId) {
+  const hasNewInput = Boolean(String(userInput.value || '').trim() || payload?.image)
+  if (threadState?.activeRunId && threadState?.isStreaming && !hasNewInput) {
     try {
       await agentApi.cancelAgentRun(threadState.activeRunId)
       threadState.pendingInterrupt = null
@@ -2586,7 +2798,6 @@ const handleSendOrStop = async (payload) => {
     }
     return
   }
-  if (props.sendDisabled) return
   await handleSendMessage(payload)
 }
 
@@ -2715,7 +2926,7 @@ const toggleAgentPanel = async () => {
     return
   }
 
-  showFileTreePanel()
+  showFilePanel(agentPanelActivePreviewPath.value ? 'preview' : 'tree')
   await handleAgentStateRefresh()
 }
 
@@ -3200,7 +3411,7 @@ watch(currentChatId, (threadId, oldThreadId) => {
 }
 
 .chat-greeting-input {
-  padding: 24px 0;
+  padding: 24px 0 34px;
   text-align: center;
 
   h1 {
@@ -3386,6 +3597,158 @@ watch(currentChatId, (threadId, oldThreadId) => {
     width: 100%;
     max-width: 800px;
     margin: 0 auto;
+
+    .message-input-stage {
+      position: relative;
+      min-width: 0;
+    }
+
+    .message-input-stage.has-tool-approval {
+      display: grid;
+
+      > .approval-modal,
+      > .message-input-surface {
+        min-width: 0;
+        grid-area: 1 / 1;
+      }
+
+      > .approval-modal {
+        z-index: 2;
+      }
+
+      > .message-input-surface {
+        opacity: 0;
+        pointer-events: none;
+      }
+    }
+
+    .message-input-surface {
+      min-width: 0;
+      transition: opacity 0.18s ease;
+    }
+
+    .queued-request-panel {
+      margin-bottom: 8px;
+      padding: 14px 16px 10px;
+      background: var(--gray-0);
+      border: 1px solid var(--gray-150);
+      border-radius: 12px;
+    }
+
+    .queued-request-title {
+      margin-bottom: 6px;
+      color: var(--color-text-tertiary);
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .queued-request-notice {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      padding: 8px 10px;
+      color: var(--color-text-tertiary);
+      background: var(--gray-50);
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+
+      &.is-paused {
+        color: var(--color-warning-700);
+        background: var(--color-warning-50);
+      }
+    }
+
+    .queued-request-continue {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 8px;
+      color: var(--color-warning-700);
+      background: transparent;
+      border: 1px solid currentColor;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+
+      &:disabled {
+        opacity: 0.55;
+        cursor: wait;
+      }
+    }
+
+    .queued-request-list {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .queued-request-row {
+      min-height: 40px;
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr) auto 32px;
+      gap: 8px;
+      align-items: center;
+      color: var(--color-text);
+
+      & + .queued-request-row {
+        border-top: 1px solid var(--gray-100);
+      }
+    }
+
+    .queued-request-icon {
+      color: var(--gray-400);
+    }
+
+    .queued-request-content {
+      min-width: 0;
+      overflow: hidden;
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.5;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .queued-request-position {
+      color: var(--color-text-tertiary);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .queued-request-delete {
+      width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      color: var(--gray-400);
+      background: transparent;
+      border: 0;
+      border-radius: 6px;
+      cursor: pointer;
+      transition:
+        color 0.18s ease,
+        background-color 0.18s ease;
+
+      &:hover:not(:disabled) {
+        color: var(--color-error-700);
+        background: var(--color-error-50);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--main-color);
+        outline-offset: 1px;
+      }
+
+      &:disabled {
+        color: var(--gray-300);
+        cursor: wait;
+      }
+    }
 
     .bottom-actions {
       display: flex;
@@ -3691,7 +4054,6 @@ watch(currentChatId, (threadId, oldThreadId) => {
   color: var(--gray-500);
 }
 
-.state-panel-summary,
 .state-section-meta {
   flex-shrink: 0;
   font-size: 12px;
@@ -3814,6 +4176,7 @@ watch(currentChatId, (threadId, oldThreadId) => {
 
 .token-usage-stack-track {
   display: flex;
+  gap: 1px;
   height: 10px;
   overflow: hidden;
   border-radius: 999px;
@@ -3830,7 +4193,7 @@ watch(currentChatId, (threadId, oldThreadId) => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px 10px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--gray-500);
 }
 
