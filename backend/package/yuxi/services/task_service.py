@@ -226,6 +226,9 @@ class Tasker:
         async with self._lock:
             all_tasks = list(self._tasks.values())
 
+        # 过滤图像解析的tasks
+        all_tasks = [task for task in all_tasks if task.type != "image_ingest"]
+
         status_counter = Counter(task.status for task in all_tasks)
         type_counter = Counter(task.type for task in all_tasks)
         all_tasks.sort(key=lambda item: item.created_at or utc_isoformat(), reverse=True)

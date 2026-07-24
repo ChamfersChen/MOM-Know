@@ -2096,3 +2096,230 @@ async def generate_description(
     except Exception as e:
         logger.error(f"生成描述失败: {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"生成描述失败: {e}")
+
+#################################
+# 图片上传与解析接口
+#################################
+
+async def save_markdown_to_minio(kb_id: str, file_id: str, content: str) -> str:
+    """Save markdown content to MinIO and return HTTP URL"""
+    from yuxi.storage.minio import get_minio_client
+
+    minio_client = get_minio_client()
+    bucket_name = minio_client.KB_BUCKETS["parsed"]
+    await asyncio.to_thread(minio_client.ensure_bucket_exists, bucket_name)
+
+    object_name = f"{kb_id}/parsed/{file_id}.md"
+    data = content.encode("utf-8")
+
+    # Return standard HTTP URL from UploadResult
+    upload_result = await minio_client.aupload_file(
+        bucket_name=bucket_name,
+        object_name=object_name,
+        data=data,
+    )
+
+    return upload_result.url
+
+@knowledge.post("/files/upload-image")
+async def upload_image(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_admin_user),
+):
+    """上传文件"""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No selected file")
+
+    logger.debug(f"Received upload image with filename: {file.filename}")
+
+    ext = os.path.splitext(file.filename)[1].lower()
+
+    if not is_supported_file_extension(file.filename):
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
+
+    basename, ext = os.path.splitext(file.filename)
+    # 直接使用原始文件名（小写）
+    filename = f"{basename}{ext}".lower()
+
+    try:
+        file_bytes = await read_upload_with_limit(
+            file,
+            max_size_bytes=MAX_UPLOAD_SIZE_BYTES,
+            too_large_message="文件过大，当前仅支持 100 MB 以内的文件",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    content_hash = await calculate_content_hash(file_bytes)
+
+    # 直接上传到MinIO，添加时间戳区分版本
+    timestamp = int(time.time() * 1000)
+    minio_filename = f"{basename}_{timestamp}{ext}"
+
+    bucket_name = MinIOClient.KB_BUCKETS["documents"]
+    folder = "images"
+    object_name = f"{folder}/upload/{minio_filename}"
+
+    # 上传到MinIO
+    minio_url = await aupload_file_to_minio(bucket_name, object_name, file_bytes)
+
+
+    return {
+        "message": "Image successfully uploaded",
+        "file_path": minio_url,  # MinIO路径作为主要路径
+        "minio_path": minio_url,  # MinIO路径
+        "content_hash": content_hash,
+        "filename": filename,  # 原始文件名（小写）
+        "original_filename": basename,  # 原始文件名（去掉后缀）
+        "size": len(file_bytes),
+        "minio_filename": minio_filename,  # MinIO中的文件名（带时间戳）
+        "object_name": object_name,
+        "bucket_name": bucket_name,  # MinIO存储桶名称
+    }
+
+
+@knowledge.post("/images/documents")
+async def add_image_documents(
+    items: list[str] = Body(...), params: dict = Body(...), current_user: User = Depends(get_admin_user)
+):
+    """添加文档到知识库（上传 -> 解析 -> 可选入库）"""
+    from yuxi.knowledge.utils.kb_utils import prepare_item_metadata
+    kb_id = "images"
+    params = _ensure_document_params(params)
+    content_type = params.get("content_type", "file")
+
+    if content_type == "url":
+        raise HTTPException(status_code=400, detail="URL 处理方式已变更，请使用 fetch-url 接口先获取内容")
+    if content_type != "file":
+        raise HTTPException(status_code=400, detail=f"Unsupported content_type: {content_type}")
+
+    _validate_uploaded_document_items(items, params)
+    tmp_params = params.copy()
+    async def run_ingest(context: TaskContext):
+
+        total = len(items)
+        processed_items: list[dict | None] = [None] * total
+        added_files: list[dict] = []
+
+        try:
+            await context.set_message("Step 1: Process metadata.")
+            for idx, item in enumerate(items, 1):
+                await context.raise_if_cancelled()
+                progress = 5.0 + (idx / total) * 25
+                await context.set_progress(progress, f"[1/2] 元数据处理")
+                try:
+                    file_meta = await prepare_item_metadata(
+                        item, content_type, kb_id, params=tmp_params
+                    )
+                    added_files.append(
+                        {
+                            "index": idx - 1,
+                            "item": item,
+                            "file_id": file_meta["file_id"],
+                            "file_meta": file_meta,
+                        }
+                    )
+                except Exception as add_error:
+                    logger.error(f"元数据处理失败 {item}: {add_error}")
+                    error_type = "timeout" if isinstance(add_error, TimeoutError) else "add_failed"
+                    error_msg = "添加超时" if isinstance(add_error, TimeoutError) else "添加记录失败"
+                    processed_items[idx - 1] = {
+                        "item": item,
+                        "status": "failed",
+                        "error": f"{error_msg}: {str(add_error)}",
+                        "error_type": error_type,
+                    }
+
+            await context.set_message("Step 2: Parse images")
+            for idx, record in enumerate(added_files, 1):
+                await context.raise_if_cancelled()
+
+                item = record["item"]
+                file_id = record["file_id"]
+                file_meta = record["file_meta"]
+                try:
+                    # Prepare params
+                    params = file_meta.get("processing_params", {}) or {}
+                    params["image_bucket"] = "public"
+                    params["image_prefix"] = f"{kb_id}/kb-images"
+
+                    markdown_content = await Parser.aparse(
+                        source=item,
+                        params=params,
+                    )
+                    # Save Markdown to MinIO
+                    markdown_file_path = await save_markdown_to_minio(kb_id, file_id, markdown_content)
+                    # Update metadata
+                    file_meta["status"] = "parsed"
+                    file_meta["markdown_file"] = markdown_file_path
+                    file_meta["error"] = None
+
+                    logger.info(f"Image parsed: {markdown_file_path}")
+                    processed_items[record["index"]] = file_meta
+                except Exception as parse_error:
+                    logger.error(f"解析文件失败 {item} (file_id={file_id}): {parse_error}")
+                    error_type = "timeout" if isinstance(parse_error, TimeoutError) else "parse_failed"
+                    error_msg = "解析超时" if isinstance(parse_error, TimeoutError) else "解析失败"
+                    processed_items[record["index"]] = {
+                        "item": item,
+                        "status": "failed",
+                        "error": f"{error_msg}: {str(parse_error)}",
+                        "error_type": error_type,
+                    }
+
+        except asyncio.CancelledError:
+            await context.set_progress(100.0, "任务已取消")
+            raise
+        except Exception as task_error:
+            logger.exception(f"Task processing failed: {task_error}")
+            await context.set_progress(100.0, f"任务处理失败: {str(task_error)}")
+            raise
+
+        final_items = [
+            item
+            if item is not None
+            else {
+                "item": items[index],
+                "status": "failed",
+                "error": "文件未处理",
+                "error_type": "not_processed",
+            }
+            for index, item in enumerate(processed_items)
+        ]
+        failed_count = len([item for item in final_items if _is_failed_item(item)])
+
+        summary = {
+            "kb_id": kb_id,
+            "item_type": "文件",
+            "submitted": total,
+            "failed": failed_count,
+        }
+        message = f"文件处理完成，失败 {failed_count} 个" if failed_count else "文件处理完成"
+        await context.set_result(summary | {"items": final_items})
+        await context.set_progress(100.0, message)
+
+        if failed_count:
+            raise RuntimeError(message)
+
+        return summary | {"items": final_items}
+
+    try:
+        task = await tasker.enqueue(
+            name=f"图像处理",
+            task_type="image_ingest",
+            payload={
+                "kb_id": kb_id,
+                "items": items,
+                "params": params,
+                "content_type": content_type,
+            },
+            coroutine=run_ingest,
+        )
+        return {
+            "message": "任务已提交，请在任务中心查看进度",
+            "status": "queued",
+            "task_id": task.id,
+        }
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Failed to enqueue {content_type}s: {e}, {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to enqueue task: {e}")
