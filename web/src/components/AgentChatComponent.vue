@@ -90,8 +90,8 @@
                   />
                 </template>
                 <AgentArtifactsCard
-                  v-if="shouldShowArtifacts(row.conv)"
-                  :artifacts="currentArtifacts"
+                  v-if="row.artifacts.length"
+                  :artifacts="row.artifacts"
                   :thread-id="currentChatId"
                   @saved="handleArtifactSaved"
                   @open-preview="openPanelPreview"
@@ -171,10 +171,10 @@
                     <span class="queued-request-content" :title="request.content || '排队请求'">
                       {{ request.content || '排队请求' }}
                     </span>
-                    <span class="queued-request-position">
-                      {{ getQueuedRequestStatusText(request) }}
-                    </span>
                     <div class="queued-request-actions">
+                      <span v-if="request.queue_policy === 'steer'" class="queued-request-position">
+                        引导 · 下一条执行
+                      </span>
                       <button
                         v-if="canSteerQueuedRequest(request)"
                         type="button"
@@ -1492,14 +1492,6 @@ const shouldShowRefs = computed(() => {
   }
 })
 
-const shouldShowArtifacts = computed(() => {
-  return (conv) => {
-    if (!currentArtifacts.value.length || conv.status === 'streaming') return false
-    const latestConv = conversations.value[conversations.value.length - 1]
-    return latestConv === conv
-  }
-})
-
 // 当前线程状态的computed属性
 const currentThreadState = computed(() => {
   return getThreadState(currentChatId.value)
@@ -1855,7 +1847,8 @@ const conversationRows = computed(() => {
     type: 'conversation',
     key: conv.status === 'streaming' ? 'ongoing-conversation' : `history-${index}`,
     conv,
-    displayItems: getDisplayItems(conv)
+    displayItems: getDisplayItems(conv),
+    artifacts: MessageProcessor.extractArtifactsFromConversation(conv)
   }))
 
   if (currentThreadConfigNotice.value) {
@@ -1922,10 +1915,6 @@ const canSteerQueuedRequest = (request) =>
 const canCancelQueuedRequest = (request) =>
   request?.queue_policy !== 'steer' ||
   (!isStreaming.value && currentQueueSnapshot.value.status !== 'running')
-const getQueuedRequestStatusText = (request) =>
-  request?.queue_policy === 'steer'
-    ? '引导 · 下一条执行'
-    : `排队 ${request?.queue_position || request?.position || 1}`
 const shouldRefreshStateWhileStreaming = computed(
   () => Boolean(currentChatId.value) && isStreaming.value && statePanelOpen.value
 )
@@ -2527,8 +2516,7 @@ const handleCancelQueuedRequest = async (requestId) => {
 
 const handleSteerQueuedRequest = async (requestId) => {
   const threadId = currentChatId.value
-  const agentSlug =
-    threads.value.find((thread) => thread.id === threadId)?.agent_id || currentAgentId.value
+  const agentSlug = currentThread.value?.agent_id || currentAgentId.value
   if (!threadId || !agentSlug || !requestId || steeringRequestIds.has(requestId)) return
 
   steeringRequestIds.add(requestId)
@@ -2883,7 +2871,7 @@ const handleApprovalWithStream = async (answer) => {
     hideApprovalState()
     threadState.pendingInterrupt = null
     threadState.isStreaming = true
-    resetOnGoingConv(threadId)
+    resetOnGoingConv(threadId, { preserveRequestStreams: true })
     const requestId = createClientRequestId()
     const runResp = await agentApi.createAgentRun({
       query: null,
@@ -3672,7 +3660,7 @@ watch(currentChatId, (threadId, oldThreadId) => {
     .queued-request-panel {
       max-height: 196px;
       overflow-y: auto;
-      padding: 10px 12px 18px;
+      padding: 6px 12px 18px;
       background: var(--gray-25);
       border: 1px solid var(--gray-150);
       border-radius: 16px 16px 12px 12px;
@@ -3721,9 +3709,9 @@ watch(currentChatId, (threadId, oldThreadId) => {
     }
 
     .queued-request-row {
-      min-height: 30px;
+      min-height: 28px;
       display: grid;
-      grid-template-columns: 18px minmax(0, 1fr) auto auto;
+      grid-template-columns: 18px minmax(0, 1fr) auto;
       gap: 10px;
       align-items: center;
       padding: 0 4px 0 6px;
@@ -3743,9 +3731,9 @@ watch(currentChatId, (threadId, oldThreadId) => {
     .queued-request-content {
       min-width: 0;
       overflow: hidden;
-      font-size: 14px;
-      font-weight: 600;
-      line-height: 1.5;
+      font-size: 13px;
+      font-weight: 400;
+      line-height: 1.4;
       text-overflow: ellipsis;
       white-space: nowrap;
     }

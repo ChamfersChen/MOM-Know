@@ -102,8 +102,7 @@ export function useAgentRequestQueue({
             if (!tsInner.activeRunId) {
               resetOnGoingConv(threadId, { preserveRequestStreams: true })
             }
-            const runState = getThreadState(threadId)
-            runState.pendingRequestId = requestId
+            tsInner.pendingRequestId = requestId
             void startRunStream(threadId, data.run_id, '0-0')
           }
         } else if (event === 'cancelled' || event === 'rejected' || event === 'failed') {

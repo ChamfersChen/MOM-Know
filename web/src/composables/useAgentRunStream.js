@@ -174,7 +174,7 @@ export function useAgentRunStream({
     if (!run?.request_id || run.status !== 'running' || run.run_type !== 'chat') return false
     try {
       const response = await agentApi.getRequest(run.request_id)
-      return isSteerableMainChatRun({ ...run, source: response?.request?.source })
+      return response?.request?.source === 'chat'
     } catch {
       return false
     }

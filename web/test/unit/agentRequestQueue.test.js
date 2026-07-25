@@ -35,6 +35,19 @@ after(async () => {
   delete globalThis.localStorage
 })
 
+/** 集中 Run SSE 测试的固定依赖，只暴露各用例关心的行为。 */
+const createRunStream = ({ threadState, handleStreamChunk, resetOnGoingConv }) =>
+  useAgentRunStream({
+    getThreadState: () => threadState,
+    currentAgentId: { value: 'agent-1' },
+    handleStreamChunk,
+    fetchThreadMessages: async () => {},
+    fetchAgentState: () => {},
+    resetOnGoingConv,
+    onScrollToBottom: () => {},
+    streamSmoother: { flushThread: () => {} }
+  })
+
 test('run_created 立即完成状态交接并订阅新 Run SSE', async () => {
   const threadState = {
     queuedRequests: [{ request_id: 'request-1', status: 'queued' }],
@@ -160,9 +173,8 @@ test('replacement Run SSE 的增量 chunk 会连续进入前端渲染处理', as
       currentAgentId: { value: 'agent-1' },
       supportsFiles: { value: false }
     })
-    const runStream = useAgentRunStream({
-      getThreadState: () => threadState,
-      currentAgentId: { value: 'agent-1' },
+    const runStream = createRunStream({
+      threadState,
       handleStreamChunk: (chunk, threadId) => {
         const shouldStop = handleStreamChunk(chunk, threadId)
         if (chunk.status === 'loading') {
@@ -172,11 +184,7 @@ test('replacement Run SSE 的增量 chunk 会连续进入前端渲染处理', as
         }
         return shouldStop
       },
-      fetchThreadMessages: async () => {},
-      fetchAgentState: () => {},
-      resetOnGoingConv: () => {},
-      onScrollToBottom: () => {},
-      streamSmoother: { flushThread: () => {} }
+      resetOnGoingConv: () => {}
     })
     const queue = useAgentRequestQueue({
       getThreadState: () => threadState,
@@ -263,19 +271,14 @@ test('旧 Run 的延迟 AbortError 不覆盖新 Run 状态', async () => {
       { headers: { 'Content-Type': 'text/event-stream' } }
     )
 
-  const runStream = useAgentRunStream({
-    getThreadState: () => threadState,
-    currentAgentId: { value: 'agent-1' },
+  const runStream = createRunStream({
+    threadState,
     handleStreamChunk: (chunk) => {
       if (chunk.status !== 'init') return
       threadState.pendingRequestId = chunk.request_id
       threadState.replyLoadingVisible = true
     },
-    fetchThreadMessages: async () => {},
-    fetchAgentState: () => {},
-    resetOnGoingConv: () => {},
-    onScrollToBottom: () => {},
-    streamSmoother: { flushThread: () => {} }
+    resetOnGoingConv: () => {}
   })
 
   try {
@@ -315,15 +318,10 @@ test('旧 Run 终态清理保留排队 Request SSE', async () => {
     )
 
   try {
-    const runStream = useAgentRunStream({
-      getThreadState: () => threadState,
-      currentAgentId: { value: 'agent-1' },
+    const runStream = createRunStream({
+      threadState,
       handleStreamChunk: () => {},
-      fetchThreadMessages: async () => {},
-      fetchAgentState: () => {},
-      resetOnGoingConv: (_threadId, options) => resetCalls.push(options),
-      onScrollToBottom: () => {},
-      streamSmoother: { flushThread: () => {} }
+      resetOnGoingConv: (_threadId, options) => resetCalls.push(options)
     })
 
     await runStream.startRunStream('thread-1', 'run-1')
