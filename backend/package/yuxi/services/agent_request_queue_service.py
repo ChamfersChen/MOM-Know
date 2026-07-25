@@ -43,7 +43,6 @@ NOT_IMPLEMENTED_QUEUE_POLICIES = ("guided", "bridge")
 
 # Request lifecycle states.
 REQUEST_STATUS_QUEUED = "queued"
-REQUEST_STATUS_STEER_READY = "steer_ready"
 REQUEST_STATUS_DISPATCHED = "dispatched"
 REQUEST_STATUS_CANCELLED = "cancelled"
 REQUEST_STATUS_REJECTED = "rejected"
@@ -77,7 +76,6 @@ class IntakeResult:
     message_id: int | None
     thread_id: str
     run_id: str | None = None
-    target_run_id: str | None = None
     # FIFO 队内位置；未在排队（dispatched/rejected/已存在）时为 None。
     queue_position: int | None = None
 
@@ -88,16 +86,6 @@ class DispatchResult:
 
     request_id: str
     run_id: str
-
-
-@dataclass(frozen=True)
-class SteerHandoff:
-    """旧 Run 安全退出后的原子接替结果。"""
-
-    target_run_id: str
-    request_id: str | None = None
-    new_run_id: str | None = None
-    changed: bool = False
 
 
 def validate_queue_policy(queue_policy: str) -> str:
@@ -173,44 +161,27 @@ async def intake_request(
         conversation_thread_id=thread_id,
     )
     existing_head = existing_requests[0] if existing_requests else None
-    run_repo = AgentRunRepository(db)
-    active_run = await run_repo.get_active_run_by_thread_for_user(
+    active_run = await AgentRunRepository(db).get_active_run_by_thread_for_user(
         agent_slug=agent_slug,
         conversation_thread_id=thread_id,
         uid=uid_str,
     )
-    latest_run = await run_repo.get_latest_chat_or_resume_run(
+    latest_run = await AgentRunRepository(db).get_latest_chat_or_resume_run(
         uid=uid_str,
         agent_slug=agent_slug,
         conversation_thread_id=thread_id,
     )
     if latest_run is not None and latest_run.status == "interrupted":
         raise _queue_conflict("run_interrupted", "线程正在等待用户回答或审批")
-
-    target_run_id = None
-    if policy == "steer":
-        if active_run is None:
-            raise _queue_conflict("steer_target_missing", "当前没有可接替的运行")
-        active_run = await run_repo.lock_run(active_run.id)
-        if active_run is None:
-            raise _queue_conflict("steer_target_missing", "当前没有可接替的运行")
-        if active_run.status == "interrupted":
-            raise _queue_conflict("run_interrupted", "线程正在等待用户回答或审批")
-        if active_run.status == "pending" or active_run.run_type != "chat":
-            raise _queue_conflict("run_not_steerable", "当前运行尚未进入可引导状态")
-        if active_run.status == "cancel_requested":
-            raise _queue_conflict("run_cancel_pending", "当前运行正在取消")
-        if active_run.status != "running":
-            raise _queue_conflict("run_not_steerable", "当前运行不可引导")
-        pending_steer = await repo.get_pending_steer(
-            uid=uid_str,
-            agent_slug=agent_slug,
-            conversation_thread_id=thread_id,
-            lock=True,
-        )
-        if pending_steer:
-            raise _queue_conflict("steer_already_pending", "线程已有等待生效的引导请求")
-        target_run_id = active_run.id
+    if policy == "steer" and active_run is not None:
+        if active_run.status != "running" or not await _is_main_chat_run(db=db, run=active_run):
+            raise _queue_conflict("run_not_steerable", "当前运行不支持引导")
+    if policy == "steer" and await repo.get_pending_steer(
+        uid=uid_str,
+        agent_slug=agent_slug,
+        conversation_thread_id=thread_id,
+    ):
+        raise _queue_conflict("steer_already_pending", "线程已有等待执行的引导请求")
 
     # reject 表示“不能立即成为并派发 FIFO 队头就拒绝”。
     reject_without_immediate_dispatch = policy == "reject" and (active_run is not None or existing_head is not None)
@@ -251,14 +222,13 @@ async def intake_request(
                 input_message_id=persisted_message.id,
                 input_payload=input_payload,
                 status=request_status,
-                target_run_id=target_run_id,
             )
     except IntegrityError:
         if result := await existing_intake_result():
             return result
         raise
 
-    if not reject_without_immediate_dispatch and policy != "steer":
+    if not reject_without_immediate_dispatch:
         dispatched = await _dispatch_ready_head(
             db=db,
             uid=uid_str,
@@ -306,9 +276,86 @@ async def intake_request(
         queue_policy=policy,
         message_id=persisted_message.id,
         thread_id=thread_id,
-        target_run_id=target_run_id,
         queue_position=await repo.get_queue_position(request_id),
     )
+
+
+async def steer_queued_request(
+    *,
+    request_id: str,
+    current_uid: str,
+    db: AsyncSession,
+) -> IntakeResult:
+    """把普通 Chat 排队请求提升为下一条执行的 Steer。"""
+    repo = AgentRunRequestRepository(db)
+    existing = await repo.get_by_request_id(request_id)
+    if existing is None or existing.uid != str(current_uid):
+        raise HTTPException(status_code=404, detail={"code": "request_not_found", "message": "请求不存在"})
+
+    await _get_thread_conversation(
+        db=db,
+        uid=existing.uid,
+        agent_slug=existing.agent_slug,
+        thread_id=existing.conversation_thread_id,
+        lock=True,
+    )
+    request = await repo.lock_by_request_id(request_id)
+    if request is None or request.uid != str(current_uid):
+        raise HTTPException(status_code=404, detail={"code": "request_not_found", "message": "请求不存在"})
+    if request.queue_policy == "steer" and request.status == REQUEST_STATUS_QUEUED:
+        return await _build_existing_intake_result(
+            repo=repo,
+            request=request,
+            uid=request.uid,
+            agent_slug=request.agent_slug,
+            thread_id=request.conversation_thread_id,
+            source=request.source,
+            queue_policy="steer",
+        )
+    if request.status != REQUEST_STATUS_QUEUED or request.queue_policy != "enqueue" or request.source != "chat":
+        raise _queue_conflict("request_not_queued", "只有普通 Chat 排队请求可以升级为引导")
+
+    pending_steer = await repo.get_pending_steer(
+        uid=request.uid,
+        agent_slug=request.agent_slug,
+        conversation_thread_id=request.conversation_thread_id,
+    )
+    if pending_steer and pending_steer.request_id != request_id:
+        raise _queue_conflict("steer_already_pending", "线程已有等待执行的引导请求")
+
+    active_run = await AgentRunRepository(db).get_active_run_by_thread_for_user(
+        uid=request.uid,
+        agent_slug=request.agent_slug,
+        conversation_thread_id=request.conversation_thread_id,
+    )
+    if active_run is None or active_run.status != "running" or not await _is_main_chat_run(db=db, run=active_run):
+        raise _queue_conflict("run_not_steerable", "当前运行不支持引导")
+
+    request.queue_policy = "steer"
+    request.updated_at = utc_now_naive()
+    await db.flush()
+    return IntakeResult(
+        request_id=request.request_id,
+        status=request.status,
+        queue_policy=request.queue_policy,
+        message_id=request.input_message_id,
+        thread_id=request.conversation_thread_id,
+        queue_position=1,
+    )
+
+
+async def should_end_run_for_steer(run_id: str) -> bool:
+    """判断当前 Chat Run 是否应在模型调用前让位给 Steer。"""
+    async with pg_manager.get_async_session_context() as db:
+        run = await AgentRunRepository(db).get_run(run_id)
+        if run is None or run.status != "running" or not await _is_main_chat_run(db=db, run=run):
+            return False
+        request = await AgentRunRequestRepository(db).get_pending_steer(
+            uid=run.uid,
+            agent_slug=run.agent_slug,
+            conversation_thread_id=run.conversation_thread_id,
+        )
+        return request is not None
 
 
 async def finalize_intake(*, db: AsyncSession, intake: IntakeResult) -> None:
@@ -326,230 +373,6 @@ async def finalize_dispatch(*, db: AsyncSession, dispatch: DispatchResult | None
     await db.commit()
     if dispatch:
         await enqueue_agent_run(dispatch.run_id)
-
-
-async def steer_queued_request(
-    *,
-    request_id: str,
-    current_uid: str,
-    db: AsyncSession,
-) -> IntakeResult:
-    """把已有普通 queued request 原地升级为 Steer。"""
-    repo = AgentRunRequestRepository(db)
-    existing = await repo.get_by_request_id(request_id)
-    if existing is None or existing.uid != str(current_uid):
-        raise HTTPException(status_code=404, detail={"code": "request_not_found", "message": "请求不存在"})
-
-    await _get_thread_conversation(
-        db=db,
-        uid=existing.uid,
-        agent_slug=existing.agent_slug,
-        thread_id=existing.conversation_thread_id,
-        lock=True,
-    )
-    request = await repo.lock_by_request_id(request_id)
-    if request is None or request.uid != str(current_uid):
-        raise HTTPException(status_code=404, detail={"code": "request_not_found", "message": "请求不存在"})
-    if request.queue_policy == "steer" and request.status in {REQUEST_STATUS_QUEUED, REQUEST_STATUS_STEER_READY}:
-        return await _build_existing_intake_result(
-            repo=repo,
-            request=request,
-            uid=request.uid,
-            agent_slug=request.agent_slug,
-            thread_id=request.conversation_thread_id,
-            source=request.source,
-            queue_policy="steer",
-        )
-    if request.status != REQUEST_STATUS_QUEUED or request.queue_policy != "enqueue" or request.source != "chat":
-        raise _queue_conflict("request_not_queued", "只有普通 Chat 排队请求可以升级为引导")
-
-    run_repo = AgentRunRepository(db)
-    latest_run = await run_repo.get_latest_chat_or_resume_run(
-        uid=request.uid,
-        agent_slug=request.agent_slug,
-        conversation_thread_id=request.conversation_thread_id,
-    )
-    if latest_run is not None and latest_run.status == "interrupted":
-        raise _queue_conflict("run_interrupted", "线程正在等待用户回答或审批")
-    active_run = await run_repo.get_active_run_by_thread_for_user(
-        uid=request.uid,
-        agent_slug=request.agent_slug,
-        conversation_thread_id=request.conversation_thread_id,
-    )
-    if active_run is None:
-        raise _queue_conflict("steer_target_missing", "当前没有可接替的运行")
-    active_run = await run_repo.lock_run(active_run.id)
-    if active_run is None:
-        raise _queue_conflict("steer_target_missing", "当前没有可接替的运行")
-    if active_run.status == "interrupted":
-        raise _queue_conflict("run_interrupted", "线程正在等待用户回答或审批")
-    if active_run.status == "cancel_requested":
-        raise _queue_conflict("run_cancel_pending", "当前运行正在取消")
-    if active_run.status != "running" or active_run.run_type != "chat":
-        raise _queue_conflict("run_not_steerable", "当前运行不可引导")
-
-    pending_steer = await repo.get_pending_steer(
-        uid=request.uid,
-        agent_slug=request.agent_slug,
-        conversation_thread_id=request.conversation_thread_id,
-        lock=True,
-    )
-    if pending_steer and pending_steer.request_id != request_id:
-        raise _queue_conflict("steer_already_pending", "线程已有等待生效的引导请求")
-
-    request.queue_policy = "steer"
-    request.target_run_id = active_run.id
-    request.updated_at = utc_now_naive()
-    await db.flush()
-    return IntakeResult(
-        request_id=request.request_id,
-        status=request.status,
-        queue_policy=request.queue_policy,
-        message_id=request.input_message_id,
-        thread_id=request.conversation_thread_id,
-        target_run_id=request.target_run_id,
-    )
-
-
-async def mark_pending_steer_ready(target_run_id: str) -> bool:
-    """在 ``before_model`` 安全点持久化两阶段交接标记。"""
-    async with pg_manager.get_async_session_context() as db:
-        run_repo = AgentRunRepository(db)
-        target = await run_repo.get_run(target_run_id)
-        if target is None:
-            return False
-        conversation = await ConversationRepository(db).lock_conversation_by_thread_id(target.conversation_thread_id)
-        if not _conversation_matches(conversation, uid=target.uid, agent_slug=target.agent_slug):
-            return False
-        target = await run_repo.lock_run(target_run_id)
-        request = await AgentRunRequestRepository(db).get_pending_steer_for_target(target_run_id, lock=True)
-        if request is None or target is None:
-            return False
-        if request.status == REQUEST_STATUS_STEER_READY:
-            return True
-        if target.status != "running" or target.run_type != "chat" or request.status != REQUEST_STATUS_QUEUED:
-            return False
-        request.status = REQUEST_STATUS_STEER_READY
-        request.updated_at = utc_now_naive()
-        await db.flush()
-        return True
-
-
-async def finalize_ready_steer_handoff(target_run_id: str) -> SteerHandoff:
-    """旧 Graph 完全退出后，原子终结旧 Run 并创建 replacement Run 事实。"""
-    dispatch = None
-    request_id = None
-    async with pg_manager.get_async_session_context() as db:
-        run_repo = AgentRunRepository(db)
-        target = await run_repo.get_run(target_run_id)
-        if target is None:
-            return SteerHandoff(target_run_id=target_run_id)
-        conversation = await ConversationRepository(db).lock_conversation_by_thread_id(target.conversation_thread_id)
-        if not _conversation_matches(conversation, uid=target.uid, agent_slug=target.agent_slug):
-            return SteerHandoff(target_run_id=target_run_id)
-        target = await run_repo.lock_run(target_run_id)
-        request = await AgentRunRequestRepository(db).get_pending_steer_for_target(target_run_id, lock=True)
-        if target is None or request is None or request.status != REQUEST_STATUS_STEER_READY:
-            return SteerHandoff(target_run_id=target_run_id)
-        if target.status != "running":
-            return SteerHandoff(target_run_id=target_run_id, request_id=request.request_id)
-
-        target.status = "cancelled"
-        target.error_type = "steered"
-        target.error_message = "当前运行已由引导请求接替"
-        target.finished_at = utc_now_naive()
-        target.updated_at = target.finished_at
-        if target.input_message_id:
-            target_message = await db.get(Message, target.input_message_id)
-            if target_message:
-                target_message.delivery_status = DELIVERY_STATUS_COMPLETE
-        await db.flush()
-        dispatch = await _dispatch_locked_head(
-            db=db,
-            head=request,
-            uid=target.uid,
-            agent_slug=target.agent_slug,
-            thread_id=target.conversation_thread_id,
-            conversation_id=conversation.id,
-        )
-        if dispatch is None:
-            raise RuntimeError(f"Steer handoff failed to create replacement for {target_run_id}")
-        request_id = request.request_id
-
-    return SteerHandoff(
-        target_run_id=target_run_id,
-        request_id=request_id,
-        new_run_id=dispatch.run_id,
-        changed=True,
-    )
-
-
-async def recover_steered_replacement(target_run_id: str) -> str | None:
-    """旧 Run job 重试时恢复已提交但尚未执行的 replacement 投递。"""
-    async with pg_manager.get_async_session_context() as db:
-        run_repo = AgentRunRepository(db)
-        target = await run_repo.get_run(target_run_id)
-        if target is None or target.status != "cancelled" or target.error_type != "steered":
-            return None
-
-        request = await AgentRunRequestRepository(db).get_dispatched_steer_for_target(target_run_id)
-        if request is None or not request.dispatched_run_id:
-            raise RuntimeError(f"Steered run {target_run_id} is missing its dispatched replacement")
-        replacement = await run_repo.get_run(request.dispatched_run_id)
-        if replacement is None:
-            raise RuntimeError(f"Steered run {target_run_id} points to a missing replacement")
-        replacement_run_id = replacement.id if replacement.status == "pending" else None
-
-    if replacement_run_id:
-        await enqueue_agent_run(replacement_run_id)
-    return replacement_run_id
-
-
-async def settle_target_steer_after_terminal(target_run_id: str) -> str | None:
-    """目标自然终结后优先派发或明确失败 Steer，并返回 replacement run id。"""
-    dispatch = None
-    async with pg_manager.get_async_session_context() as db:
-        run_repo = AgentRunRepository(db)
-        target = await run_repo.get_run(target_run_id)
-        if target is None or target.status not in {"completed", "failed", "cancelled", "interrupted"}:
-            return None
-        conversation = await ConversationRepository(db).lock_conversation_by_thread_id(target.conversation_thread_id)
-        if not _conversation_matches(conversation, uid=target.uid, agent_slug=target.agent_slug):
-            return None
-        target = await run_repo.lock_run(target_run_id)
-        request = await AgentRunRequestRepository(db).get_pending_steer_for_target(target_run_id, lock=True)
-        if target is None or request is None:
-            return None
-        if target.status == "completed":
-            dispatch = await _dispatch_locked_head(
-                db=db,
-                head=request,
-                uid=target.uid,
-                agent_slug=target.agent_slug,
-                thread_id=target.conversation_thread_id,
-                conversation_id=conversation.id,
-            )
-            if dispatch is None:
-                raise RuntimeError(f"Completed target failed to dispatch Steer {request.request_id}")
-        else:
-            error_codes = {
-                "failed": "steer_target_failed",
-                "cancelled": "steer_target_cancelled",
-                "interrupted": "steer_target_interrupted",
-            }
-            request.status = REQUEST_STATUS_FAILED
-            request.error_code = error_codes[target.status]
-            request.error_message = "引导目标未在安全点正常结束"
-            request.updated_at = utc_now_naive()
-            message = await db.get(Message, request.input_message_id)
-            if message:
-                message.delivery_status = DELIVERY_STATUS_FAILED
-            await db.flush()
-
-    if dispatch:
-        await enqueue_agent_run(dispatch.run_id)
-        return dispatch.run_id
-    return None
 
 
 async def dispatch_next_request(
@@ -609,20 +432,8 @@ async def recover_pending_dispatches() -> None:
             .where(AgentRunRequest.status == REQUEST_STATUS_QUEUED)
             .distinct()
         )
-        steer_targets_result = await db.execute(
-            select(AgentRunRequest.target_run_id)
-            .where(
-                AgentRunRequest.queue_policy == "steer",
-                AgentRunRequest.status.in_((REQUEST_STATUS_QUEUED, REQUEST_STATUS_STEER_READY)),
-                AgentRunRequest.target_run_id.is_not(None),
-            )
-            .distinct()
-        )
         scopes = {tuple(row) for row in pending_result.all()}
         scopes.update(tuple(row) for row in scopes_result.all())
-        steer_target_ids = list(steer_targets_result.scalars().all())
-
-    await asyncio.gather(*(settle_target_steer_after_terminal(target_run_id) for target_run_id in steer_target_ids))
 
     recovered = await asyncio.gather(
         *(
@@ -644,13 +455,14 @@ async def cancel_queued_request(
     """取消一个 queued 请求；已 dispatched 的不可取消。
 
     返回最终状态字符串。请求不存在或越权返回 404。
-    所有状态读取与状态写入在同一 ``SELECT ... FOR UPDATE`` 内完成，
-    避免无锁读后再锁写之间被并发修改。
+    先锁定 Conversation，再在 ``SELECT ... FOR UPDATE`` 后判断最终请求状态；
+    Steer 在仍有活跃 Run 时拒绝取消，避免与 Middleware 安全点竞争。
     """
     repo = AgentRunRequestRepository(db)
     existing = await repo.get_by_request_id(request_id)
     if existing is None or existing.uid != str(current_uid):
         raise HTTPException(status_code=404, detail="请求不存在")
+
     await _get_thread_conversation(
         db=db,
         uid=existing.uid,
@@ -658,6 +470,7 @@ async def cancel_queued_request(
         thread_id=existing.conversation_thread_id,
         lock=True,
     )
+
     request = await repo.lock_by_request_id(request_id)
     if request is None or request.uid != str(current_uid):
         raise HTTPException(status_code=404, detail="请求不存在")
@@ -672,13 +485,16 @@ async def cancel_queued_request(
         )
     if request.status in REQUEST_TERMINAL_STATUSES:
         return request.status
-    if request.status == REQUEST_STATUS_STEER_READY:
-        raise _queue_conflict("steer_handoff_started", "引导已进入安全交接，不能取消")
+    if request.queue_policy == "steer":
+        active_run = await AgentRunRepository(db).get_active_run_by_thread_for_user(
+            uid=request.uid,
+            agent_slug=request.agent_slug,
+            conversation_thread_id=request.conversation_thread_id,
+        )
+        if active_run is not None:
+            raise _queue_conflict("steer_in_progress", "引导已等待当前运行结束，暂时不能取消")
     request.status = REQUEST_STATUS_CANCELLED
     request.updated_at = utc_now_naive()
-    message = await db.get(Message, request.input_message_id)
-    if message:
-        message.delivery_status = DELIVERY_STATUS_CANCELLED
     await db.flush()
     return REQUEST_STATUS_CANCELLED
 
@@ -696,7 +512,7 @@ async def get_thread_queue_snapshot(*, db: AsyncSession, uid: str, agent_slug: s
     """读取队列请求与最小状态投影。"""
     await _get_thread_conversation(db=db, uid=uid, agent_slug=agent_slug, thread_id=thread_id)
     repo = AgentRunRequestRepository(db)
-    items = await repo.list_pending(uid=str(uid), agent_slug=agent_slug, conversation_thread_id=thread_id)
+    items = await repo.list_queued(uid=str(uid), agent_slug=agent_slug, conversation_thread_id=thread_id)
 
     message_ids = [request.input_message_id for request in items if request.input_message_id is not None]
     contents: dict[int, str] = {}
@@ -705,16 +521,11 @@ async def get_thread_queue_snapshot(*, db: AsyncSession, uid: str, agent_slug: s
         contents = {row[0]: row[1] for row in result.all()}
 
     requests = []
-    fifo_position = 0
-    for request in items:
+    for position, request in enumerate(items, start=1):
         data = request.to_dict()
         if request.input_message_id is not None:
             data["content"] = contents.get(request.input_message_id, "")
-        if request.queue_policy == "enqueue" and request.status == REQUEST_STATUS_QUEUED:
-            fifo_position += 1
-            data["queue_position"] = fifo_position
-        else:
-            data["queue_position"] = None
+        data["queue_position"] = position
         requests.append(data)
     status, metadata = await _get_queue_state(
         db=db,
@@ -795,7 +606,6 @@ async def stream_request_events(
     started_at = utc_now_naive()
     last_heartbeat_ts = started_at
     last_position = -1
-    last_status = None
 
     try:
         while True:
@@ -819,48 +629,19 @@ async def stream_request_events(
 
                 if request.status in REQUEST_TERMINAL_STATUSES:
                     yield format_sse(
-                        {
-                            "request_id": request_id,
-                            "status": request.status,
-                            "error_code": request.error_code,
-                        },
+                        {"request_id": request_id, "status": request.status},
                         event=request.status,
                     )
                     return
 
-                if request.status == REQUEST_STATUS_STEER_READY:
-                    if last_status != REQUEST_STATUS_STEER_READY:
-                        last_status = REQUEST_STATUS_STEER_READY
-                        yield format_sse(
-                            {
-                                "request_id": request_id,
-                                "status": REQUEST_STATUS_STEER_READY,
-                                "queue_policy": "steer",
-                                "target_run_id": request.target_run_id,
-                            },
-                            event=REQUEST_STATUS_STEER_READY,
-                        )
-                elif request.queue_policy == "steer":
-                    if last_status != "steering":
-                        last_status = "steering"
-                        yield format_sse(
-                            {
-                                "request_id": request_id,
-                                "status": REQUEST_STATUS_QUEUED,
-                                "queue_policy": "steer",
-                                "target_run_id": request.target_run_id,
-                            },
-                            event="steering",
-                        )
-                else:
-                    # queued: 用 COUNT 查询位置（O(1)），仅在变化时上报
-                    position = await repo.get_queue_position_for(request)
-                    if position != last_position:
-                        last_position = position
-                        yield format_sse(
-                            {"request_id": request_id, "status": REQUEST_STATUS_QUEUED, "position": position},
-                            event=REQUEST_STATUS_QUEUED,
-                        )
+                # queued: 用 COUNT 查询位置（O(1)），仅在变化时上报
+                position = await repo.get_queue_position_for(request)
+                if position != last_position:
+                    last_position = position
+                    yield format_sse(
+                        {"request_id": request_id, "status": REQUEST_STATUS_QUEUED, "position": position},
+                        event=REQUEST_STATUS_QUEUED,
+                    )
 
             now = utc_now_naive()
             if (now - last_heartbeat_ts).total_seconds() >= SSE_HEARTBEAT_SECONDS:
@@ -906,7 +687,6 @@ async def _build_existing_intake_result(
         message_id=request.input_message_id,
         thread_id=request.conversation_thread_id,
         run_id=request.dispatched_run_id,
-        target_run_id=request.target_run_id,
         queue_position=await repo.get_queue_position(request.request_id)
         if request.status == REQUEST_STATUS_QUEUED
         else None,
@@ -929,6 +709,14 @@ def _build_message_metadata(
     if meta.get("tool_approval_mode") is not None:
         metadata["tool_approval_mode"] = meta["tool_approval_mode"]
     return metadata
+
+
+async def _is_main_chat_run(*, db: AsyncSession, run: AgentRun) -> bool:
+    """确认 Run 来自主会话 Chat 请求，而非 Resume、Agent Call 或评估。"""
+    if run.run_type != "chat":
+        return False
+    request = await AgentRunRequestRepository(db).get_by_request_id(run.request_id)
+    return request is not None and request.source == "chat"
 
 
 async def _get_thread_conversation(

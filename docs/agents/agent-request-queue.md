@@ -13,7 +13,6 @@ Agent 运行可能包含模型调用、知识库检索、工具执行和文件�
 - 排队状态需要持久化，页面刷新或服务恢复后仍可查询。
 - 调用方需要区分“请求已接收”和“Agent 已开始运行”。
 - 网页聊天和同步 API 对忙碌线程的处理方式不同，需要提供明确的策略选择。
-- 长任务需要允许用户在当前工具批次完整结束后安全修正后续执行方向。
 
 请求队列不负责提高单次 Agent 运行速度，也不改变 Agent 内部的模型和工具执行方式。它负责确定请求何时进入现有的运行链路。
 
@@ -28,7 +27,7 @@ Agent 运行可能包含模型调用、知识库检索、工具执行和文件�
 线程二：请求 D（运行中） -> 请求 E（队列第 1 位）
 ```
 
-队列采用 FIFO（先入先出）规则。顺序以服务端记录的创建时间和稳定顺序字段为准，不依赖浏览器时间。
+普通请求采用 FIFO（先入先出）规则。顺序以服务端记录的创建时间和稳定顺序字段为准，不依赖浏览器时间；待处理的 Steer 会成为下一条请求，其余请求之间仍保持 FIFO。
 
 ## 请求与运行
 
@@ -66,7 +65,7 @@ Yuxi 将 Agent 请求和 Agent 运行作为两个不同阶段处理。
 | --- | --- | --- | --- |
 | `enqueue` | 立即派发 | 保存并进入 FIFO 队列 | 网页聊天、异步 Agent Call |
 | `reject` | 立即派发 | 返回拒绝结果，不进入队列 | 同步 Agent Call、需要立即决策的调用方 |
-| `steer` | 返回目标缺失冲突 | 等当前工具批次完成后接替运行 | 主会话中显式修正长任务方向 |
+| `steer` | 立即派发 | 当前步骤结束后优先执行 | 运行中修正后续方向 |
 
 ### enqueue
 
@@ -84,11 +83,9 @@ Yuxi 将 Agent 请求和 Agent 运行作为两个不同阶段处理。
 
 ### steer
 
-`steer` 仅用于主会话 Chat。它不会把新消息临时注入正在执行的运行，也不会中断已经开始的工具调用。系统将新输入保存为独立请求并绑定当前 running Chat Run；当前模型步骤产生的全部工具调用和 checkpoint 写入完成后，Steer Middleware 在下一次模型调用前声明安全点，旧 Graph 完全退出后再创建新的 AgentRun。
+`steer` 是 `enqueue` 的优先执行形式，不引入新的请求或运行状态。请求仍以 `queued` 保存；Chatbot Middleware 在下一次模型调用前发现待处理 Steer 时结束当前 Graph，worker 按既有 `completed` 接力流程派发该请求。
 
-旧运行以 `cancelled/error_type=steered` 结束，并保留已经产生的消息和工具结果。接替请求通过原 Request SSE 的 `run_created` 事件切换到新 Run SSE。同一线程最多存在一个等待生效的 Steer；第二个直接 Steer 返回 `steer_already_pending`，已有普通 queued request 也可以原地升级，request ID、Message、输入快照、创建时间和普通 FIFO 剩余顺序保持不变。
-
-Steer 到达时若当前模型直接给出最终答案，Graph 不再经过下一次 `before_model`，旧运行正常 completed，Steer 随 completed 终态优先派发。目标 failed、cancelled 或 interrupted 时，Steer 明确失败并记录稳定错误码，不从可能不完整的 checkpoint 自动继续，也不绕过回答或审批。
+因此，已经开始的模型调用和工具批次会正常完成并写入 checkpoint，Steer 不会强制取消工具。当前 Run 按普通 `completed` 结束，Steer 创建的新 Run 继续读取同一线程上下文。已有普通 Chat 排队项也可以原地提升为 Steer；同一线程一次只接受一个待处理 Steer。
 
 ## 状态说明
 
@@ -97,7 +94,6 @@ Steer 到达时若当前模型直接给出最终答案，Graph 不再经过下�
 | 请求状态 | 说明 |
 | --- | --- |
 | `queued` | 请求已保存，正在等待派发 |
-| `steer_ready` | 已确认工具后安全点，旧 Graph 正在退出，等待原子交接 |
 | `dispatched` | 请求已派发，并已关联 Agent 运行 |
 | `cancelled` | 请求在派发前被取消 |
 | `rejected` | 采用 `reject` 策略时因线程忙碌被拒绝 |
@@ -110,8 +106,8 @@ Steer 到达时若当前模型直接给出最终答案，Graph 不再经过下�
 取消排队请求和停止 Agent 运行是两个独立操作。
 
 - 排队请求尚未开始执行，可以单独取消。取消后不会影响当前活跃运行，后续请求的位置会重新计算。
+- Steer 在等待活跃 Run 到达安全点时不能取消，避免取消操作与 Middleware 消费引导意图竞态；若目标 Run 失败或取消、队列进入暂停后，可以删除该 Steer。
 - 已派发请求已经进入运行阶段，需要通过运行取消能力停止，不再通过队列取消接口处理。
-- queued Steer 仍可取消；进入 `steer_ready` 后交接已经开始，不能再取消或替换。
 
 这种区分可以避免取消一个排队项时误停当前运行，也可以保持请求状态与实际执行状态一致。
 
@@ -122,7 +118,6 @@ Agent 运行成功完成后自动派发下一条请求。运行失败、被取�
 - failed/cancelled 时已经在等待的请求会保持暂停。页面会展示原因，用户可以点击“继续队列”；该动作只派发当前 FIFO 队头。
 - failed/cancelled 发生时队列为空，之后提交的新请求属于新的输入意图，可以正常立即执行。
 - interrupted 表示当前运行正在等待回答或审批。中断前已经存在的排队请求继续保留；中断期间的新普通请求会在写入 Message/Request 前返回 `run_interrupted`，也不能通过“继续队列”绕过。用户完成 resume 后，既有队列才会按原有完成链路继续。
-- Steer completed 时优先于普通 FIFO 接力；failed/cancelled/interrupted 时转为带结构化错误码的 failed request。安全交接产生的 `cancelled/steered` 已在同一事务创建 replacement，不触发普通 cancelled 暂停。
 
 页面刷新后会恢复暂停原因和继续操作。若完成后的自动派发因短暂故障遗漏，系统会把该队列识别为待恢复状态并继续既有 completed 调度语义，而不会把仍有请求的队列视为已空闲。
 
@@ -130,7 +125,7 @@ Agent 运行成功完成后自动派发下一条请求。运行失败、被取�
 
 请求、输入消息和派发关系保存在数据库中。浏览器刷新后，前端可以重新读取当前线程的排队请求和位置。
 
-Agent 运行由后台任务系统执行。`pending` AgentRun 同时表达已经提交、仍需投递或等待 worker 接收的执行意图。为处理“数据库已经记录派发，但任务尚未成功投递”这一故障窗口，completed hook 重试和服务启动恢复都会优先重新投递已有 pending run；没有 pending run 时才会派发 ready 队头。Steer 交接提交后若 replacement 投递失败，旧 Run 的稳定 job 重试会读取已 dispatched request 并重投同一个 replacement run ID；`steer_ready` 的旧 job 重试直接完成交接，不会把原用户输入再次写入 checkpoint。恢复过程复用已有请求和运行记录，不创建重复运行。
+Agent 运行由后台任务系统执行。`pending` AgentRun 同时表达已经提交、仍需投递或等待 worker 接收的执行意图。为处理“数据库已经记录派发，但任务尚未成功投递”这一故障窗口，completed hook 重试和服务启动恢复都会优先重新投递已有 pending run；没有 pending run 时才会派发 ready 队头。恢复过程复用已有请求和运行记录，不创建重复运行。
 
 同一对话线程的 intake、resume、continue 和自动接力会锁定线程对应的 Conversation 记录，再读取和修改 request/run 事实。线程级共同锁负责保证并发请求的严格 FIFO，active-run 唯一索引继续作为最终数据库保护。
 
@@ -156,18 +151,16 @@ Agent 运行由后台任务系统执行。`pending` AgentRun 同时表达已经�
 当前版本包含以下能力：
 
 - 普通聊天、异步 Agent Call 和评估入口使用统一请求接收流程。
-- 支持 `enqueue`、`reject` 和主会话显式 `steer` 策略。
+- 支持 `enqueue`、`reject` 和主会话 Chat 的 `steer` 策略。
 - 同一线程串行调度，不同线程可并行运行。
 - 支持排队位置查询、页面刷新恢复和派发前取消。
 - 请求派发后转入已有 Agent 运行与事件流链路。
 
 当前版本不包含以下能力：
 
-- 请求优先级和插队。
-- 多个 Steer 排序、合并或连续级联接替。
-- Agent Call、评估、resume 和 subagent Steer。
-- 运行中工具强制取消或副作用回滚。
-- 通用的强制 interrupt-and-replace 策略。
+- 强制取消正在执行的模型或工具。
+- 多个 Steer 的排序、合并或连续接替。
+- 通用请求优先级和任意插队。
 - 运行失败后的自动回滚。
 - 多个请求合并为一次 Agent 运行。
 

@@ -12,8 +12,6 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.graph.message import add_messages
-from yuxi.services.input_message_service import restore_chat_input_message
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 
@@ -128,19 +126,3 @@ async def test_parallel_tools_finish_before_steer_ends_graph_and_checkpoint_is_c
     assert model.call_count == 1
     assert safe_point_results == {"call-one": "result-one", "call-two": "result-two"}
     assert checkpoint_results == safe_point_results
-
-
-async def test_retrying_legacy_input_reuses_stable_langgraph_message_id():
-    """Steer 标 ready 前的 job 重试不会把旧用户输入再次追加到 checkpoint。"""
-    metadata = {
-        "request_id": "retry-request",
-        "raw_message": {"type": "human", "content": "原任务"},
-    }
-    first = restore_chat_input_message(content="原任务", image_content=None, metadata=metadata)
-    retried = restore_chat_input_message(content="原任务", image_content=None, metadata=metadata)
-
-    messages = add_messages([], [first.require_langchain_message()])
-    messages = add_messages(messages, [retried.require_langchain_message()])
-
-    assert len(messages) == 1
-    assert messages[0].id == "request:retry-request"

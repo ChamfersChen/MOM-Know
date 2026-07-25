@@ -26,16 +26,7 @@ class AgentRunInputMessage:
         return self.langchain_message
 
     def with_metadata(self, metadata: dict[str, Any]) -> AgentRunInputMessage:
-        normalized_metadata = dict(metadata)
-        langchain_message = _with_stable_message_id(
-            self.langchain_message,
-            normalized_metadata.get("request_id"),
-        )
-        return replace(
-            self,
-            langchain_message=langchain_message,
-            extra_metadata=normalized_metadata,
-        )
+        return replace(self, extra_metadata=dict(metadata))
 
 
 def build_chat_input_message(query: str, image_content: str | None = None) -> AgentRunInputMessage:
@@ -150,7 +141,6 @@ def restore_chat_input_message(*, content: str, image_content: str | None, metad
             langchain_message = HumanMessage.model_validate(raw_message)
         except Exception as exc:
             raise ValueError("invalid raw_message for chat input message") from exc
-        langchain_message = _with_stable_message_id(langchain_message, metadata.get("request_id"))
         raw_content = raw_message.get("content")
         message_type = "multimodal_image" if image_content or _has_image_url_content_part(raw_content) else "text"
         return AgentRunInputMessage(
@@ -161,14 +151,7 @@ def restore_chat_input_message(*, content: str, image_content: str | None, metad
             extra_metadata=dict(metadata),
         )
 
-    return build_chat_input_message(content, image_content).with_metadata(metadata)
-
-
-def _with_stable_message_id(message: HumanMessage | None, request_id: object) -> HumanMessage | None:
-    """为可重试的 Graph 输入绑定稳定 ID，避免 checkpoint 重复追加同一用户消息。"""
-    if message is None or message.id or not isinstance(request_id, str) or not request_id:
-        return message
-    return message.model_copy(update={"id": f"request:{request_id}"})
+    return build_chat_input_message(content, image_content)
 
 
 def _has_image_url_content_part(content: object) -> bool:

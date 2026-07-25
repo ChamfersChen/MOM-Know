@@ -1,7 +1,7 @@
 import { unref } from 'vue'
 import { agentApi } from '@/apis'
 import { handleChatError } from '@/utils/errorHandler'
-import { shouldFinalizeRunStream, shouldNotifySteeredRunEnd } from '@/utils/agentRequestQueue'
+import { isSteerableMainChatRun } from '@/utils/agentRun'
 import { compareRunSeq, normalizeRunSeq, resolveRunResumeAfterSeq } from '@/utils/runStreamResume'
 import { hasPendingInterruptPayload } from '@/utils/toolApproval'
 
@@ -148,9 +148,9 @@ export function useAgentRunStream({
     onInterruptDetected({ threadId, runId, run })
   }
 
-  const notifyTerminalDetected = (threadId, runId, touchedThreadIds, terminal) => {
+  const notifyTerminalDetected = (threadId, runId, touchedThreadIds) => {
     if (typeof onTerminalDetected !== 'function') return
-    onTerminalDetected({ threadId, runId, touchedThreadIds: [...touchedThreadIds], terminal })
+    onTerminalDetected({ threadId, runId, touchedThreadIds: [...touchedThreadIds] })
   }
 
   const hasPendingInterruptForRun = (threadState, runId) => {
@@ -170,18 +170,29 @@ export function useAgentRunStream({
     }
   }
 
+  const resolveRunSteerable = async (run) => {
+    if (!run?.request_id || run.status !== 'running' || run.run_type !== 'chat') return false
+    try {
+      const response = await agentApi.getRequest(run.request_id)
+      return isSteerableMainChatRun({ ...run, source: response?.request?.source })
+    } catch {
+      return false
+    }
+  }
+
   const finalizeRunStream = (
     threadId,
     runId,
     touchedThreadIds,
-    { delay = 200, scroll = false, status = '', terminal = null, terminalNotified = false } = {}
+    { delay = 200, scroll = false, status = '' } = {}
   ) => {
     const ts = getThreadState(threadId)
-    if (!ts || !shouldFinalizeRunStream(ts.activeRunId, runId)) return
+    if (!ts || ts.activeRunId !== runId) return
     const isInterrupted =
       status === RUN_INTERRUPTED_STATUS && hasPendingInterruptInThreads(touchedThreadIds, runId)
     touchedThreadIds.forEach((id) => streamSmoother?.flushThread(id))
     ts.isStreaming = false
+    ts.activeRunSteerable = false
     if (isInterrupted) {
       ts.activeRunId = runId
       saveActiveRunSnapshot(threadId, runId, ts.runLastSeq)
@@ -196,14 +207,14 @@ export function useAgentRunStream({
     fetchThreadMessages({ agentId: unref(currentAgentId), threadId, delay }).finally(() => {
       const latest = getThreadState(threadId)
       if (!latest?.activeRunId || latest.activeRunId === runId) {
-        resetOnGoingConv(threadId)
+        resetOnGoingConv(threadId, { preserveRequestStreams: true })
       }
       fetchAgentState(unref(currentAgentId), threadId)
       if (scroll) onScrollToBottom()
       if (isInterrupted) {
         notifyInterruptDetected(threadId, runId)
       } else {
-        if (!terminalNotified) notifyTerminalDetected(threadId, runId, touchedThreadIds, terminal)
+        notifyTerminalDetected(threadId, runId, touchedThreadIds)
       }
     })
   }
@@ -214,6 +225,7 @@ export function useAgentRunStream({
 
     streamSmoother?.flushThread(threadId)
     ts.activeRunId = run.id
+    ts.activeRunSteerable = false
     ts.runLastSeq = normalizeRunSeq(snapshot?.last_seq || ts.runLastSeq || '0-0')
     ts.lastRetryableJobTry = null
     ts.isStreaming = false
@@ -242,22 +254,25 @@ export function useAgentRunStream({
     }, delay)
   }
 
-  const startRunStream = async (threadId, runId, afterSeq = '0-0') => {
+  const startRunStream = async (threadId, runId, afterSeq = '0-0', options = {}) => {
     if (!threadId || !runId) return
     const ts = getThreadState(threadId)
     if (!ts) return
 
+    const isSameRun = ts.activeRunId === runId
+    const initialSteerable =
+      options.steerable ?? (isSameRun && ts.activeRunSteerable === true)
     stopRunStreamSubscription(threadId)
     const runController = new AbortController()
     ts.runStreamAbortController = runController
     ts.activeRunId = runId
+    ts.activeRunSteerable = initialSteerable
     ts.runLastSeq = normalizeRunSeq(afterSeq)
     ts.lastRetryableJobTry = null
     ts.isStreaming = true
     saveActiveRunSnapshot(threadId, runId, ts.runLastSeq)
     const touchedThreadIds = new Set([threadId])
     let sawTerminalEvent = false
-    let steeredTerminalNotified = false
 
     try {
       const response = await agentApi.streamAgentRunEvents(runId, ts.runLastSeq, {
@@ -268,15 +283,7 @@ export function useAgentRunStream({
       }
 
       await processRunSseResponse(response, (event, data, eventId) => {
-        if (!data) return
-
-        const payload = data.payload || {}
-        if (event === 'end' && shouldNotifySteeredRunEnd(payload, steeredTerminalNotified)) {
-          sawTerminalEvent = true
-          steeredTerminalNotified = true
-          notifyTerminalDetected(threadId, runId, touchedThreadIds, payload)
-        }
-        if (ts.activeRunId !== runId) return
+        if (!data || ts.activeRunId !== runId) return
 
         if (eventId) {
           const incomingSeq = normalizeRunSeq(eventId)
@@ -285,6 +292,14 @@ export function useAgentRunStream({
           saveActiveRunSnapshot(threadId, runId, incomingSeq)
         }
 
+        const payload = data.payload || {}
+        if (event === 'metadata') {
+          ts.activeRunSteerable = isSteerableMainChatRun({
+            status: 'running',
+            run_type: payload.run_type,
+            source: payload.source
+          })
+        }
         const terminalStatus = event === 'end' ? payload.status : data.status
         const isRetryableError =
           event === 'error' && (payload?.retryable === true || payload?.chunk?.retryable === true)
@@ -345,17 +360,9 @@ export function useAgentRunStream({
         if (event === 'end') {
           sawTerminalEvent = true
           if (terminalStatus === RUN_INTERRUPTED_STATUS) {
-            finalizeRunStream(threadId, runId, touchedThreadIds, {
-              status: terminalStatus,
-              terminal: payload,
-              terminalNotified: steeredTerminalNotified
-            })
+            finalizeRunStream(threadId, runId, touchedThreadIds, { status: terminalStatus })
           } else if (RUN_TERMINAL_STATUSES.has(terminalStatus)) {
-            finalizeRunStream(threadId, runId, touchedThreadIds, {
-              status: terminalStatus,
-              terminal: payload,
-              terminalNotified: steeredTerminalNotified
-            })
+            finalizeRunStream(threadId, runId, touchedThreadIds, { status: terminalStatus })
           } else {
             touchedThreadIds.forEach((id) => streamSmoother?.flushThread(id))
             ts.isStreaming = false
@@ -397,9 +404,6 @@ export function useAgentRunStream({
         console.error('Run SSE stream error:', error)
         handleChatError(error, 'stream')
         scheduleRunReconnect(threadId, runId)
-      } else if (ts.activeRunId !== runId) {
-        ts.replyLoadingVisible = false
-        ts.pendingRequestId = null
       }
     } finally {
       if (ts.runStreamAbortController === runController) {
@@ -435,6 +439,7 @@ export function useAgentRunStream({
         } else if (run && RUN_TERMINAL_STATUSES.has(run.status)) {
           stopRunStreamSubscription(threadId)
           ts.activeRunId = null
+          ts.activeRunSteerable = false
           ts.isStreaming = false
           ts.replyLoadingVisible = false
           ts.pendingRequestId = null
@@ -471,7 +476,9 @@ export function useAgentRunStream({
             if (afterSeq === '0-0') {
               resetOnGoingConv(threadId)
             }
-            await startRunStream(threadId, run.id, afterSeq)
+            await startRunStream(threadId, run.id, afterSeq, {
+              steerable: await resolveRunSteerable(run)
+            })
             return
           }
         } catch {
@@ -490,7 +497,9 @@ export function useAgentRunStream({
           return
         }
         resetOnGoingConv(threadId)
-        await startRunStream(threadId, run.id, '0-0')
+        await startRunStream(threadId, run.id, '0-0', {
+          steerable: await resolveRunSteerable(run)
+        })
         return
       }
       if (run && !RUN_TERMINAL_STATUSES.has(run.status)) {
@@ -503,6 +512,7 @@ export function useAgentRunStream({
     }
 
     ts.activeRunId = null
+    ts.activeRunSteerable = false
     ts.runLastSeq = '0-0'
     ts.isStreaming = false
     ts.replyLoadingVisible = false

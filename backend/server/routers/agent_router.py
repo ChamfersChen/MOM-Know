@@ -78,7 +78,7 @@ class AgentRunCreate(BaseModel):
     created_by_run_id: str | None = Field(None, description="可选，创建本 run 的父 run ID；resume 时为被恢复的 run ID")
     queue_policy: str = Field(
         "enqueue",
-        description="排队策略：enqueue（默认排队）、reject（运行中拒绝）或 steer（安全接替）",
+        description="排队策略：enqueue（默认排队）、reject（运行中拒绝）或 steer（优先接替）",
     )
 
 
@@ -336,10 +336,9 @@ async def create_agent_run(
         "queue_position": result.queue_position,
         "message_id": result.message_id,
         "run_id": result.run_id,
-        "target_run_id": result.target_run_id,
         "stream_url": f"/api/agent/runs/{result.run_id}/events" if result.run_id else None,
         "request_events_url": (
-            f"/api/agent/requests/{result.request_id}/events" if result.status in {"queued", "steer_ready"} else None
+            f"/api/agent/requests/{result.request_id}/events" if result.status == "queued" else None
         ),
         "thread_id": result.thread_id,
     }
@@ -413,8 +412,7 @@ async def steer_request(
         "thread_id": result.thread_id,
         "status": result.status,
         "queue_policy": result.queue_policy,
-        "target_run_id": result.target_run_id,
-        "run_id": result.run_id,
+        "queue_position": result.queue_position,
         "request_events_url": f"/api/agent/requests/{result.request_id}/events",
     }
 

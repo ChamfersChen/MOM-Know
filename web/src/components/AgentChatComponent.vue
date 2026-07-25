@@ -182,9 +182,11 @@
                         :disabled="steeringRequestIds.has(request.request_id)"
                         @click="handleSteerQueuedRequest(request.request_id)"
                       >
+                        <CornerDownRight :size="14" aria-hidden="true" />
                         引导
                       </button>
                       <button
+                        v-if="canCancelQueuedRequest(request)"
                         type="button"
                         class="queued-request-delete lucide-icon-btn"
                         :disabled="cancellingRequestIds.has(request.request_id)"
@@ -241,9 +243,10 @@
                         v-if="canSubmitSteer"
                         type="button"
                         class="direct-steer-button"
-                        title="当前工具完成后接替正在执行的任务"
+                        title="当前步骤结束后优先执行这条消息"
                         @click="handleDirectSteer"
                       >
+                        <CornerDownRight :size="14" aria-hidden="true" />
                         引导
                       </button>
                       <div class="input-model-selector">
@@ -686,13 +689,6 @@ import AgentMessageComponent from '@/components/AgentMessageComponent.vue'
 import RefsComponent from '@/components/RefsComponent.vue'
 import ToolCallsGroupComponent from '@/components/ToolCallsGroupComponent.vue'
 import { handleChatError, handleValidationError } from '@/utils/errorHandler'
-import {
-  getQueuedRequestStatusText,
-  getRunTerminalNotice,
-  getSteerHandoffNoticeKey,
-  getSteerFailureMessage,
-  isPendingSteerRequest
-} from '@/utils/agentRequestQueue'
 import { ScrollController } from '@/utils/scrollController'
 import { AgentValidator } from '@/utils/agentValidator'
 import { useAgentStore } from '@/stores/agent'
@@ -748,7 +744,6 @@ const userInput = ref('')
 const sendCooldownActive = ref(false)
 const cancellingRequestIds = reactive(new Set())
 const steeringRequestIds = reactive(new Set())
-const shownSteerHandoffNotices = reactive(new Set())
 let sendCooldownTimer = null
 // 预设的打招呼文本
 const greetingMessages = [
@@ -1887,7 +1882,11 @@ const isStreaming = computed(() => {
   return threadState ? threadState.isStreaming : false
 })
 const currentQueuedRequests = computed(() => currentThreadState.value?.queuedRequests || [])
-const pendingSteerRequest = computed(() => currentQueuedRequests.value.find(isPendingSteerRequest))
+const hasPendingSteer = computed(() =>
+  currentQueuedRequests.value.some(
+    (request) => request?.queue_policy === 'steer' && request?.status === 'queued'
+  )
+)
 const currentQueueSnapshot = computed(
   () => currentThreadState.value?.queueSnapshot || IDLE_QUEUE_SNAPSHOT
 )
@@ -1904,6 +1903,29 @@ const queuePausedMessage = computed(() =>
 const shouldShowStopButton = computed(
   () => isStreaming.value && !String(userInput.value || '').trim()
 )
+const canSubmitSteer = computed(
+  () =>
+    isStreaming.value &&
+    currentThreadState.value?.activeRunSteerable === true &&
+    Boolean(String(userInput.value || '').trim()) &&
+    !hasPendingSteer.value &&
+    !sendCooldownActive.value &&
+    !isWaitingForUserAction.value
+)
+const canSteerQueuedRequest = (request) =>
+  isStreaming.value &&
+  currentThreadState.value?.activeRunSteerable === true &&
+  !hasPendingSteer.value &&
+  request?.status === 'queued' &&
+  request?.queue_policy === 'enqueue' &&
+  request?.source === 'chat'
+const canCancelQueuedRequest = (request) =>
+  request?.queue_policy !== 'steer' ||
+  (!isStreaming.value && currentQueueSnapshot.value.status !== 'running')
+const getQueuedRequestStatusText = (request) =>
+  request?.queue_policy === 'steer'
+    ? '引导 · 下一条执行'
+    : `排队 ${request?.queue_position || request?.position || 1}`
 const shouldRefreshStateWhileStreaming = computed(
   () => Boolean(currentChatId.value) && isStreaming.value && statePanelOpen.value
 )
@@ -1930,14 +1952,6 @@ const isSendButtonDisabled = computed(() => {
     !currentAgent.value
   )
 })
-const canSubmitSteer = computed(
-  () =>
-    Boolean(currentThreadState.value?.activeRunId && currentThreadState.value?.isStreaming) &&
-    Boolean(String(userInput.value || '').trim()) &&
-    !pendingSteerRequest.value &&
-    !isWaitingForUserAction.value &&
-    !sendCooldownActive.value
-)
 
 const startSendCooldown = () => {
   sendCooldownActive.value = true
@@ -2457,14 +2471,6 @@ const restorePendingInterruptForThread = (threadId) => {
   return restoreInterruptFromThreadState(threadId)
 }
 
-const showSteerHandoffNotice = (threadId, requestId) => {
-  if (currentChatId.value !== threadId) return
-  const noticeKey = getSteerHandoffNoticeKey(threadId, requestId)
-  if (!noticeKey || shownSteerHandoffNotices.has(noticeKey)) return
-  shownSteerHandoffNotices.add(noticeKey)
-  message.info('当前任务已由新的引导请求接替')
-}
-
 const { handleStreamChunk } = useAgentStreamHandler({
   getThreadState,
   processApprovalInStream,
@@ -2485,26 +2491,13 @@ const { startRunStream, resumeActiveRunForThread, stopRunStreamSubscription } = 
     restorePendingInterruptForThread(threadId)
     void resumeQueuedRequestsForThread(threadId)
   },
-  onTerminalDetected: ({ threadId, touchedThreadIds = [], terminal }) => {
+  onTerminalDetected: ({ threadId, touchedThreadIds = [] }) => {
     if (approvalState.threadId === threadId || touchedThreadIds.includes(approvalState.threadId)) {
       hideApprovalState()
     }
-    const terminalNotice = getRunTerminalNotice(terminal)
-    if (terminalNotice) showSteerHandoffNotice(threadId, terminal?.replacement_request_id)
     void resumeQueuedRequestsForThread(threadId)
   }
 })
-const startDispatchedRequestRun = async (threadId, runId, requestId) => {
-  await fetchThreadMessages({ agentId: currentAgentId.value, threadId })
-  resetOnGoingConv(threadId, { preserveRequestStreams: true })
-  const onGoingConv = getThreadState(threadId)?.onGoingConv
-  if (onGoingConv) {
-    onGoingConv.currentRequestKey = requestId
-    onGoingConv.currentAssistantKey = null
-  }
-  await startRunStream(threadId, runId, '0-0')
-}
-
 const {
   startRequestStream,
   stopAllRequestStreams,
@@ -2514,15 +2507,9 @@ const {
   steerRequest
 } = useAgentRequestQueue({
   getThreadState,
-  startRunStream: startDispatchedRequestRun,
-  onStreamError: (threadId, requestId, event, context) => {
-    if (event !== 'failed' || context?.queuePolicy !== 'steer') return
-    if (currentChatId.value === threadId && !userInput.value && context.content) {
-      userInput.value = context.content
-    }
-    message.warning(getSteerFailureMessage(context?.errorCode))
-  },
-  onSteerDispatched: (threadId, requestId) => showSteerHandoffNotice(threadId, requestId)
+  resetOnGoingConv,
+  startRunStream,
+  onStreamError: () => {}
 })
 
 const handleCancelQueuedRequest = async (requestId) => {
@@ -2538,6 +2525,20 @@ const handleCancelQueuedRequest = async (requestId) => {
   }
 }
 
+const handleSteerQueuedRequest = async (requestId) => {
+  const threadId = currentChatId.value
+  const agentSlug =
+    threads.value.find((thread) => thread.id === threadId)?.agent_id || currentAgentId.value
+  if (!threadId || !agentSlug || !requestId || steeringRequestIds.has(requestId)) return
+
+  steeringRequestIds.add(requestId)
+  const steered = await steerRequest(threadId, agentSlug, requestId)
+  steeringRequestIds.delete(requestId)
+  if (steered) {
+    message.success('已设为下一条引导请求')
+  }
+}
+
 const handleContinueQueue = async () => {
   const threadId = currentChatId.value
   const agentSlug =
@@ -2547,28 +2548,6 @@ const handleContinueQueue = async () => {
   if (await continueQueue(threadId, agentSlug)) {
     message.success('队列已继续')
   }
-}
-
-const canSteerQueuedRequest = (request) =>
-  Boolean(
-    request?.status === 'queued' &&
-    request?.queue_policy === 'enqueue' &&
-    currentThreadState.value?.activeRunId &&
-    currentThreadState.value?.isStreaming &&
-    !pendingSteerRequest.value &&
-    !isWaitingForUserAction.value
-  )
-
-const handleSteerQueuedRequest = async (requestId) => {
-  const threadId = currentChatId.value
-  const agentSlug =
-    threads.value.find((thread) => thread.id === threadId)?.agent_id || currentAgentId.value
-  if (!threadId || !agentSlug || steeringRequestIds.has(requestId)) return
-
-  steeringRequestIds.add(requestId)
-  const upgraded = await steerRequest(threadId, agentSlug, requestId)
-  steeringRequestIds.delete(requestId)
-  if (upgraded) message.success('已设为引导请求')
 }
 
 const resumeQueuedRequestsForThread = async (threadId) => {
@@ -2818,7 +2797,6 @@ const handleSendMessage = async ({ image, queuePolicy = 'enqueue' } = {}) => {
         request_id: requestId,
         status: 'queued',
         queue_policy: runResp?.queue_policy || queuePolicy,
-        target_run_id: runResp?.target_run_id || null,
         queue_position: runResp?.queue_position || 1,
         content: text
       })
@@ -3791,27 +3769,39 @@ watch(currentChatId, (threadId, oldThreadId) => {
     .queued-request-actions {
       display: inline-flex;
       align-items: center;
-      gap: 2px;
+      gap: 4px;
     }
 
     .queued-request-steer,
     .direct-steer-button {
-      padding: 4px 8px;
-      color: var(--main-color);
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0 6px;
+      color: var(--gray-500);
       background: transparent;
-      border: 1px solid var(--gray-200);
+      border: 0;
       border-radius: 6px;
       cursor: pointer;
       font-size: 12px;
-      line-height: 1.4;
+      line-height: 1;
+      transition:
+        color 0.18s ease,
+        background-color 0.18s ease;
 
       &:hover:not(:disabled) {
-        background: var(--gray-50);
-        border-color: var(--main-color);
+        color: var(--gray-700);
+        background: var(--gray-100);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--main-color);
+        outline-offset: 1px;
       }
 
       &:disabled {
-        opacity: 0.5;
+        opacity: 0.45;
         cursor: wait;
       }
     }
@@ -3870,10 +3860,6 @@ watch(currentChatId, (threadId, oldThreadId) => {
     justify-content: center;
     min-width: 0;
     max-width: min(168px, calc(100vw - 160px));
-  }
-
-  .direct-steer-button {
-    margin-right: 4px;
   }
 
   &.start-screen {

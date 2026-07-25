@@ -149,7 +149,9 @@ export const agentApi = {
    */
   cancelRequest: (requestId) => apiPost(`/api/agent/requests/${requestId}/cancel`, {}),
 
-  /** 将普通排队请求原地升级为 Steer */
+  /**
+   * 将普通排队请求提升为下一条执行的引导请求
+   */
   steerRequest: (requestId) => apiPost(`/api/agent/requests/${requestId}/steer`, {}),
 
   /**

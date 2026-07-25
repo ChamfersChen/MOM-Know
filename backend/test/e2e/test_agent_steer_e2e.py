@@ -86,22 +86,26 @@ async def _watch_run_until_end(
     return data_lines
 
 
-async def _wait_request_dispatched(
+async def _wait_request_run_created(
     client: httpx.AsyncClient,
     headers: dict[str, str],
     request_id: str,
 ) -> dict:
-    """等待 Steer request 派发，返回持久化 request 事实。"""
-    for _ in range(180):
-        response = await client.get(f"/api/agent/requests/{request_id}", headers=headers)
-        assert response.status_code == 200, response.text
-        request = response.json()["request"]
-        if request["status"] == "dispatched":
-            return request
-        if request["status"] in {"failed", "cancelled", "rejected"}:
-            pytest.fail(f"Steer request terminated before dispatch: {request}")
-        await asyncio.sleep(1)
-    pytest.fail("Steer request was not dispatched within 180 seconds")
+    """消费完整 Request SSE，并返回唯一的 ``run_created`` 事件。"""
+    run_created_events: list[dict] = []
+    event_name = ""
+    async with client.stream("GET", f"/api/agent/requests/{request_id}/events", headers=headers) as response:
+        assert response.status_code == 200, await response.aread()
+        async for line in response.aiter_lines():
+            if line.startswith("event: "):
+                event_name = line[7:]
+            elif line.startswith("data: ") and event_name == "run_created":
+                run_created_events.append(json.loads(line[6:]))
+            elif not line:
+                event_name = ""
+
+    assert len(run_created_events) == 1
+    return run_created_events[0]
 
 
 async def _wait_run_terminal(
@@ -120,12 +124,12 @@ async def _wait_run_terminal(
     pytest.fail(f"Run {run_id} was not terminal within 180 seconds")
 
 
-async def test_real_tool_steer_handoff(
+async def test_real_tool_steer_runs_next_from_checkpoint(
     e2e_client: httpx.AsyncClient,
     e2e_headers: dict[str, str],
     e2e_agent_context: dict[str, str],
 ):
-    """工具不中断，安全点后旧 Run 终结且 replacement 完成。"""
+    """工具不中断，安全点后旧 Run 完成并由 Steer 作为下一条请求执行。"""
     uid = e2e_agent_context["uid"]
     agent_slug = await _create_steer_agent(e2e_client, e2e_headers, uid)
     thread_id = await _create_thread(e2e_client, e2e_headers, agent_slug)
@@ -167,9 +171,18 @@ async def test_real_tool_steer_handoff(
             headers=e2e_headers,
         )
         assert steer_response.status_code == 200, steer_response.text
-        assert steer_response.json()["target_run_id"] == target_run_id
+        assert steer_response.json()["queue_policy"] == "steer"
+        assert steer_response.json()["status"] == "queued"
 
-        request = await _wait_request_dispatched(e2e_client, e2e_headers, steer_request_id)
+        run_created = await _wait_request_run_created(e2e_client, e2e_headers, steer_request_id)
+        request_response = await e2e_client.get(
+            f"/api/agent/requests/{steer_request_id}",
+            headers=e2e_headers,
+        )
+        assert request_response.status_code == 200, request_response.text
+        request = request_response.json()["request"]
+        assert request["status"] == "dispatched"
+        assert run_created["run_id"] == request["dispatched_run_id"]
         target_run = await _wait_run_terminal(e2e_client, e2e_headers, target_run_id)
         replacement_run = await _wait_run_terminal(
             e2e_client,
@@ -178,8 +191,7 @@ async def test_real_tool_steer_handoff(
         )
         target_events = await asyncio.wait_for(target_stream_task, timeout=30)
 
-        assert target_run["status"] == "cancelled"
-        assert target_run["error_type"] == "steered"
+        assert target_run["status"] == "completed"
         assert replacement_run["status"] == "completed"
         assert "TOOL_FINISHED" in "\n".join(target_events)
         assert "OLD_SHOULD_NOT_COMPLETE" not in "\n".join(target_events)
