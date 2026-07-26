@@ -90,8 +90,8 @@
                   />
                 </template>
                 <AgentArtifactsCard
-                  v-if="shouldShowArtifacts(row.conv)"
-                  :artifacts="currentArtifacts"
+                  v-if="row.artifacts.length"
+                  :artifacts="row.artifacts"
                   :thread-id="currentChatId"
                   @saved="handleArtifactSaved"
                   @open-preview="openPanelPreview"
@@ -171,18 +171,31 @@
                     <span class="queued-request-content" :title="request.content || '排队请求'">
                       {{ request.content || '排队请求' }}
                     </span>
-                    <span class="queued-request-position">
-                      排队 {{ request.queue_position || request.position || 1 }}
-                    </span>
-                    <button
-                      type="button"
-                      class="queued-request-delete lucide-icon-btn"
-                      :disabled="cancellingRequestIds.has(request.request_id)"
-                      :aria-label="`删除排队请求：${request.content || '排队请求'}`"
-                      @click="handleCancelQueuedRequest(request.request_id)"
-                    >
-                      <Trash2 :size="16" />
-                    </button>
+                    <div class="queued-request-actions">
+                      <span v-if="request.queue_policy === 'steer'" class="queued-request-position">
+                        引导 · 下一条执行
+                      </span>
+                      <button
+                        v-if="canSteerQueuedRequest(request)"
+                        type="button"
+                        class="queued-request-steer"
+                        :disabled="steeringRequestIds.has(request.request_id)"
+                        @click="handleSteerQueuedRequest(request.request_id)"
+                      >
+                        <CornerDownRight :size="14" aria-hidden="true" />
+                        引导
+                      </button>
+                      <button
+                        v-if="canCancelQueuedRequest(request)"
+                        type="button"
+                        class="queued-request-delete lucide-icon-btn"
+                        :disabled="cancellingRequestIds.has(request.request_id)"
+                        :aria-label="`删除排队请求：${request.content || '排队请求'}`"
+                        @click="handleCancelQueuedRequest(request.request_id)"
+                      >
+                        <Trash2 :size="16" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </section>
@@ -226,6 +239,16 @@
                       <slot name="input-actions-left" :has-active-thread="!!currentChatId"></slot>
                     </template>
                     <template #actions-right-extra>
+                      <button
+                        v-if="canSubmitSteer"
+                        type="button"
+                        class="direct-steer-button"
+                        title="当前步骤结束后优先执行这条消息"
+                        @click="handleDirectSteer"
+                      >
+                        <CornerDownRight :size="14" aria-hidden="true" />
+                        引导
+                      </button>
                       <div class="input-model-selector">
                         <ModelSelectorComponent
                           :model_spec="currentModelSpec"
@@ -720,6 +743,7 @@ const { threads, currentThreadId, currentThread } = storeToRefs(chatThreadsStore
 const userInput = ref('')
 const sendCooldownActive = ref(false)
 const cancellingRequestIds = reactive(new Set())
+const steeringRequestIds = reactive(new Set())
 let sendCooldownTimer = null
 // 预设的打招呼文本
 const greetingMessages = [
@@ -1483,14 +1507,6 @@ const shouldShowRefs = computed(() => {
   }
 })
 
-const shouldShowArtifacts = computed(() => {
-  return (conv) => {
-    if (!currentArtifacts.value.length || conv.status === 'streaming') return false
-    const latestConv = conversations.value[conversations.value.length - 1]
-    return latestConv === conv
-  }
-})
-
 // 当前线程状态的computed属性
 const currentThreadState = computed(() => {
   return getThreadState(currentChatId.value)
@@ -1846,7 +1862,8 @@ const conversationRows = computed(() => {
     type: 'conversation',
     key: conv.status === 'streaming' ? 'ongoing-conversation' : `history-${index}`,
     conv,
-    displayItems: getDisplayItems(conv)
+    displayItems: getDisplayItems(conv),
+    artifacts: MessageProcessor.extractArtifactsFromConversation(conv)
   }))
 
   if (currentThreadConfigNotice.value) {
@@ -1873,6 +1890,11 @@ const isStreaming = computed(() => {
   return threadState ? threadState.isStreaming : false
 })
 const currentQueuedRequests = computed(() => currentThreadState.value?.queuedRequests || [])
+const hasPendingSteer = computed(() =>
+  currentQueuedRequests.value.some(
+    (request) => request?.queue_policy === 'steer' && request?.status === 'queued'
+  )
+)
 const currentQueueSnapshot = computed(
   () => currentThreadState.value?.queueSnapshot || IDLE_QUEUE_SNAPSHOT
 )
@@ -1889,6 +1911,25 @@ const queuePausedMessage = computed(() =>
 const shouldShowStopButton = computed(
   () => isStreaming.value && !String(userInput.value || '').trim()
 )
+const canSubmitSteer = computed(
+  () =>
+    isStreaming.value &&
+    currentThreadState.value?.activeRunSteerable === true &&
+    Boolean(String(userInput.value || '').trim()) &&
+    !hasPendingSteer.value &&
+    !sendCooldownActive.value &&
+    !isWaitingForUserAction.value
+)
+const canSteerQueuedRequest = (request) =>
+  isStreaming.value &&
+  currentThreadState.value?.activeRunSteerable === true &&
+  !hasPendingSteer.value &&
+  request?.status === 'queued' &&
+  request?.queue_policy === 'enqueue' &&
+  request?.source === 'chat'
+const canCancelQueuedRequest = (request) =>
+  request?.queue_policy !== 'steer' ||
+  (!isStreaming.value && currentQueueSnapshot.value.status !== 'running')
 const shouldRefreshStateWhileStreaming = computed(
   () => Boolean(currentChatId.value) && isStreaming.value && statePanelOpen.value
 )
@@ -2463,26 +2504,17 @@ const { startRunStream, resumeActiveRunForThread, stopRunStreamSubscription } = 
     void resumeQueuedRequestsForThread(threadId)
   }
 })
-const startDispatchedRequestRun = async (threadId, runId, requestId) => {
-  await fetchThreadMessages({ agentId: currentAgentId.value, threadId })
-  resetOnGoingConv(threadId, { preserveRequestStreams: true })
-  const onGoingConv = getThreadState(threadId)?.onGoingConv
-  if (onGoingConv) {
-    onGoingConv.currentRequestKey = requestId
-    onGoingConv.currentAssistantKey = null
-  }
-  await startRunStream(threadId, runId, '0-0')
-}
-
 const {
   startRequestStream,
   stopAllRequestStreams,
   cancelRequest,
   syncQueuedRequests,
-  continueQueue
+  continueQueue,
+  steerRequest
 } = useAgentRequestQueue({
   getThreadState,
-  startRunStream: startDispatchedRequestRun,
+  resetOnGoingConv,
+  startRunStream,
   onStreamError: () => {}
 })
 
@@ -2496,6 +2528,19 @@ const handleCancelQueuedRequest = async (requestId) => {
   if (cancelled) {
     await resumeQueuedRequestsForThread(threadId)
     message.success('已删除排队请求')
+  }
+}
+
+const handleSteerQueuedRequest = async (requestId) => {
+  const threadId = currentChatId.value
+  const agentSlug = currentThread.value?.agent_id || currentAgentId.value
+  if (!threadId || !agentSlug || !requestId || steeringRequestIds.has(requestId)) return
+
+  steeringRequestIds.add(requestId)
+  const steered = await steerRequest(threadId, agentSlug, requestId)
+  steeringRequestIds.delete(requestId)
+  if (steered) {
+    message.success('已设为下一条引导请求')
   }
 }
 
@@ -2648,7 +2693,7 @@ const selectThreadFromRoute = async (threadId) => {
   return true
 }
 
-const handleSendMessage = async ({ image } = {}) => {
+const handleSendMessage = async ({ image, queuePolicy = 'enqueue' } = {}) => {
   const text = userInput.value.trim()
   const imageContent = image?.imageContent || null
   if (
@@ -2745,7 +2790,8 @@ const handleSendMessage = async ({ image } = {}) => {
       },
       image_content: imageContent,
       model_spec: modelSpec,
-      tool_approval_mode: toolApprovalMode
+      tool_approval_mode: toolApprovalMode,
+      queue_policy: queuePolicy
     })
     const status = runResp?.status
     const runId = runResp?.run_id
@@ -2754,6 +2800,7 @@ const handleSendMessage = async ({ image } = {}) => {
       threadState.queuedRequests.push({
         request_id: requestId,
         status: 'queued',
+        queue_policy: runResp?.queue_policy || queuePolicy,
         queue_position: runResp?.queue_position || 1,
         content: text
       })
@@ -2776,8 +2823,14 @@ const handleSendMessage = async ({ image } = {}) => {
       resetOnGoingConv(threadId)
     }
     rollbackAttachments(threadId, previousAttachments)
+    if (queuePolicy === 'steer' && !userInput.value) userInput.value = text
     handleChatError(error, 'send')
   }
+}
+
+const handleDirectSteer = async () => {
+  if (!canSubmitSteer.value) return
+  await handleSendMessage({ queuePolicy: 'steer' })
 }
 
 // 发送或中断
@@ -2834,7 +2887,7 @@ const handleApprovalWithStream = async (answer) => {
     hideApprovalState()
     threadState.pendingInterrupt = null
     threadState.isStreaming = true
-    resetOnGoingConv(threadId)
+    resetOnGoingConv(threadId, { preserveRequestStreams: true })
     const requestId = createClientRequestId()
     const runResp = await agentApi.createAgentRun({
       query: null,
@@ -3623,7 +3676,7 @@ watch(currentChatId, (threadId, oldThreadId) => {
     .queued-request-panel {
       max-height: 196px;
       overflow-y: auto;
-      padding: 10px 12px 18px;
+      padding: 6px 12px 18px;
       background: var(--gray-25);
       border: 1px solid var(--gray-150);
       border-radius: 16px 16px 12px 12px;
@@ -3672,9 +3725,9 @@ watch(currentChatId, (threadId, oldThreadId) => {
     }
 
     .queued-request-row {
-      min-height: 30px;
+      min-height: 28px;
       display: grid;
-      grid-template-columns: 18px minmax(0, 1fr) auto 30px;
+      grid-template-columns: 18px minmax(0, 1fr) auto;
       gap: 10px;
       align-items: center;
       padding: 0 4px 0 6px;
@@ -3694,9 +3747,9 @@ watch(currentChatId, (threadId, oldThreadId) => {
     .queued-request-content {
       min-width: 0;
       overflow: hidden;
-      font-size: 14px;
-      font-weight: 600;
-      line-height: 1.5;
+      font-size: 13px;
+      font-weight: 400;
+      line-height: 1.4;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
@@ -3714,6 +3767,46 @@ watch(currentChatId, (threadId, oldThreadId) => {
         content: '↪';
         color: var(--gray-400);
         font-size: 14px;
+      }
+    }
+
+    .queued-request-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .queued-request-steer,
+    .direct-steer-button {
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0 6px;
+      color: var(--gray-500);
+      background: transparent;
+      border: 0;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 1;
+      transition:
+        color 0.18s ease,
+        background-color 0.18s ease;
+
+      &:hover:not(:disabled) {
+        color: var(--gray-700);
+        background: var(--gray-100);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--main-color);
+        outline-offset: 1px;
+      }
+
+      &:disabled {
+        opacity: 0.45;
+        cursor: wait;
       }
     }
 
