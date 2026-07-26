@@ -1069,7 +1069,6 @@ const currentChatId = computed(() => currentThreadId.value)
 // 按线程记忆用户选择的模型；未选择时回退到智能体配置的模型。
 const DRAFT_MODEL_KEY = '__draft__'
 const selectedModelByThread = reactive({})
-const selectedToolApprovalModeByThread = reactive({})
 const savedToolApprovalMode = ref(readToolApprovalModePreference())
 const agentDefaultModel = computed(
   () =>
@@ -1097,16 +1096,32 @@ const configuredAgentToolApprovalMode = computed(() => {
 })
 const currentToolApprovalMode = computed(() =>
   resolveToolApprovalMode({
-    threadMode: selectedToolApprovalModeByThread[currentChatId.value || DRAFT_MODEL_KEY],
+    hasThread: Boolean(currentChatId.value),
+    threadMode: currentThread.value?.metadata?.tool_approval_mode,
     agentMode: configuredAgentToolApprovalMode.value,
     savedMode: savedToolApprovalMode.value
   })
 )
-const handleToolApprovalModeSelect = (mode) => {
+const handleToolApprovalModeSelect = async (mode) => {
   if (!isToolApprovalMode(mode)) return
-  selectedToolApprovalModeByThread[currentChatId.value || DRAFT_MODEL_KEY] = mode
-  savedToolApprovalMode.value = mode
-  writeToolApprovalModePreference(mode)
+
+  const thread = currentThread.value
+  if (!thread) {
+    savedToolApprovalMode.value = mode
+    writeToolApprovalModePreference(mode)
+    return
+  }
+
+  const previousMetadata = { ...(thread.metadata || {}) }
+  thread.metadata = { ...(thread.metadata || {}), tool_approval_mode: mode }
+  try {
+    await chatThreadsStore.updateThread(thread.id, null, undefined, mode)
+    savedToolApprovalMode.value = mode
+    writeToolApprovalModePreference(mode)
+  } catch {
+    thread.metadata = previousMetadata
+    message.error('审批模式保存失败')
+  }
 }
 
 const currentThreadAgentName = computed(() => {
@@ -2266,7 +2281,9 @@ const createThread = async (agentId, title = '新的对话') => {
   if (!agentId) return null
 
   try {
-    const thread = await chatThreadsStore.createThread(agentId, title)
+    const thread = await chatThreadsStore.createThread(agentId, title, {
+      tool_approval_mode: currentToolApprovalMode.value
+    })
     if (thread) {
       threadMessages.value[thread.id] = []
       threadFilesMap.value[thread.id] = []
@@ -2700,7 +2717,6 @@ const handleSendMessage = async ({ image, queuePolicy = 'enqueue' } = {}) => {
     }
     // 新建线程：把草稿态的模型选择迁移到真实线程，避免选择丢失
     promoteDraftSelection(selectedModelByThread, threadId)
-    promoteDraftSelection(selectedToolApprovalModeByThread, threadId)
   }
   // 仅当用户显式选择过模型才下发覆盖；否则传 null，由后端使用智能体配置的模型
   const modelSpec = selectedModelByThread[threadId] || null

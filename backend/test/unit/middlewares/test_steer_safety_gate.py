@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 
 import pytest
 from langchain.agents import create_agent
@@ -12,6 +13,8 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import InMemorySaver
+from yuxi.agents.middlewares.steer import SteerMiddleware
+from yuxi.services import agent_request_queue_service
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 
@@ -43,6 +46,25 @@ class _ParallelToolModel(BaseChatModel):
                 )
             ]
         )
+
+
+class _FinalAnswerModel(BaseChatModel):
+    """只返回最终文本，模拟 Steer 到达最后一次模型检查后的窗口。"""
+
+    call_count: int = 0
+
+    @property
+    def _llm_type(self) -> str:
+        return "steer-final-answer"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):  # noqa: ARG002
+        self.call_count += 1
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content="旧 Run 已完成当前回答"))])
+
+
+@dataclass
+class _RunContext:
+    run_id: str
 
 
 class _SafetyPointMiddleware(AgentMiddleware):
@@ -126,3 +148,38 @@ async def test_parallel_tools_finish_before_steer_ends_graph_and_checkpoint_is_c
     assert model.call_count == 1
     assert safe_point_results == {"call-one": "result-one", "call-two": "result-two"}
     assert checkpoint_results == safe_point_results
+
+
+async def test_tool_free_model_turn_keeps_steer_intent_for_handoff(monkeypatch: pytest.MonkeyPatch):
+    """Steer 在最后一次 before_model 检查后到达时，仍能安全结束旧 Graph。"""
+    checks = 0
+
+    async def should_end(run_id: str) -> bool:
+        nonlocal checks
+        assert run_id == "run-final-answer"
+        checks += 1
+        return checks >= 2
+
+    monkeypatch.setattr(agent_request_queue_service, "should_end_run_for_steer", should_end)
+    model = _FinalAnswerModel()
+    checkpointer = InMemorySaver()
+    agent = create_agent(
+        model=model,
+        middleware=[SteerMiddleware()],
+        context_schema=_RunContext,
+        checkpointer=checkpointer,
+    )
+    config = {"configurable": {"thread_id": "steer-final-answer-thread"}}
+
+    async for _ in agent.astream(
+        {"messages": [HumanMessage("完成当前回答")]},
+        config=config,
+        context=_RunContext(run_id="run-final-answer"),
+        stream_mode="updates",
+    ):
+        pass
+
+    state = await agent.aget_state(config)
+    assert model.call_count == 1
+    assert checks == 2
+    assert state.values["messages"][-1].content == "旧 Run 已完成当前回答"
