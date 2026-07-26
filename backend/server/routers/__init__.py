@@ -3,6 +3,7 @@ import os
 from fastapi import APIRouter
 
 from server.routers.agent_invocation_call_router import agent_invocation_call_router
+from server.routers.agent_invocation_channel_router import agent_invocation_channel_router
 from server.routers.agent_invocation_eval_router import agent_invocation_eval_router
 from server.routers.agent_router import agent_router
 from server.routers.auth_dept_router import department
@@ -29,6 +30,7 @@ router.include_router(system)  # /api/system/* 系统状态与全局配置
 router.include_router(auth)  # /api/auth/* 登录、用户信息与 CLI 浏览器登录授权
 router.include_router(agent_router)  # /api/agent/* 智能体管理与运行态
 router.include_router(agent_invocation_call_router)  # /api/agent-invocation/agent-call/*
+router.include_router(agent_invocation_channel_router)  # /api/agent-invocation/channel/*
 router.include_router(agent_invocation_eval_router)  # /api/agent-invocation/eval/*
 router.include_router(chat)  # /api/chat/* 对话线程、消息历史与附件
 

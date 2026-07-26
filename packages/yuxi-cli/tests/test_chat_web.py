@@ -89,6 +89,42 @@ class TruncatedChatClient(FakeChatClient):
         }
 
 
+class StateChatClient(FakeChatClient):
+    def create_agent_chat_run(self, **kwargs):
+        self.calls.append(kwargs)
+        return {
+            "kind": "command",
+            "command": "state",
+            "thread_id": "thread-1",
+            "state": {"agent_state": {"todos": []}},
+        }
+
+    def stream_agent_run_events(self, _run_id):
+        raise AssertionError("state command must not open a Run stream")
+
+
+class ApprovalChatClient(FakeChatClient):
+    def stream_agent_run_events(self, run_id):
+        assert run_id == "run-1"
+        approval_chunk = {
+            "status": "human_approval_required",
+            "approval": {
+                "action_requests": [{"name": "write_file"}],
+                "review_configs": [{"allowed_decisions": ["approve", "reject"]}],
+            },
+        }
+        yield {
+            "event": "interrupt",
+            "data": json.dumps({"payload": {"chunk": approval_chunk}}),
+        }
+        yield {
+            "event": "end",
+            "data": json.dumps(
+                {"payload": {"status": "interrupted", "chunk": approval_chunk}}
+            ),
+        }
+
+
 def test_browser_events_extracts_text_delta_and_terminal_status():
     client = FakeChatClient()
 
@@ -133,6 +169,18 @@ def test_browser_events_handles_retry_interrupt_and_child_thread():
     assert list(_browser_events(events, thread_id="thread-1")) == [
         {"type": "error", "message": "运行结束：interrupted"},
         {"type": "done", "status": "interrupted"},
+    ]
+
+
+def test_browser_events_maps_tool_approval_interrupt_to_waiting_state():
+    events = ApprovalChatClient().stream_agent_run_events("run-1")
+
+    assert list(_browser_events(events, thread_id="thread-1")) == [
+        {
+            "type": "approval_required",
+            "message": "等待工具审批，请输入 /approve 继续",
+        },
+        {"type": "done", "status": "waiting_approval"},
     ]
 
 
@@ -189,6 +237,89 @@ def test_local_server_streams_chat_without_exposing_api_key():
         {"type": "done", "status": "completed"},
     ]
     assert client.calls[0]["message"] == "你好"
+
+
+def test_local_server_returns_state_command_without_run_stream():
+    client = StateChatClient()
+    server = ChatWebServer(
+        ("127.0.0.1", 0), client, "default-chatbot", "session-secret"
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    connection = http.client.HTTPConnection(*server.server_address, timeout=5)
+    body = json.dumps({"message": "/state", "thread_id": "thread-1"})
+
+    try:
+        connection.request(
+            "POST",
+            "/api/chat",
+            body=body,
+            headers={
+                "Content-Type": "application/json",
+                "Content-Length": str(len(body.encode())),
+                "Origin": server.origin,
+                "X-Yuxi-Chat-Token": "session-secret",
+            },
+        )
+        response = connection.getresponse()
+        events = [json.loads(line) for line in response.read().decode().splitlines()]
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert response.status == 200
+    assert events == [
+        {"type": "meta", "thread_id": "thread-1"},
+        {
+            "type": "command",
+            "command": "state",
+            "result": {"agent_state": {"todos": []}},
+        },
+        {"type": "done", "status": "completed"},
+    ]
+
+
+def test_local_server_returns_approval_hint_without_error():
+    client = ApprovalChatClient()
+    server = ChatWebServer(
+        ("127.0.0.1", 0), client, "default-chatbot", "session-secret"
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    connection = http.client.HTTPConnection(*server.server_address, timeout=5)
+    body = json.dumps({"message": "执行敏感操作", "thread_id": "thread-1"})
+
+    try:
+        connection.request(
+            "POST",
+            "/api/chat",
+            body=body,
+            headers={
+                "Content-Type": "application/json",
+                "Content-Length": str(len(body.encode())),
+                "Origin": server.origin,
+                "X-Yuxi-Chat-Token": "session-secret",
+            },
+        )
+        response = connection.getresponse()
+        events = [json.loads(line) for line in response.read().decode().splitlines()]
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert response.status == 200
+    assert events == [
+        {"type": "meta", "run_id": "run-1", "thread_id": "thread-1"},
+        {
+            "type": "approval_required",
+            "message": "等待工具审批，请输入 /approve 继续",
+        },
+        {"type": "done", "status": "waiting_approval"},
+    ]
 
 
 def test_local_server_flushes_delta_before_remote_stream_ends():

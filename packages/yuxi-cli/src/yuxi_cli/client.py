@@ -199,17 +199,19 @@ class YuxiClient:
         thread_id: str | None,
         request_id: str,
     ) -> dict:
-        """创建供 CLI Chat 使用的异步 Agent Run。"""
+        """通过纯文本 Channel 入口发送 CLI Chat 消息。"""
         return self._request(
             "POST",
-            "/agent-invocation/agent-call/runs",
+            "/agent-invocation/channel/messages",
             json={
+                "channel": "cli",
+                "account_id": self.remote.name,
+                "chat_id": "cli" if thread_id else request_id,
                 "agent_slug": agent_slug,
-                "messages": [{"role": "user", "content": message}],
                 "thread_id": thread_id,
+                "message_id": request_id,
                 "request_id": request_id,
-                "async_mode": True,
-                "queue_policy": "reject",
+                "message": {"type": "text", "text": message},
             },
         )
 

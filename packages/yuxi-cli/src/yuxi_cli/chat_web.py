@@ -97,6 +97,13 @@ class ChatRequestHandler(BaseHTTPRequestHandler):
                 thread_id=thread_id,
                 request_id=str(uuid.uuid4()),
             )
+            if run.get("kind") == "command":
+                command_name = str(run.get("command") or "")
+                if command_name == "state":
+                    self._write_command_response(run, thread_id=thread_id)
+                    return
+                if command_name == "approve":
+                    run = run.get("run") if isinstance(run.get("run"), dict) else {}
             run_id = str(run.get("run_id") or "").strip()
             if not run_id:
                 raise ChatWebError(str(run.get("error") or "远端未返回 run_id"))
@@ -127,6 +134,25 @@ class ChatRequestHandler(BaseHTTPRequestHandler):
             return
         except (ChatWebError, ClientError) as exc:
             self._write_event({"type": "error", "message": str(exc)})
+
+    def _write_command_response(
+        self, response: dict[str, Any], *, thread_id: str | None
+    ) -> None:
+        """将不创建 Run 的 Channel command 结果返回给浏览器。"""
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self._write_event({"type": "meta", "thread_id": thread_id})
+        self._write_event(
+            {
+                "type": "command",
+                "command": response.get("command"),
+                "result": response.get("state") or response,
+            }
+        )
+        self._write_event({"type": "done", "status": "completed"})
 
     def _is_local_request(self) -> bool:
         origin = self.headers.get("Origin")
@@ -173,6 +199,7 @@ def _browser_events(
 ) -> Iterator[dict[str, Any]]:
     """把远端 Run SSE 压缩为页面需要的文本增量与终态。"""
     saw_terminal = False
+    waiting_for_approval = False
 
     for event in events:
         try:
@@ -194,6 +221,15 @@ def _browser_events(
         for chunk in chunks:
             if not isinstance(chunk, dict):
                 continue
+            if (
+                chunk.get("status") == "human_approval_required"
+                and not waiting_for_approval
+            ):
+                waiting_for_approval = True
+                yield {
+                    "type": "approval_required",
+                    "message": "等待工具审批，请输入 /approve 继续",
+                }
             stream_event = chunk.get("stream_event")
             if (
                 isinstance(stream_event, dict)
@@ -220,6 +256,9 @@ def _browser_events(
         elif event_type == "end":
             saw_terminal = True
             status = str(payload.get("status") or "completed")
+            if status == "interrupted" and waiting_for_approval:
+                yield {"type": "done", "status": "waiting_approval"}
+                continue
             if status != "completed":
                 yield {"type": "error", "message": f"运行结束：{status}"}
             yield {"type": "done", "status": status}

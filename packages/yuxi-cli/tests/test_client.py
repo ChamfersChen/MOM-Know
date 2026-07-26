@@ -41,7 +41,7 @@ def test_run_agent_eval_uses_invocation_endpoint(monkeypatch):
     assert call["json"]["meta"] == {"request_id": "req-1"}
 
 
-def test_create_agent_chat_run_uses_async_reject_mode(monkeypatch):
+def test_create_agent_chat_run_uses_channel_endpoint(monkeypatch):
     client, calls = _patched_client(monkeypatch)
     try:
         client.create_agent_chat_run(
@@ -55,14 +55,16 @@ def test_create_agent_chat_run_uses_async_reject_mode(monkeypatch):
 
     call = calls[-1]
     assert call["method"] == "POST"
-    assert call["path"] == "/agent-invocation/agent-call/runs"
+    assert call["path"] == "/agent-invocation/channel/messages"
     assert call["json"] == {
+        "channel": "cli",
+        "account_id": "local",
+        "chat_id": "cli",
         "agent_slug": "default-chatbot",
-        "messages": [{"role": "user", "content": "你好"}],
         "thread_id": "thread-1",
+        "message_id": "request-1",
         "request_id": "request-1",
-        "async_mode": True,
-        "queue_policy": "reject",
+        "message": {"type": "text", "text": "你好"},
     }
 
 

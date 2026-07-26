@@ -69,7 +69,7 @@ yuxi chat --agent-slug my-agent
 yuxi chat --remote production
 ```
 
-在不能自动打开浏览器的环境中，可使用 `yuxi chat --no-open`，然后手动访问终端打印的本地地址。当前页面定位为基础调试工具，仅支持文本对话和新建会话；附件、工具审批等完整能力仍需使用正式 Web 界面。
+在不能自动打开浏览器的环境中，可使用 `yuxi chat --no-open`，然后手动访问终端打印的本地地址。当前页面定位为基础调试工具，支持纯文本对话、新建会话、`/state` 查看线程状态和 `/approve` 继续工具审批；附件与 `ask_user_question` 仍需使用正式 Web 界面。
 
 ## 上传知识库文件
 
