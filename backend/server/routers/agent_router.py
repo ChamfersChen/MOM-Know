@@ -19,10 +19,8 @@ from yuxi.services.agent_request_queue_service import (
     cancel_queued_request as cancel_queued_request_svc,
     continue_thread_queue,
     finalize_dispatch,
-    finalize_intake,
     get_request as get_request_svc,
     get_thread_queue_snapshot,
-    intake_request,
     steer_queued_request,
     stream_request_events,
 )
@@ -35,6 +33,7 @@ from yuxi.services.agent_run_service import (
     stream_agent_run_events,
 )
 from yuxi.services.input_message_service import build_chat_input_message
+from yuxi.services.run_submission_service import RunOrigin, RunSubmissionCommand, submit_run_command
 from yuxi.storage.postgres.manager import pg_manager
 from yuxi.storage.postgres.models_business import User
 
@@ -303,45 +302,21 @@ async def create_agent_run(
 
     input_message = build_chat_input_message(payload.query or "", payload.image_content)
 
-    agent_repo = AgentRepository(db)
-    agent_item = await agent_repo.get_visible_by_slug(slug=payload.agent_slug, user=current_user, kind="main")
-    if not agent_item:
-        raise HTTPException(status_code=404, detail="智能体不存在")
-    agent_backend = agent_manager.get_agent(agent_item.backend_id)
-    if not agent_backend:
-        raise HTTPException(status_code=404, detail=f"智能体后端 {agent_item.backend_id} 不存在")
-
-    result = await intake_request(
-        db=db,
-        request_id=request_id,
-        uid=str(current_user.uid),
-        agent_slug=payload.agent_slug,
-        thread_id=payload.thread_id,
-        source="chat",
-        queue_policy=payload.queue_policy,
-        input_message=input_message,
-        agent_item=agent_item,
-        agent_backend=agent_backend,
-        model_spec=payload.model_spec,
-        tool_approval_mode=payload.tool_approval_mode,
-        meta={**meta, "tool_approval_mode": payload.tool_approval_mode},
-    )
-
-    await finalize_intake(db=db, intake=result)
-
-    return {
-        "request_id": result.request_id,
-        "status": result.status,
-        "queue_policy": result.queue_policy,
-        "queue_position": result.queue_position,
-        "message_id": result.message_id,
-        "run_id": result.run_id,
-        "stream_url": f"/api/agent/runs/{result.run_id}/events" if result.run_id else None,
-        "request_events_url": (
-            f"/api/agent/requests/{result.request_id}/events" if result.status == "queued" else None
+    return await submit_run_command(
+        command=RunSubmissionCommand(
+            agent_slug=payload.agent_slug,
+            thread_id=payload.thread_id,
+            request_id=request_id,
+            input_message=input_message,
+            origin=RunOrigin(source="chat", channel="web"),
+            request_metadata={**meta, "tool_approval_mode": payload.tool_approval_mode},
+            model_spec=payload.model_spec,
+            tool_approval_mode=payload.tool_approval_mode,
+            queue_policy=payload.queue_policy,
         ),
-        "thread_id": result.thread_id,
-    }
+        current_user=current_user,
+        db=db,
+    )
 
 
 @agent_router.get("/requests/{request_id}")

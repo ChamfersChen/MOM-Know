@@ -108,6 +108,9 @@ async def intake_request(
     agent_slug: str,
     thread_id: str,
     source: str = "chat",
+    channel: str = "web",
+    external_id: str | None = None,
+    origin_metadata: dict | None = None,
     queue_policy: str = "enqueue",
     input_message: AgentRunInputMessage,
     agent_item: Any,
@@ -140,6 +143,8 @@ async def intake_request(
             agent_slug=agent_slug,
             thread_id=thread_id,
             source=source,
+            channel=channel,
+            external_id=external_id,
             queue_policy=policy,
         )
 
@@ -217,6 +222,9 @@ async def intake_request(
                 agent_slug=agent_slug,
                 conversation_thread_id=thread_id,
                 source=source,
+                channel=channel,
+                external_id=external_id,
+                origin_metadata=origin_metadata,
                 queue_policy=policy,
                 input_message_id=persisted_message.id,
                 input_payload=input_payload,
@@ -309,6 +317,8 @@ async def steer_queued_request(
             agent_slug=request.agent_slug,
             thread_id=request.conversation_thread_id,
             source=request.source,
+            channel=request.channel,
+            external_id=request.external_id,
             queue_policy="steer",
         )
     if request.status != REQUEST_STATUS_QUEUED or request.queue_policy != "enqueue" or request.source != "chat":
@@ -667,14 +677,18 @@ async def _build_existing_intake_result(
     agent_slug: str,
     thread_id: str,
     source: str,
+    channel: str,
+    external_id: str | None,
     queue_policy: str,
 ) -> IntakeResult:
-    expected_scope = (str(uid), agent_slug, thread_id, source, queue_policy)
+    expected_scope = (str(uid), agent_slug, thread_id, source, channel, external_id, queue_policy)
     actual_scope = (
         request.uid,
         request.agent_slug,
         request.conversation_thread_id,
         request.source,
+        request.channel,
+        request.external_id,
         request.queue_policy,
     )
     if actual_scope != expected_scope:
@@ -699,6 +713,8 @@ def _build_message_metadata(
     metadata: dict[str, Any] = {"request_id": request_id}
     if source:
         metadata["source"] = source
+    if channel := meta.get("channel"):
+        metadata["channel"] = channel
     if raw_message := input_message.raw_message():
         metadata["raw_message"] = raw_message
     if attachment_file_ids := meta.get("attachment_file_ids"):
@@ -850,6 +866,10 @@ async def _dispatch_locked_head(
                 uid=uid,
                 request_id=head.request_id,
                 input_payload=head.input_payload or {},
+                source=head.source,
+                channel=head.channel,
+                external_id=head.external_id,
+                origin_metadata=head.origin_metadata,
                 conversation_id=conversation_id,
                 run_type="chat",
                 input_message_id=head.input_message_id,

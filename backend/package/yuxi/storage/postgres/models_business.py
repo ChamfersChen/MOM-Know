@@ -843,6 +843,10 @@ class AgentRun(Base):
         comment="Run status: pending/running/completed/failed/cancel_requested/cancelled/interrupted",
     )
     request_id = Column(String(64), unique=True, index=True, nullable=False, comment="Idempotency request ID")
+    source = Column(String(32), nullable=False, default="chat", comment="Run source snapshot")
+    channel = Column(String(32), nullable=False, default="web", comment="Run channel snapshot")
+    external_id = Column(String(128), nullable=True, index=True, comment="Source-specific external ID snapshot")
+    origin_metadata = Column(JSON, nullable=False, default=dict, comment="Immutable origin metadata snapshot")
     conversation_id = Column(
         Integer, ForeignKey("conversations.id"), nullable=True, index=True, comment="Conversation ID"
     )
@@ -879,6 +883,10 @@ class AgentRun(Base):
             "uid": self.uid,
             "status": self.status,
             "request_id": self.request_id,
+            "source": self.source,
+            "channel": self.channel,
+            "external_id": self.external_id,
+            "origin_metadata": self.origin_metadata or {},
             "conversation_id": self.conversation_id,
             "created_by_run_id": self.created_by_run_id,
             "subagent_thread_relation_id": self.subagent_thread_relation_id,
@@ -922,6 +930,9 @@ class AgentRunRequest(Base):
     agent_slug = Column(String(64), nullable=False, comment="Agent slug")
     conversation_thread_id = Column(String(64), nullable=False, comment="Conversation thread ID")
     source = Column(String(32), nullable=False, default="chat", comment="请求来源: chat/agent_call/eval")
+    channel = Column(String(32), nullable=False, default="web", comment="请求通道: web/api/im/internal")
+    external_id = Column(String(128), nullable=True, index=True, comment="来源侧消息或调用 ID")
+    origin_metadata = Column(JSON, nullable=False, default=dict, comment="来源 metadata 快照")
     queue_policy = Column(
         String(16),
         nullable=False,
@@ -959,6 +970,9 @@ class AgentRunRequest(Base):
             "agent_slug": self.agent_slug,
             "thread_id": self.conversation_thread_id,
             "source": self.source,
+            "channel": self.channel,
+            "external_id": self.external_id,
+            "origin_metadata": self.origin_metadata or {},
             "queue_policy": self.queue_policy,
             "status": self.status,
             "input_message_id": self.input_message_id,
