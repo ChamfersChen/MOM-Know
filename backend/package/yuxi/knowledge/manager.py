@@ -40,50 +40,43 @@ class KnowledgeBaseManager:
 
     async def initialize(self):
         """异步初始化"""
-        # 初始化已存在的知识库实例
-        self._initialize_existing_kbs()
+        # 初始化已存在的知识库实例；等待完成后，databases_meta 才能保证
+        # 与 PostgreSQL 一致，避免启动后短期内对 KB 的操作命中"未找到"路径。
+        await self._initialize_existing_kbs()
         logger.info("KnowledgeBaseManager initialized")
 
-    def _initialize_existing_kbs(self):
+    async def _initialize_existing_kbs(self):
         """初始化已存在的知识库实例"""
         from yuxi.repositories.knowledge_base_repository import KnowledgeBaseRepository
 
-        async def _async_init():
-            kb_repo = KnowledgeBaseRepository()
-            rows = await kb_repo.get_all()
+        kb_repo = KnowledgeBaseRepository()
+        rows = await kb_repo.get_all()
 
-            kb_types_in_use = set()
-            for row in rows:
-                kb_type = row.kb_type or "milvus"
-                if KnowledgeBaseFactory.is_type_supported(kb_type):
-                    kb_types_in_use.add(kb_type)
-                else:
-                    logger.warning(f"Skip unsupported knowledge base type during initialization: {kb_type}")
+        kb_types_in_use = set()
+        for row in rows:
+            kb_type = row.kb_type or "milvus"
+            if KnowledgeBaseFactory.is_type_supported(kb_type):
+                kb_types_in_use.add(kb_type)
+            else:
+                logger.warning(f"Skip unsupported knowledge base type during initialization: {kb_type}")
 
-            logger.info(f"[InitializeKB] 发现 {len(kb_types_in_use)} 种知识库类型: {kb_types_in_use}")
+        logger.info(f"[InitializeKB] 发现 {len(kb_types_in_use)} 种知识库类型: {kb_types_in_use}")
 
-            # 为每种使用中的知识库类型创建实例并加载元数据
-            for kb_type in kb_types_in_use:
-                if not KnowledgeBaseFactory.is_type_supported(kb_type):
-                    logger.warning(f"[InitializeKB] Skip initialization for unsupported knowledge base type: {kb_type}")
-                    continue
-                try:
-                    kb_instance = self._get_or_create_kb_instance(kb_type)
-                    # 让 KB 实例自行加载元数据
-                    await kb_instance._load_metadata()
-                    logger.info(f"[InitializeKB] {kb_type} 实例已初始化")
-                except Exception as e:
-                    logger.error(f"Failed to initialize {kb_type} knowledge base: {e}")
-                    import traceback
+        # 为每种使用中的知识库类型创建实例并加载元数据
+        for kb_type in kb_types_in_use:
+            if not KnowledgeBaseFactory.is_type_supported(kb_type):
+                logger.warning(f"[InitializeKB] Skip initialization for unsupported knowledge base type: {kb_type}")
+                continue
+            try:
+                kb_instance = self._get_or_create_kb_instance(kb_type)
+                # 让 KB 实例自行加载元数据
+                await kb_instance._load_metadata()
+                logger.info(f"[InitializeKB] {kb_type} 实例已初始化")
+            except Exception as e:
+                logger.error(f"Failed to initialize {kb_type} knowledge base: {e}")
+                import traceback
 
-                    logger.error(traceback.format_exc())
-
-        # 在事件循环中运行异步初始化
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(_async_init())
-        except RuntimeError:
-            asyncio.run(_async_init())
+                logger.error(traceback.format_exc())
 
     def _get_or_create_kb_instance(self, kb_type: str) -> KnowledgeBase:
         """
@@ -179,31 +172,39 @@ class KnowledgeBaseManager:
         kb_repo = KnowledgeBaseRepository()
         rows = await kb_repo.get_all()
         all_databases = []
-        metadata_reloaded_types: set[str] = set()
         for row in rows:
             kb_type = row.kb_type or "milvus"
             if not KnowledgeBaseFactory.is_type_supported(kb_type):
                 logger.warning(f"Skip unsupported database: kb_id={row.kb_id}, kb_type={kb_type}")
                 continue
-            kb_instance = self._get_or_create_kb_instance(kb_type)
-            db_info = kb_instance.get_database_info(row.kb_id, include_files=False)
-            if not db_info and kb_type not in metadata_reloaded_types:
-                try:
-                    await kb_instance._load_metadata()
-                    metadata_reloaded_types.add(kb_type)
-                except Exception as e:
-                    logger.warning(f"Failed to reload metadata for kb_type={kb_type}: {e}")
-                db_info = kb_instance.get_database_info(row.kb_id, include_files=False)
 
-            if not db_info:
-                logger.warning(f"Skip database due to missing metadata: kb_id={row.kb_id}, kb_type={kb_type}")
+            # 单条记录元数据不合法时只跳过该条，避免一条坏记录隐藏整个列表。
+            try:
+                kb_class = KnowledgeBaseFactory.get_kb_class(kb_type)
+                additional_params = kb_class.normalize_additional_params(row.additional_params)
+                stats = KnowledgeBase._normalize_database_stats(additional_params.get("stats"))
+            except Exception as e:
+                logger.warning(f"Skip database with invalid metadata: kb_id={row.kb_id}, kb_type={kb_type}: {e}")
                 continue
-
-            # 补充 share_config 和 additional_params
-            db_info["share_config"] = row.share_config or DEFAULT_SHARE_CONFIG.copy()
-            db_info["additional_params"] = kb_instance.normalize_additional_params(row.additional_params)
-            db_info["created_by"] = row.created_by
-            all_databases.append(db_info)
+            all_databases.append(
+                {
+                    "kb_id": row.kb_id,
+                    "name": row.name,
+                    "description": row.description,
+                    "kb_type": kb_type,
+                    "embedding_model_spec": row.embedding_model_spec,
+                    "llm_model_spec": row.llm_model_spec,
+                    "query_params": row.query_params,
+                    "metadata": additional_params,
+                    "created_at": utc_isoformat(row.created_at) if row.created_at else None,
+                    "status": "已连接",
+                    "stats": stats,
+                    "row_count": stats["row_count"] or stats["file_count"],
+                    "share_config": row.share_config or DEFAULT_SHARE_CONFIG.copy(),
+                    "additional_params": additional_params,
+                    "created_by": row.created_by,
+                }
+            )
         return {"databases": all_databases}
 
     @staticmethod
