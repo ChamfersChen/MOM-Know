@@ -217,17 +217,37 @@ class YuxiClient:
 
     def stream_agent_run_events(self, run_id: str) -> Iterator[dict[str, str]]:
         """读取 Agent Run SSE，并逐条返回解析后的事件。"""
+        yield from self._stream_events(f"/agent/runs/{run_id}/events", params={"verbose": "false"})
+
+    def stream_agent_request_events(self, request_events_url: str) -> Iterator[dict[str, str]]:
+        """读取 Agent Request SSE，直到请求派发或进入终态。"""
+        path = request_events_url.strip()
+        if not path:
+            raise ClientError("request_events_url 不能为空")
+        if path.startswith("http://") or path.startswith("https://"):
+            raise ClientError("request_events_url 必须是相对路径")
+        if path.startswith("/api/"):
+            path = path[4:]
+        yield from self._stream_events(path)
+
+    def _stream_events(
+        self,
+        path: str,
+        *,
+        params: dict[str, str] | None = None,
+    ) -> Iterator[dict[str, str]]:
+        """连接远端 SSE 接口并返回解析后的事件。"""
         headers = {}
         if self.remote.api_key:
             headers["Authorization"] = f"Bearer {self.remote.api_key}"
-        url = f"{self.remote.api_base_url}/agent/runs/{run_id}/events"
+        url = f"{self.remote.api_base_url}{path if path.startswith('/') else f'/{path}'}"
 
         try:
             with self.client.stream(
                 "GET",
                 url,
                 headers=headers,
-                params={"verbose": "false"},
+                params=params,
                 timeout=None,
             ) as response:
                 if response.status_code >= 400:

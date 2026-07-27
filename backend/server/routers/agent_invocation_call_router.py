@@ -34,6 +34,8 @@ MAX_REQUEST_ID_LENGTH = 64
 
 
 class AgentCallRunCreate(BaseModel):
+    """Agent Call 创建请求，兼容 OpenAI 风格消息输入。"""
+
     agent_slug: str = Field(..., description="要调用的智能体 slug")
     messages: list[dict[str, Any]] = Field(..., description="消息列表，取最后一条 user 消息作为输入")
     stream: bool = Field(False, description="暂不支持流式，传 true 会返回 422")
@@ -50,6 +52,8 @@ class AgentCallRunCreate(BaseModel):
 
 
 class AgentCallRunResultRequest(BaseModel):
+    """Agent Call 结果读取请求。"""
+
     run_id: str = Field(..., description="AgentRun ID")
     agent_slug: str | None = Field(None, description="可选，传入时校验 run 归属")
 
@@ -149,6 +153,7 @@ def _invocation_thread_id(uid: object, agent_slug: str, request_id: str) -> str:
 
 
 def _normalize_required_text(value: str | None, *, field_name: str) -> str:
+    """清理必填文本字段，空值返回 422。"""
     normalized = str(value or "").strip()
     if not normalized:
         raise HTTPException(status_code=422, detail=f"{field_name} 不能为空")
@@ -156,6 +161,7 @@ def _normalize_required_text(value: str | None, *, field_name: str) -> str:
 
 
 def _normalize_request_id(value: str | None) -> str:
+    """生成或校验 Agent Call 请求幂等 ID。"""
     if value is None or not str(value).strip():
         return str(uuid.uuid4())
     normalized = str(value).strip()
@@ -165,6 +171,7 @@ def _normalize_request_id(value: str | None) -> str:
 
 
 def _validate_agent_call_meta(meta: dict[str, Any]) -> None:
+    """拒绝通过元数据绕过显式运行上下文字段。"""
     if isinstance(meta, dict) and "context" in meta:
         raise HTTPException(
             status_code=422,
@@ -173,6 +180,7 @@ def _validate_agent_call_meta(meta: dict[str, Any]) -> None:
 
 
 def _extract_input_message(messages: list[dict[str, Any]]) -> AgentRunInputMessage:
+    """从消息列表中提取最后一条 user 消息作为运行输入。"""
     if not messages:
         raise HTTPException(status_code=422, detail="messages 不能为空")
     for message in reversed(messages):
@@ -186,6 +194,7 @@ def _extract_input_message(messages: list[dict[str, Any]]) -> AgentRunInputMessa
 
 
 def _normalize_usage(usage: object) -> dict[str, int]:
+    """把不同来源的 usage 字段归一为 OpenAI-compatible 计数字段。"""
     if not isinstance(usage, dict):
         return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     prompt = usage.get("prompt_tokens", usage.get("input_tokens", 0))
@@ -198,6 +207,7 @@ def _normalize_usage(usage: object) -> dict[str, int]:
 
 
 def _build_agent_call_response(result: dict[str, Any]) -> dict[str, Any]:
+    """将 AgentRun 结果装配为 Agent Call 响应。"""
     raw_status = str(result.get("status") or "unknown")
     status = "pending" if raw_status == "dispatched" else raw_status
     output = result.get("output") if isinstance(result.get("output"), str) else ""
@@ -223,6 +233,7 @@ def _build_agent_call_response(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def _finish_reason(status: str) -> str | None:
+    """根据运行终态生成 OpenAI choices.finish_reason。"""
     if status == "completed":
         return "stop"
     if status in {"failed", "cancelled", "interrupted"}:

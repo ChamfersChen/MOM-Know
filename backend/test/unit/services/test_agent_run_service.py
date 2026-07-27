@@ -905,6 +905,8 @@ async def test_create_resume_run_marks_input_message_source(monkeypatch: pytest.
             conversation_thread_id="thread-1",
             status="interrupted",
             input_payload={"model_spec": "parent-model", "tool_approval_mode": "default"},
+            source="agent_call",
+            channel="api",
         ),
     )
 
@@ -923,8 +925,47 @@ async def test_create_resume_run_marks_input_message_source(monkeypatch: pytest.
     assert db.created_run_kwargs["run_type"] == "resume"
     assert db.created_run_kwargs["created_by_run_id"] == "parent-run"
     assert db.created_run_kwargs["input_message_id"] == 11
+    assert db.created_run_kwargs["source"] == "agent_call"
+    assert db.created_run_kwargs["channel"] == "api"
     assert db.added[0].message_type == "resume"
     assert db.added[0].extra_metadata["source"] == "ask_user_question_resume"
+
+
+@pytest.mark.asyncio
+async def test_create_resume_run_preserves_explicit_origin_snapshot(monkeypatch: pytest.MonkeyPatch):
+    db = _patch_agent_run_creation(
+        monkeypatch,
+        parent_run=SimpleNamespace(
+            id="parent-run",
+            conversation_thread_id="thread-1",
+            status="interrupted",
+            input_payload={"model_spec": "parent-model", "tool_approval_mode": "default"},
+            source="agent_call",
+            channel="api",
+            external_id="original-message",
+            origin_metadata={"original": "metadata"},
+        ),
+    )
+
+    await agent_run_service.create_agent_run_view(
+        input_message=None,
+        agent_slug="default",
+        thread_id="thread-1",
+        meta={"request_id": "resume-req"},
+        current_uid="user-1",
+        db=db,
+        resume={"decisions": [{"type": "approve"}]},
+        created_by_run_id="parent-run",
+        source="chat",
+        channel="web",
+        external_id="approval-message",
+        origin_metadata={"approval": "metadata"},
+    )
+
+    assert db.created_run_kwargs["source"] == "chat"
+    assert db.created_run_kwargs["channel"] == "web"
+    assert db.created_run_kwargs["external_id"] == "approval-message"
+    assert db.created_run_kwargs["origin_metadata"] == {"approval": "metadata"}
 
 
 @pytest.mark.asyncio

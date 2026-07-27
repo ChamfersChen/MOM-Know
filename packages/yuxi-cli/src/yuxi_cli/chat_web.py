@@ -105,6 +105,9 @@ class ChatRequestHandler(BaseHTTPRequestHandler):
                 if command_name == "approve":
                     run = run.get("run") if isinstance(run.get("run"), dict) else {}
             run_id = str(run.get("run_id") or "").strip()
+            if not run_id and run.get("request_events_url"):
+                run = self._wait_queued_run(run)
+                run_id = str(run.get("run_id") or "").strip()
             if not run_id:
                 raise ChatWebError(str(run.get("error") or "远端未返回 run_id"))
         except (ChatWebError, ClientError, json.JSONDecodeError) as exc:
@@ -153,6 +156,36 @@ class ChatRequestHandler(BaseHTTPRequestHandler):
             }
         )
         self._write_event({"type": "done", "status": "completed"})
+
+    def _wait_queued_run(self, response: dict[str, Any]) -> dict[str, Any]:
+        """跟随 Request SSE，直到排队请求真正创建 Run。"""
+        request_events_url = str(response.get("request_events_url") or "").strip()
+        if not request_events_url:
+            raise ChatWebError("远端未返回 request_events_url")
+
+        for event in self.server.client.stream_agent_request_events(request_events_url):
+            try:
+                data = json.loads(event.get("data") or "{}")
+            except json.JSONDecodeError as exc:
+                raise ChatWebError("远端返回了无效的排队事件") from exc
+            if not isinstance(data, dict):
+                continue
+
+            event_type = event.get("event") or "message"
+            if event_type == "run_created":
+                run_id = str(data.get("run_id") or "").strip()
+                if not run_id:
+                    raise ChatWebError("排队事件缺少 run_id")
+                return {
+                    **response,
+                    "run_id": run_id,
+                    "thread_id": data.get("thread_id") or response.get("thread_id"),
+                }
+            if event_type in {"cancelled", "rejected", "failed", "error"}:
+                message = data.get("message") or data.get("status") or event_type
+                raise ChatWebError(f"排队请求结束：{message}")
+
+        raise ChatWebError("排队事件流在创建 Run 前断开，请重试")
 
     def _is_local_request(self) -> bool:
         origin = self.headers.get("Origin")

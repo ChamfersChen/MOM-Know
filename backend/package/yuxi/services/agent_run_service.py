@@ -404,8 +404,8 @@ async def create_agent_run_view(
     tool_approval_mode: str | None = None,
     resume: object | None = None,
     created_by_run_id: str | None = None,
-    source: str = "chat",
-    channel: str = "web",
+    source: str | None = None,
+    channel: str | None = None,
     external_id: str | None = None,
     origin_metadata: dict[str, Any] | None = None,
 ) -> dict:
@@ -472,10 +472,17 @@ async def create_agent_run_view(
         "tool_approval_mode": resolved_tool_approval_mode,
     }
     if run_type == "resume" and scope.parent_run is not None:
-        source = getattr(scope.parent_run, "source", None) or source
-        channel = getattr(scope.parent_run, "channel", None) or channel
-        external_id = getattr(scope.parent_run, "external_id", None)
-        origin_metadata = getattr(scope.parent_run, "origin_metadata", None) or {}
+        if source is None:
+            source = getattr(scope.parent_run, "source", None) or "chat"
+        if channel is None:
+            channel = getattr(scope.parent_run, "channel", None) or "web"
+        if external_id is None:
+            external_id = getattr(scope.parent_run, "external_id", None)
+        if origin_metadata is None:
+            origin_metadata = getattr(scope.parent_run, "origin_metadata", None) or {}
+    else:
+        source = source or "chat"
+        channel = channel or "web"
 
     run, created = await persist_agent_run_record(
         agent_slug=agent_slug,

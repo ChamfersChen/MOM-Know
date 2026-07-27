@@ -103,6 +103,33 @@ class StateChatClient(FakeChatClient):
         raise AssertionError("state command must not open a Run stream")
 
 
+class QueuedChatClient(FakeChatClient):
+    def create_agent_chat_run(self, **kwargs):
+        self.calls.append(kwargs)
+        return {
+            "status": "queued",
+            "thread_id": "thread-1",
+            "request_events_url": "/api/agent/requests/request-1/events",
+        }
+
+    def stream_agent_request_events(self, request_events_url):
+        assert request_events_url == "/api/agent/requests/request-1/events"
+        yield {
+            "event": "queued",
+            "data": json.dumps({"request_id": "request-1", "queue_position": 1}),
+        }
+        yield {
+            "event": "run_created",
+            "data": json.dumps(
+                {
+                    "request_id": "request-1",
+                    "run_id": "run-1",
+                    "thread_id": "thread-1",
+                }
+            ),
+        }
+
+
 class ApprovalChatClient(FakeChatClient):
     def stream_agent_run_events(self, run_id):
         assert run_id == "run-1"
@@ -277,6 +304,44 @@ def test_local_server_returns_state_command_without_run_stream():
             "command": "state",
             "result": {"agent_state": {"todos": []}},
         },
+        {"type": "done", "status": "completed"},
+    ]
+
+
+def test_local_server_waits_queued_request_before_run_stream():
+    client = QueuedChatClient()
+    server = ChatWebServer(
+        ("127.0.0.1", 0), client, "default-chatbot", "session-secret"
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    connection = http.client.HTTPConnection(*server.server_address, timeout=5)
+    body = json.dumps({"message": "排队消息", "thread_id": "thread-1"})
+
+    try:
+        connection.request(
+            "POST",
+            "/api/chat",
+            body=body,
+            headers={
+                "Content-Type": "application/json",
+                "Content-Length": str(len(body.encode())),
+                "Origin": server.origin,
+                "X-Yuxi-Chat-Token": "session-secret",
+            },
+        )
+        response = connection.getresponse()
+        events = [json.loads(line) for line in response.read().decode().splitlines()]
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert response.status == 200
+    assert events == [
+        {"type": "meta", "run_id": "run-1", "thread_id": "thread-1"},
+        {"type": "delta", "content": "你"},
         {"type": "done", "status": "completed"},
     ]
 

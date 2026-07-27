@@ -26,12 +26,16 @@ INTERRUPT_STATUSES = {"ask_user_question_required", "human_approval_required", "
 
 
 class AgentEvaluationContext(BaseModel):
+    """评估运行关联的 Langfuse 数据集上下文。"""
+
     dataset_name: str | None = Field(None, description="Langfuse dataset 名称")
     dataset_item_id: str | None = Field(None, description="Langfuse dataset item ID")
     experiment_name: str | None = Field(None, description="Langfuse experiment/run 名称")
 
 
 class AgentEvalRunCreate(BaseModel):
+    """Agent Eval 创建请求。"""
+
     query: str = Field(..., description="评估样例输入")
     agent_slug: str = Field(..., description="要运行的智能体 slug")
     evaluation: AgentEvaluationContext = Field(default_factory=AgentEvaluationContext, description="评估上下文")
@@ -100,6 +104,7 @@ async def create_agent_eval_run(
 
 
 def _normalize_request_id(meta: dict[str, Any]) -> str:
+    """从评估元数据中提取或生成请求幂等 ID。"""
     request_id = str(meta.get("request_id") or "").strip()
     if request_id:
         if len(request_id) > 64:
@@ -111,6 +116,7 @@ def _normalize_request_id(meta: dict[str, Any]) -> str:
 
 
 def _normalize_evaluation(evaluation: dict[str, Any]) -> dict[str, str]:
+    """只保留非空的评估上下文字段。"""
     normalized: dict[str, str] = {}
     for key in EVALUATION_FIELDS:
         value = evaluation.get(key)
@@ -120,11 +126,13 @@ def _normalize_evaluation(evaluation: dict[str, Any]) -> dict[str, str]:
 
 
 async def _load_trajectory_summary(run_id: str) -> dict[str, Any]:
+    """读取运行事件并生成轻量轨迹摘要。"""
     events = await list_run_stream_events(run_id, after_seq="0-0", limit=TRAJECTORY_SUMMARY_EVENT_LIMIT)
     return _build_trajectory_summary(events)
 
 
 def _build_trajectory_summary(events: list[dict[str, Any]]) -> dict[str, Any]:
+    """从运行事件中统计工具调用、错误和中断概览。"""
     summary = {
         "schema_version": 1,
         "source": "run_events",
@@ -198,6 +206,7 @@ def _build_trajectory_summary(events: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _iter_event_chunks(event: dict[str, Any]):
+    """遍历单个运行事件里的有效 chunk。"""
     envelope = event.get("payload")
     payload = envelope.get("payload") if isinstance(envelope, dict) else None
     if not isinstance(payload, dict):
