@@ -20,8 +20,8 @@ from langchain_community.document_loaders import PyPDFLoader
 from markdownify import markdownify as md_convert
 
 from yuxi.knowledge.parser.zip_utils import process_zip_file as _process_zip_file
-from yuxi.storage.minio import get_minio_client
 from yuxi.knowledge.utils.pdf_utils import validate_pdf_page_tree_loadable
+from yuxi.storage.minio import get_minio_client
 from yuxi.utils import logger
 
 SUPPORTED_FILE_EXTENSIONS: tuple[str, ...] = (

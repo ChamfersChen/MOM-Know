@@ -42,9 +42,12 @@ export const confirmSkillInstallDraft = async (draftId, shareConfig, slugs) => {
 }
 
 export const confirmPersonalSkillInstallDraft = async (draftId, slugs) => {
-  return apiPost(`${USER_BASE_URL}/personal/install-drafts/${encodeURIComponent(draftId)}/confirm`, {
-    slugs
-  })
+  return apiPost(
+    `${USER_BASE_URL}/personal/install-drafts/${encodeURIComponent(draftId)}/confirm`,
+    {
+      slugs
+    }
+  )
 }
 
 export const discardSkillInstallDraft = async (draftId) => {

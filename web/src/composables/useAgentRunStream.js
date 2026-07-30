@@ -260,8 +260,7 @@ export function useAgentRunStream({
     if (!ts) return
 
     const isSameRun = ts.activeRunId === runId
-    const initialSteerable =
-      options.steerable ?? (isSameRun && ts.activeRunSteerable === true)
+    const initialSteerable = options.steerable ?? (isSameRun && ts.activeRunSteerable === true)
     stopRunStreamSubscription(threadId)
     const runController = new AbortController()
     ts.runStreamAbortController = runController

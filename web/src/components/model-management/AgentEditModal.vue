@@ -299,11 +299,9 @@ defineExpose({
     <template #title>
       <div class="agent-modal-titlebar">
         <span class="agent-modal-title">{{ agentModalTitle }}</span>
-        <div class="agent-modal-actions">
+        <div class="agent-modal-actions" v-if="agentStore.hasConfigChanges">
           <a-button :disabled="saving" @click="closeAgentModal">取消</a-button>
-          <a-button type="primary" :loading="saving" @click="saveAgent">
-            {{ agentStore.hasConfigChanges ? '保存（有修改）' : '保存' }}
-          </a-button>
+          <a-button type="primary" :loading="saving" @click="saveAgent"> 保存（有修改） </a-button>
         </div>
       </div>
     </template>

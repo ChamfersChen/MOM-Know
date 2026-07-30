@@ -34,6 +34,7 @@ def ensure_within_root(path: Path, root: Path, *, error_message: str) -> Path:
         raise ValueError(error_message) from None
     return path
 
+
 __all__ = [
     "VIRTUAL_PATH_PREFIX",
     "WORKSPACE_DIR_NAME",

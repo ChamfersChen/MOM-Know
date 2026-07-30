@@ -85,7 +85,7 @@
                       @click="openAgentManagement"
                     >
                       <Settings2 :size="15" class="config-dropdown-item-icon" />
-                      <span class="config-dropdown-item-label">管理智能体</span>
+                      <span class="config-dropdown-item-label">编辑智能体</span>
                     </button>
                     <button
                       type="button"

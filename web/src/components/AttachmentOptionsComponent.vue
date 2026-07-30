@@ -82,8 +82,8 @@
           />
           <span class="attachment-resource-content">
             <span class="config-dropdown-item-label">{{ item.label }}</span>
-            <span v-if="item.description" class="attachment-resource-description">
-              {{ item.description }}
+            <span class="attachment-resource-description">
+              {{ item.description || '暂无描述' }}
             </span>
           </span>
         </button>
@@ -226,8 +226,8 @@ const processImageUpload = async (file) => {
   overflow-y: auto;
 }
 
-.attachment-resource-item {
-  align-items: flex-start;
+.attachment-options-panel .attachment-resource-item {
+  gap: 10px;
 }
 
 .attachment-resource-content {
