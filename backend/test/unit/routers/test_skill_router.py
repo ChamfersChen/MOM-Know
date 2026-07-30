@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
@@ -119,6 +121,54 @@ def test_list_accessible_skills_route(monkeypatch):
     assert payload["success"] is True
     assert payload["data"][0]["slug"] == "demo"
     assert payload["data"][0]["can_manage"] is True
+
+
+def test_list_skill_cards_route_forces_personal_refresh(monkeypatch):
+    captured = {}
+
+    async def fake_list_skill_cards(_db, user, *, refresh_personal):
+        captured["uid"] = user.uid
+        captured["refresh_personal"] = refresh_personal
+        item = _skill(source_type="personal", created_by="user")
+        return [item], SimpleNamespace(scanned_at="2026-07-30T00:00:00Z", from_cache=False)
+
+    monkeypatch.setattr("server.routers.skill_router.list_skill_cards_for_user", fake_list_skill_cards)
+
+    client = TestClient(_build_app(role="user"))
+    resp = client.get("/api/skills?refresh_personal=true")
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["personal_cache"] == {
+        "scanned_at": "2026-07-30T00:00:00Z",
+        "from_cache": False,
+    }
+    assert captured == {"uid": "user", "refresh_personal": True}
+
+
+def test_personal_skill_confirm_and_delete_routes(monkeypatch):
+    async def fake_confirm(*, draft_id, slugs, operator):
+        assert draft_id == "draft-1"
+        assert slugs == ["demo-v2"]
+        assert operator.uid == "user"
+        return [{"slug": "demo", "requested_slug": "demo-v2", "success": True}]
+
+    async def fake_delete(uid, slug):
+        assert (uid, slug) == ("user", "demo")
+        return SimpleNamespace(scanned_at="2026-07-30T00:00:00Z", from_cache=False)
+
+    monkeypatch.setattr("server.routers.skill_router.confirm_personal_skill_install_draft", fake_confirm)
+    monkeypatch.setattr("server.routers.skill_router.delete_personal_skill", fake_delete)
+
+    client = TestClient(_build_app(role="user"))
+    confirm_resp = client.post(
+        "/api/skills/personal/install-drafts/draft-1/confirm",
+        json={"slugs": ["demo-v2"]},
+    )
+    delete_resp = client.delete("/api/skills/personal/demo")
+
+    assert confirm_resp.status_code == 200, confirm_resp.text
+    assert confirm_resp.json()["data"][0]["slug"] == "demo"
+    assert delete_resp.status_code == 200, delete_resp.text
 
 
 def test_prepare_skill_upload_route(monkeypatch):

@@ -85,7 +85,7 @@
         <section v-else-if="phase === 'reviewing'" class="flow-section">
           <div class="review-heading">
             <strong>确认安装内容</strong>
-            <span>{{ readyItems.length }} 个 Skill，共用下方生效范围</span>
+            <span>{{ readyItems.length }} 个 Skill，共用下方安装设置</span>
           </div>
           <div class="review-list">
             <div
@@ -107,12 +107,44 @@
               >
                 <XIcon :size="15" />
               </button>
-              <div v-if="item.warnings?.length" class="review-warning" role="alert">
+              <div
+                v-if="installTarget === 'shared' && item.warnings?.length"
+                class="review-warning"
+                role="alert"
+              >
                 {{ item.warnings.join('；') }}
               </div>
             </div>
           </div>
-          <div class="share-config-section">
+          <div class="install-target-section">
+            <h3>安装位置</h3>
+            <div class="install-target-options">
+              <button
+                type="button"
+                class="install-target-option"
+                :class="{ selected: installTarget === 'personal' }"
+                :aria-pressed="installTarget === 'personal'"
+                @click="installTarget = 'personal'"
+              >
+                <span class="install-target-title">个人工作区 <b>推荐</b></span>
+                <span>仅自己可用，保存在个人 workspace，不进入平台数据库。</span>
+              </button>
+              <button
+                type="button"
+                class="install-target-option"
+                :class="{ selected: installTarget === 'shared' }"
+                :aria-pressed="installTarget === 'shared'"
+                @click="installTarget = 'shared'"
+              >
+                <span class="install-target-title">共享 Skill</span>
+                <span>进入平台 Skill 库，并继续配置指定人、部门或全局范围。</span>
+              </button>
+            </div>
+            <div v-if="installTarget === 'personal'" class="personal-install-note">
+              个人 Skill 不加载工具、MCP 或其他 Skill 依赖；与共享 Skill 同名时完整覆盖共享版本。
+            </div>
+          </div>
+          <div v-if="installTarget === 'shared'" class="share-config-section">
             <h3>生效范围</h3>
             <ShareConfigForm
               ref="shareConfigFormRef"
@@ -129,7 +161,7 @@
               <LoaderCircle :size="20" class="spin" />
             </div>
             <strong>正在安装 {{ installItems.length }} 个 Skill</strong>
-            <span>正在应用生效范围：{{ shareScopeLabel }}</span>
+            <span>正在安装到：{{ installTargetLabel }}</span>
           </div>
         </section>
 
@@ -163,7 +195,7 @@
             <template v-else-if="phase === 'reviewing'">
               <a-button @click="handleClose">取消</a-button>
               <a-button type="primary" :disabled="readyItems.length === 0" @click="installDrafts">
-                确认安装 {{ readyItems.length }} 个 Skill · {{ shareScopeLabel }}
+                确认安装 {{ readyItems.length }} 个 Skill · {{ installTargetLabel }}
               </a-button>
             </template>
             <template v-else-if="phase === 'installing'">
@@ -202,7 +234,7 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'completed'])
 
-const stepLabels = ['选择', '加载', '权限', '完成']
+const stepLabels = ['选择', '加载', '位置', '完成']
 const phase = ref('selecting')
 const selectedSlugs = ref([])
 const progressItems = ref([])
@@ -210,6 +242,7 @@ const drafts = ref([])
 const reviewItems = ref([])
 const installItems = ref([])
 const shareConfig = ref({ access_level: 'user', department_ids: [], user_uids: [] })
+const installTarget = ref('personal')
 const allowedAccessLevels = ref(['user'])
 const flowError = ref('')
 const shareConfigFormRef = ref(null)
@@ -267,6 +300,9 @@ const shareScopeLabel = computed(
       shareConfig.value.access_level
     ] || '指定人'
 )
+const installTargetLabel = computed(() =>
+  installTarget.value === 'personal' ? '个人工作区' : shareScopeLabel.value
+)
 const failedInstallItems = computed(() =>
   installItems.value.filter((item) => item.status === 'failed')
 )
@@ -291,7 +327,7 @@ const footerSummary = computed(() => {
   if (phase.value === 'preparing')
     return flowError.value ? '已清理本次生成的临时草稿' : '正在完成短时加载请求'
   if (phase.value === 'reviewing')
-    return `${readyItems.value.length} 个可安装，${reviewItems.value.length - readyItems.value.length} 个解析失败`
+    return `${readyItems.value.length} 个可安装 · ${installTargetLabel.value}`
   if (phase.value === 'installing') return '已成功的 Skill 不会因其他项失败而回滚'
   return `成功 ${successfulInstallCount.value} 个，失败 ${failedInstallItems.value.length} 个`
 })
@@ -380,10 +416,12 @@ const prepareSuite = () => {
 }
 
 const installDrafts = async () => {
-  const validation = shareConfigFormRef.value?.validate?.()
-  if (validation && !validation.valid) {
-    flowError.value = validation.message || '请完善 Skill 生效范围'
-    return
+  if (installTarget.value === 'shared') {
+    const validation = shareConfigFormRef.value?.validate?.()
+    if (validation && !validation.valid) {
+      flowError.value = validation.message || '请完善 Skill 生效范围'
+      return
+    }
   }
 
   phase.value = 'installing'
@@ -400,11 +438,10 @@ const installDrafts = async () => {
         continue
       }
 
-      const result = await skillApi.confirmSkillInstallDraft(
-        draft.draft_id,
-        shareConfig.value,
-        slugs
-      )
+      const result =
+        installTarget.value === 'personal'
+          ? await skillApi.confirmPersonalSkillInstallDraft(draft.draft_id, slugs)
+          : await skillApi.confirmSkillInstallDraft(draft.draft_id, shareConfig.value, slugs)
       const results = result?.data || []
       applyInstallResults(results, draft.source)
       if (!results.some((item) => item.success)) {
@@ -426,7 +463,8 @@ const installDrafts = async () => {
 const applyInstallResults = (results, source) => {
   results.forEach((result) => {
     const item = installItems.value.find(
-      (candidate) => candidate.slug === result.slug && candidate.source === source
+      (candidate) =>
+        candidate.slug === (result.requested_slug || result.slug) && candidate.source === source
     )
     if (!item) return
     Object.assign(item, {
@@ -487,6 +525,7 @@ watch(
     drafts.value = []
     reviewItems.value = []
     installItems.value = []
+    installTarget.value = 'personal'
 
     if (props.flow.kind === 'suite') {
       phase.value = 'selecting'
@@ -902,6 +941,7 @@ watch(
   }
 }
 
+.install-target-section,
 .share-config-section {
   padding-top: 4px;
 
@@ -911,6 +951,76 @@ watch(
     font-size: 13px;
     font-weight: 600;
   }
+}
+
+.install-target-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.install-target-option {
+  display: flex;
+  width: 100%;
+  min-height: 88px;
+  padding: 12px;
+  flex-direction: column;
+  gap: 5px;
+  border: 1px solid var(--gray-150);
+  border-radius: 8px;
+  background: var(--gray-0);
+  color: var(--gray-500);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease;
+
+  &:hover {
+    border-color: var(--gray-300);
+    background: var(--gray-25);
+  }
+
+  &.selected {
+    border-color: var(--main-500);
+    background: var(--main-30);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--main-400);
+    outline-offset: 1px;
+  }
+
+  > span:last-child {
+    font-size: 12px;
+    line-height: 18px;
+  }
+}
+
+.install-target-title {
+  color: var(--gray-800);
+  font-size: 13px;
+  font-weight: 600;
+
+  b {
+    margin-left: 4px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--main-100);
+    color: var(--main-800);
+    font-size: 10px;
+    font-weight: 600;
+  }
+}
+
+.personal-install-note {
+  padding: 9px 11px;
+  border: 1px solid var(--main-100);
+  border-radius: 6px;
+  background: var(--main-30);
+  color: var(--main-800);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .flow-alert {
@@ -966,6 +1076,10 @@ watch(
   .footer-actions {
     justify-content: flex-end;
     flex-wrap: wrap;
+  }
+
+  .install-target-options {
+    grid-template-columns: 1fr;
   }
 }
 </style>

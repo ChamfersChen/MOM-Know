@@ -500,7 +500,7 @@ defineExpose({
 
     &.active {
       border-color: var(--main-color);
-      background: var(--main-10);
+      background: var(--gray-0);
       box-shadow: 0 0 0 1px var(--main-10);
     }
   }
@@ -548,7 +548,7 @@ defineExpose({
 
   .share-mode-card.active .card-icon-wrapper {
     background: var(--main-0);
-    box-shadow: inset 0 0 0 1px var(--main-100);
+    box-shadow: none;
   }
 
   .share-mode-card.active .card-icon {

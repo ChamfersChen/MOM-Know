@@ -76,7 +76,7 @@
           @click="selectMention(item)"
         >
           <component
-            :is="getMentionIconComponent(item.type)"
+            :is="getMentionIconComponent(item.type, item.value)"
             :size="15"
             class="config-dropdown-item-icon"
           />

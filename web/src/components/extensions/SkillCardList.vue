@@ -30,11 +30,14 @@
               <span>上传 Skill</span>
             </a-button>
           </a-upload>
-          <a-tooltip title="刷新 Skills" placement="bottom">
-            <a-button class="lucide-icon-btn" :disabled="loading" @click="fetchSkills">
-              <RefreshCw :size="14" />
-            </a-button>
-          </a-tooltip>
+          <a-button
+            class="lucide-icon-btn"
+            aria-label="刷新 Skills"
+            :disabled="loading"
+            @click="fetchSkills({ refreshPersonal: true })"
+          >
+            <RefreshCw :size="14" />
+          </a-button>
         </template>
         <template v-else>
           <a-button size="small" type="link" @click="handleBatchSelectAll">全选</a-button>
@@ -91,12 +94,17 @@
             <SkillSuiteCard
               v-if="skill.isSuite"
               :suite="skill"
-              :installed-slugs="[...installedSkillKeys]"
+              :installed-slugs="[...installedPersonalSkillKeys]"
               @open="openRecommendedSuite"
             />
             <template v-else>
               <a-checkbox
-                v-if="isBatchDeleteMode && canManageSkill(skill) && skill.sourceType !== 'builtin'"
+                v-if="
+                  isBatchDeleteMode &&
+                  canManageSkill(skill) &&
+                  skill.sourceType !== 'builtin' &&
+                  skill.sourceScope !== 'personal'
+                "
                 :checked="selectedCardSlugs.includes(skill.slug)"
                 @change="handleToggleCardSelect(skill.slug)"
                 class="card-select-checkbox"
@@ -106,12 +114,14 @@
                 :title="formatExtensionCardTitle(skill.name)"
                 :subtitle="skill.slug"
                 :description="skill.description || '暂无描述'"
-                :default-icon="WandSparkles"
+                :tags="skillCardTags(skill)"
+                :default-icon="getSkillIcon(skill.slug)"
                 @click="handleCardClick(skill)"
                 :class="{ 'card-clickable-select': isBatchDeleteMode }"
               >
                 <template #actions>
                   <button
+                    v-if="skill.sourceScope !== 'personal'"
                     type="button"
                     class="skill-enabled-action"
                     :class="{ enabled: skill.enabled !== false }"
@@ -146,7 +156,7 @@
         <div class="skill-preview-header">
           <div class="skill-preview-title-area">
             <div class="skill-preview-icon">
-              <WandSparkles :size="18" />
+              <component :is="getSkillIcon(previewSkill.slug)" :size="18" />
             </div>
             <div class="skill-preview-title-text">
               <div class="skill-preview-title">
@@ -167,6 +177,7 @@
           </div>
           <div class="skill-preview-actions">
             <a-switch
+              v-if="previewSkill.sourceScope !== 'personal'"
               :checked="previewSkill.enabled !== false"
               :disabled="!canManageSkill(previewSkill) || isSkillToggling(previewSkill.slug)"
               :loading="isSkillToggling(previewSkill.slug)"
@@ -201,7 +212,12 @@
           </div>
           <div class="skill-preview-footer-right">
             <a-button @click="closeSkillPreview">关闭</a-button>
-            <a-button type="primary" class="lucide-icon-btn" @click="goToPreviewSkillManagement">
+            <a-button
+              v-if="previewSkill.sourceScope !== 'personal'"
+              type="primary"
+              class="lucide-icon-btn"
+              @click="goToPreviewSkillManagement"
+            >
               <span>去管理</span>
             </a-button>
           </div>
@@ -505,6 +521,8 @@ import InfoCard from '@/components/shared/InfoCard.vue'
 import PageShoulder from '@/components/shared/PageShoulder.vue'
 import MarkdownPreview from '@/components/common/MarkdownPreview.vue'
 import { formatExtensionCardTitle } from '@/utils/extensionDisplayName'
+import { getShareConfigLabel } from '@/utils/shareConfig'
+import { getSkillIcon } from '@/utils/skill_icon_utils'
 
 const RECOMMENDED_SUITES = [
   {
@@ -609,13 +627,15 @@ const matchesSearch = (skill) => {
 const installedSkillCards = computed(() =>
   (skills.value || []).map((skill) => ({
     ...skill,
-    sourceType: skill.source_type || 'upload'
+    sourceType: skill.source_type || 'upload',
+    sourceScope: skill.source_scope
   }))
 )
 
-const installedSkillKeys = computed(() => {
+const installedPersonalSkillKeys = computed(() => {
   const keys = new Set()
   installedSkillCards.value.forEach((skill) => {
+    if (skill.sourceScope !== 'personal') return
     const identifiers = [skill.slug, skill.name]
     identifiers.forEach((value) => {
       if (value) keys.add(String(value).toLowerCase())
@@ -636,20 +656,30 @@ const skillGroups = computed(() => [
     skills: isBatchDeleteMode.value ? [] : recommendedSuiteCards.value.filter(matchesSearch)
   },
   {
+    key: 'personal',
+    title: '个人技能',
+    skills: isBatchDeleteMode.value
+      ? []
+      : filteredInstalledSkills.value.filter((skill) => skill.sourceScope === 'personal')
+  },
+  {
     key: 'builtin',
     title: '内置',
     skills: filteredInstalledSkills.value.filter((skill) => skill.sourceType === 'builtin')
   },
   {
     key: 'uploaded',
-    title: '上传的',
-    skills: filteredInstalledSkills.value.filter((skill) => skill.sourceType !== 'builtin')
+    title: '共享',
+    skills: filteredInstalledSkills.value.filter(
+      (skill) => skill.sourceType !== 'builtin' && skill.sourceScope !== 'personal'
+    )
   }
 ])
 const visibleSkillGroups = computed(() => skillGroups.value.filter((group) => group.skills.length))
 const filteredDeletableSkills = computed(() =>
   filteredInstalledSkills.value.filter(
-    (skill) => canManageSkill(skill) && skill.sourceType !== 'builtin'
+    (skill) =>
+      canManageSkill(skill) && skill.sourceType !== 'builtin' && skill.sourceScope !== 'personal'
   )
 )
 const canDeletePreviewSkill = computed(
@@ -746,14 +776,32 @@ const toggleSearchSkillFromRow = (item) => {
 }
 
 const sourceTypeLabel = (sourceType) => {
+  if (sourceType === 'personal') return '个人技能'
   if (sourceType === 'builtin') return '内置'
   if (sourceType === 'remote') return '远程'
   return '上传'
 }
 
+/** 返回 Skill 共享范围的简短展示文案。 */
+const getSkillShareLabel = (skill) => getShareConfigLabel(skill?.share_config)
+
+const skillCardTags = (skill) => {
+  if (skill.sourceScope === 'personal') {
+    return [
+      { name: '个人技能', color: 'gray' },
+      ...(skill.overrides_shared ? [{ name: '覆盖共享版本', color: 'orange' }] : [])
+    ]
+  }
+  return [
+    { name: getSkillShareLabel(skill), color: 'gray' },
+    ...(skill.shadowed_by_personal ? [{ name: '已被个人版本覆盖', color: 'orange' }] : [])
+  ]
+}
+
 const canManageSkill = (skill) => skill?.can_manage !== false
 const isSkillToggling = (slug) => togglingSkillSlugs.value.includes(slug)
 const navigateToDetail = (skill) => {
+  if (skill?.sourceScope === 'personal') return
   router.push({ path: `/extensions/skill/${encodeURIComponent(skill.slug)}` })
 }
 
@@ -770,7 +818,10 @@ const openSkillPreview = async (skill) => {
   skillPreviewLoading.value = true
   skillPreviewVisible.value = true
   try {
-    const result = await skillApi.getSkillFile(skill.slug, 'SKILL.md')
+    const result =
+      skill.sourceScope === 'personal'
+        ? await skillApi.getPersonalSkillFile(skill.slug, 'SKILL.md')
+        : await skillApi.getSkillFile(skill.slug, 'SKILL.md')
     if (requestSeq !== previewRequestSeq || previewSkill.value?.slug !== skill.slug) return
     skillPreviewMarkdown.value = result?.data?.content || ''
   } catch (error) {
@@ -796,7 +847,9 @@ const handleCardClick = (skill) => {
 }
 
 const handleToggleCardSelect = (slug) => {
-  const target = installedSkillCards.value.find((skill) => skill.slug === slug)
+  const target = installedSkillCards.value.find(
+    (skill) => skill.slug === slug && skill.sourceScope !== 'personal'
+  )
   if (!canManageSkill(target) || target?.sourceType === 'builtin') return
   const idx = selectedCardSlugs.value.indexOf(slug)
   if (idx > -1) {
@@ -813,7 +866,9 @@ const handleToggleSkillEnabled = async (skill) => {
   try {
     const result = await skillApi.updateSkillEnabled(skill.slug, enabled)
     const updatedSkill = result?.data
-    const index = skills.value.findIndex((item) => item.slug === skill.slug)
+    const index = skills.value.findIndex(
+      (item) => item.slug === skill.slug && item.source_scope !== 'personal'
+    )
     if (updatedSkill && index > -1) {
       skills.value[index] = updatedSkill
     } else {
@@ -843,14 +898,21 @@ const confirmDeletePreviewSkill = () => {
 
   Modal.confirm({
     title: `卸载 ${target.name || target.slug}`,
-    content: '卸载后会删除该 Skill 的数据库记录和本地文件，操作不可恢复。',
+    content:
+      target.sourceScope === 'personal'
+        ? '卸载后会删除个人工作区中的 Skill；如有同名共享版本，Agent 将恢复使用共享版本。'
+        : '卸载后会删除该 Skill 的数据库记录和本地文件，操作不可恢复。',
     okText: '卸载',
     okType: 'danger',
     cancelText: '取消',
     async onOk() {
       deletingPreviewSkill.value = true
       try {
-        await skillApi.deleteSkill(target.slug)
+        if (target.sourceScope === 'personal') {
+          await skillApi.deletePersonalSkill(target.slug)
+        } else {
+          await skillApi.deleteSkill(target.slug)
+        }
         message.success('Skill 已卸载')
         closeSkillPreview()
         previewSkill.value = null
@@ -865,9 +927,7 @@ const confirmDeletePreviewSkill = () => {
 }
 
 const handleBatchSelectAll = () => {
-  selectedCardSlugs.value = filteredInstalledSkills.value
-    .filter((skill) => canManageSkill(skill) && skill.sourceType !== 'builtin')
-    .map((skill) => skill.slug)
+  selectedCardSlugs.value = filteredDeletableSkills.value.map((skill) => skill.slug)
 }
 
 const handleBatchSelectNone = () => {
@@ -876,13 +936,9 @@ const handleBatchSelectNone = () => {
 
 const handleBatchSelectInvert = () => {
   const currentSet = new Set(selectedCardSlugs.value)
-  const nextSelected = []
-  filteredInstalledSkills.value.forEach((skill) => {
-    if (canManageSkill(skill) && skill.sourceType !== 'builtin' && !currentSet.has(skill.slug)) {
-      nextSelected.push(skill.slug)
-    }
-  })
-  selectedCardSlugs.value = nextSelected
+  selectedCardSlugs.value = filteredDeletableSkills.value
+    .filter((skill) => !currentSet.has(skill.slug))
+    .map((skill) => skill.slug)
 }
 
 const exitBatchDeleteMode = () => {
@@ -892,8 +948,14 @@ const exitBatchDeleteMode = () => {
 
 const handleBatchDelete = () => {
   const deletableSlugs = selectedCardSlugs.value.filter((slug) => {
-    const target = installedSkillCards.value.find((skill) => skill.slug === slug)
-    return canManageSkill(target) && target?.sourceType !== 'builtin'
+    const target = installedSkillCards.value.find(
+      (skill) => skill.slug === slug && skill.sourceScope !== 'personal'
+    )
+    return (
+      canManageSkill(target) &&
+      target?.sourceType !== 'builtin' &&
+      target?.sourceScope !== 'personal'
+    )
   })
   if (deletableSlugs.length === 0) return
 
@@ -928,10 +990,10 @@ const handleBatchDelete = () => {
   })
 }
 
-const fetchSkills = async () => {
+const fetchSkills = async ({ refreshPersonal = false } = {}) => {
   loading.value = true
   try {
-    const skillResult = await skillApi.listSkills()
+    const skillResult = await skillApi.listSkillCards({ refreshPersonal })
     skills.value = skillResult?.data || []
   } catch {
     message.error('加载失败')
@@ -974,7 +1036,7 @@ const openRecommendedSuite = (suite) => {
   openInstallFlow({
     kind: 'suite',
     suite,
-    installedSlugs: [...installedSkillKeys.value]
+    installedSlugs: [...installedPersonalSkillKeys.value]
   })
 }
 

@@ -113,7 +113,7 @@
       </div>
 
       <div
-        v-if="$slots.tags || (normalizedTags && normalizedTags.length > 0)"
+        v-if="$slots.tags || $slots['tag-actions'] || (normalizedTags && normalizedTags.length > 0)"
         class="info-card-tags"
       >
         <slot name="tags">
@@ -126,6 +126,9 @@
             >{{ tag.name }}</span
           >
         </slot>
+        <div v-if="$slots['tag-actions']" class="info-card-tag-actions">
+          <slot name="tag-actions" />
+        </div>
       </div>
 
       <div v-if="$slots.footer" class="info-card-footer">
@@ -302,6 +305,12 @@ const normalizedTags = computed(() => {
     flex-wrap: wrap;
   }
 
+  &-tag-actions {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+  }
+
   &-footer {
     display: flex;
     align-items: center;
@@ -340,6 +349,12 @@ const normalizedTags = computed(() => {
     align-items: center;
     flex-shrink: 0;
   }
+}
+
+.card-tag.tag-gray {
+  border: 0;
+  background: var(--gray-100);
+  color: var(--gray-600);
 }
 
 .card-more-action-corner {

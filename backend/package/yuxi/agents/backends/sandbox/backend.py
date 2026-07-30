@@ -180,6 +180,7 @@ class ProvisionerSandboxBackend(BaseSandbox):
         *,
         uid: str,
         readable_skills: list[str] | None = None,
+        skill_sources: dict[str, str] | None = None,
         file_thread_id: str | None = None,
         skills_thread_id: str | None = None,
     ):
@@ -197,6 +198,7 @@ class ProvisionerSandboxBackend(BaseSandbox):
             raise ValueError("uid is required for ProvisionerSandboxBackend")
 
         self._readable_skills = list(readable_skills or [])
+        self._skill_sources = dict(skill_sources or {})
         self._provider = get_sandbox_provider()
         self._id = sandbox_id_for_thread(self._file_thread_id, self._skills_thread_id, uid=self._uid)
         self._client: Any | None = None
@@ -223,7 +225,7 @@ class ProvisionerSandboxBackend(BaseSandbox):
         )
 
     def _get_client(self) -> Any:
-        sync_thread_readable_skills(self._skills_thread_id, self._readable_skills)
+        sync_thread_readable_skills(self._skills_thread_id, self._readable_skills, self._skill_sources)
         connection = self._provider.get(
             self._thread_id,
             uid=self._uid,
