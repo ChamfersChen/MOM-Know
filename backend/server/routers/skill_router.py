@@ -88,6 +88,7 @@ class SkillBatchDeleteRequest(BaseModel):
 
 class SkillDraftConfirmRequest(BaseModel):
     share_config: dict | None = Field(None, description="共享权限配置")
+    slugs: list[str] | None = Field(None, description="本次确认安装的 Skill slug")
 
 
 def _raise_from_value_error(e: ValueError) -> None:
@@ -209,6 +210,7 @@ async def confirm_skill_install_draft_route(
             db,
             draft_id=draft_id,
             share_config=payload.share_config,
+            slugs=payload.slugs,
             operator=current_user,
         )
         return {"success": True, "data": results, "summary": _summarize_results(results)}

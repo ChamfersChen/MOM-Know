@@ -849,16 +849,23 @@ async def prepare_remote_skill_install(
         preparation = await prepare_remote_skills_batch(source=source, skills=skills)
         items: list[dict[str, Any]] = []
         for result in preparation.results:
+            slug = result.get("slug", "")
             if not result.get("success"):
-                items.append(
-                    {"slug": result.get("slug", ""), "success": False, "error": result.get("error", "安装失败")}
-                )
+                item = {"slug": slug, "success": False, "error": result.get("error", "安装失败")}
+                items.append(item)
                 continue
-            item = await _stage_skill_draft_item(
-                repo,
-                source_skill_dir=Path(result["source_dir"]),
-                draft_items_dir=items_dir,
-            )
+
+            try:
+                item = await _stage_skill_draft_item(
+                    repo,
+                    source_skill_dir=Path(result["source_dir"]),
+                    draft_items_dir=items_dir,
+                )
+            except Exception as e:
+                item = {"slug": slug, "success": False, "error": str(e)}
+                items.append(item)
+                continue
+
             items.append(item)
 
         data = {
@@ -886,6 +893,7 @@ async def confirm_skill_install_draft(
     *,
     draft_id: str,
     share_config: dict | None,
+    slugs: list[str] | None = None,
     operator: User,
 ) -> list[dict[str, Any]]:
     draft_dir, data = _load_skill_draft(draft_id)
@@ -895,6 +903,18 @@ async def confirm_skill_install_draft(
     source_type = data.get("source_type")
     if source_type not in {"upload", "remote"}:
         raise ValueError("无效的安装草稿来源")
+
+    draft_items = data.get("items") or []
+    if slugs is not None:
+        selected_slugs = set(slugs)
+        if not selected_slugs:
+            raise ValueError("至少选择一个 Skill")
+
+        available_slugs = {str(item.get("slug") or "").strip() for item in draft_items}
+        if selected_slugs - available_slugs:
+            raise ValueError("确认安装包含草稿外的 Skill")
+
+        draft_items = [item for item in draft_items if str(item.get("slug") or "").strip() in selected_slugs]
 
     normalized_share_config = normalize_skill_share_config(
         share_config,
@@ -908,26 +928,28 @@ async def confirm_skill_install_draft(
     skills_root = get_skills_root_dir()
     results: list[dict[str, Any]] = []
 
-    for draft_item in data.get("items") or []:
+    for draft_item in draft_items:
+        slug = str(draft_item.get("slug") or "").strip()
         if not draft_item.get("success", True):
-            results.append(
-                {"slug": draft_item.get("slug", ""), "success": False, "error": draft_item.get("error", "安装失败")}
-            )
+            result = {"slug": slug, "success": False, "error": draft_item.get("error", "安装失败")}
+            results.append(result)
             continue
 
-        slug = str(draft_item.get("slug") or "").strip()
         if not is_valid_skill_slug(slug):
-            results.append({"slug": slug, "success": False, "error": "无效 skill slug"})
+            result = {"slug": slug, "success": False, "error": "无效 skill slug"}
+            results.append(result)
             continue
         if await repo.exists_slug(slug) or (skills_root / slug).exists():
-            results.append({"slug": slug, "success": False, "error": "Skill slug 已被占用，请重新解析安装"})
+            result = {"slug": slug, "success": False, "error": "Skill slug 已被占用，请重新解析安装"}
+            results.append(result)
             continue
 
         source_dir = (draft_dir / str(draft_item.get("source_dir", ""))).resolve()
         try:
             source_dir.relative_to(draft_dir.resolve())
         except ValueError:
-            results.append({"slug": slug, "success": False, "error": "安装草稿路径非法"})
+            result = {"slug": slug, "success": False, "error": "安装草稿路径非法"}
+            results.append(result)
             continue
 
         try:
@@ -944,7 +966,8 @@ async def confirm_skill_install_draft(
                 final_dir = skills_root / slug
                 if final_dir.exists():
                     shutil.rmtree(temp_target, ignore_errors=True)
-                    results.append({"slug": slug, "success": False, "error": "Skill slug 已被占用，请重新解析安装"})
+                    result = {"slug": slug, "success": False, "error": "Skill slug 已被占用，请重新解析安装"}
+                    results.append(result)
                     continue
                 temp_target.rename(final_dir)
 
@@ -962,14 +985,16 @@ async def confirm_skill_install_draft(
                         enabled=True,
                         created_by=operator.uid,
                     )
-                    results.append({"slug": item.slug, "success": True, "skill": item.to_dict()})
+                    result = {"slug": item.slug, "success": True, "skill": item.to_dict()}
+                    results.append(result)
                 except Exception:
                     shutil.rmtree(final_dir, ignore_errors=True)
                     raise
         except Exception as e:
             if hasattr(db, "rollback"):
                 await db.rollback()
-            results.append({"slug": slug, "success": False, "error": str(e)})
+            result = {"slug": slug, "success": False, "error": str(e)}
+            results.append(result)
 
     if any(item.get("success") for item in results):
         shutil.rmtree(draft_dir, ignore_errors=True)

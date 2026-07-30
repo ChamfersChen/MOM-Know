@@ -32,6 +32,61 @@ def test_allowed_skill_access_levels_by_role():
 
 
 @pytest.mark.asyncio
+async def test_prepare_remote_skill_install_stages_success_and_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(svc.sys_config, "save_dir", str(tmp_path))
+    valid_dir = tmp_path / "remote-pdf"
+    invalid_dir = tmp_path / "remote-broken"
+    valid_dir.mkdir()
+    invalid_dir.mkdir()
+    (valid_dir / "SKILL.md").write_text(
+        "---\nname: pdf\ndescription: PDF operations\n---\n# PDF\n",
+        encoding="utf-8",
+    )
+
+    class FakeRepo:
+        def __init__(self, _db):
+            pass
+
+        async def exists_slug(self, _slug: str) -> bool:
+            return False
+
+    class FakePreparation:
+        results = [
+            {"slug": "pdf", "success": True, "source_dir": valid_dir},
+            {"slug": "broken", "success": True, "source_dir": invalid_dir},
+        ]
+        cleaned = False
+
+        async def cleanup(self):
+            self.cleaned = True
+
+    preparation = FakePreparation()
+
+    async def fake_prepare_remote_skills_batch(*, source, skills):
+        assert source == "anthropics/skills"
+        assert skills == ["pdf", "broken"]
+        return preparation
+
+    monkeypatch.setattr(svc, "SkillRepository", FakeRepo)
+    monkeypatch.setattr(
+        "yuxi.agents.skills.remote_install.prepare_remote_skills_batch",
+        fake_prepare_remote_skills_batch,
+    )
+    draft = await svc.prepare_remote_skill_install(
+        None,
+        source="anthropics/skills",
+        skills=["pdf", "broken"],
+        operator=_user(),
+    )
+
+    assert [item["success"] for item in draft["items"]] == [True, False]
+    assert preparation.cleaned is True
+
+
+@pytest.mark.asyncio
 async def test_list_visible_skills_for_management_includes_owned_disabled_and_enabled_shared(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -232,6 +287,66 @@ async def test_normal_user_confirm_skill_draft_rejects_wider_share_scope(
             draft_id=draft["draft_id"],
             share_config=share_config,
             operator=operator,
+        )
+
+
+@pytest.mark.asyncio
+async def test_confirm_skill_install_draft_only_processes_selected_slugs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    draft_dir = tmp_path / "draft"
+    draft_dir.mkdir()
+    data = {
+        "created_by": "root",
+        "source_type": "remote",
+        "items": [
+            {"slug": "alpha", "success": False, "error": "alpha failed"},
+            {"slug": "beta", "success": False, "error": "beta failed"},
+        ],
+    }
+
+    class FakeRepo:
+        def __init__(self, _db):
+            pass
+
+    monkeypatch.setattr(svc, "_load_skill_draft", lambda _draft_id: (draft_dir, data))
+    monkeypatch.setattr(svc, "SkillRepository", FakeRepo)
+    results = await svc.confirm_skill_install_draft(
+        None,
+        draft_id="draft-1",
+        share_config={"access_level": "user", "department_ids": [], "user_uids": ["root"]},
+        slugs=["beta"],
+        operator=_user(),
+    )
+
+    assert results == [{"slug": "beta", "success": False, "error": "beta failed"}]
+
+
+@pytest.mark.parametrize(("slugs", "message"), [([], "至少选择一个 Skill"), (["missing"], "草稿外的 Skill")])
+@pytest.mark.asyncio
+async def test_confirm_skill_install_draft_rejects_invalid_selection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    slugs: list[str],
+    message: str,
+):
+    draft_dir = tmp_path / "draft"
+    draft_dir.mkdir()
+    data = {
+        "created_by": "root",
+        "source_type": "remote",
+        "items": [{"slug": "alpha", "success": True}],
+    }
+    monkeypatch.setattr(svc, "_load_skill_draft", lambda _draft_id: (draft_dir, data))
+
+    with pytest.raises(ValueError, match=message):
+        await svc.confirm_skill_install_draft(
+            None,
+            draft_id="draft-1",
+            share_config={"access_level": "user", "department_ids": [], "user_uids": ["root"]},
+            slugs=slugs,
+            operator=_user(),
         )
 
 

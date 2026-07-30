@@ -154,9 +154,17 @@ def test_remote_skill_prepare_and_confirm_routes(monkeypatch):
         captured["prepare"] = {"source": source, "skills": skills, "operator_uid": operator.uid}
         return {"draft_id": "draft-remote", "items": [{"slug": "frontend-design", "success": True}]}
 
-    async def fake_confirm_skill_install_draft(_db, *, draft_id, share_config, operator):
-        captured["confirm"] = {"draft_id": draft_id, "share_config": share_config, "operator_uid": operator.uid}
-        return [{"slug": "frontend-design", "success": True}]
+    async def fake_confirm_skill_install_draft(_db, *, draft_id, share_config, slugs, operator):
+        captured["confirm"] = {
+            "draft_id": draft_id,
+            "share_config": share_config,
+            "slugs": slugs,
+            "operator_uid": operator.uid,
+        }
+        return [
+            {"slug": "frontend-design", "success": True},
+            {"slug": "broken", "success": False, "error": "解析失败"},
+        ]
 
     monkeypatch.setattr("server.routers.skill_router.prepare_remote_skill_install", fake_prepare_remote_skill_install)
     monkeypatch.setattr("server.routers.skill_router.confirm_skill_install_draft", fake_confirm_skill_install_draft)
@@ -168,17 +176,22 @@ def test_remote_skill_prepare_and_confirm_routes(monkeypatch):
     )
     confirm_resp = client.post(
         "/api/skills/install-drafts/draft-remote/confirm",
-        json={"share_config": {"access_level": "user", "department_ids": [], "user_uids": ["user"]}},
+        json={
+            "share_config": {"access_level": "user", "department_ids": [], "user_uids": ["user"]},
+            "slugs": ["frontend-design"],
+        },
     )
 
     assert prepare_resp.status_code == 200, prepare_resp.text
     assert confirm_resp.status_code == 200, confirm_resp.text
+    assert confirm_resp.json()["summary"] == {"total": 2, "success": 1, "failed": 1}
     assert captured["prepare"] == {
         "source": "anthropics/skills",
         "skills": ["frontend-design"],
         "operator_uid": "user",
     }
     assert captured["confirm"]["draft_id"] == "draft-remote"
+    assert captured["confirm"]["slugs"] == ["frontend-design"]
     assert captured["confirm"]["operator_uid"] == "user"
 
 
