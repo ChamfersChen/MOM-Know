@@ -219,6 +219,7 @@
                   :aria-hidden="currentToolApprovalVisible ? 'true' : undefined"
                 >
                   <AgentInputArea
+                    ref="agentInputAreaRef"
                     v-model="userInput"
                     :is-loading="shouldShowStopButton"
                     :disabled="!currentAgent || currentToolApprovalVisible"
@@ -699,7 +700,7 @@ import { storeToRefs } from 'pinia'
 import { MessageProcessor } from '@/utils/messageProcessor'
 import { agentApi, threadApi } from '@/apis'
 import HumanApprovalModal from '@/components/HumanApprovalModal.vue'
-import { useApproval } from '@/composables/useApproval'
+import { extractPendingInterrupt, useApproval } from '@/composables/useApproval'
 import { useAgentThreadState, IDLE_QUEUE_SNAPSHOT } from '@/composables/useAgentThreadState'
 import { useAgentRunStream } from '@/composables/useAgentRunStream'
 import { useAgentStreamHandler } from '@/composables/useAgentStreamHandler'
@@ -715,6 +716,7 @@ import { enrichTaskToolCalls, parseToolCallArgs } from '@/components/ToolCalling
 import { getConversationDisplayItems } from '@/utils/messageGrouping'
 import { makeChildThreadId } from '@/utils/subagentThread'
 import {
+  isRunInterruptedConflict,
   isThreadWaitingForUserAction,
   isToolApprovalMode,
   readToolApprovalModePreference,
@@ -741,6 +743,7 @@ const { threads, currentThreadId, currentThread } = storeToRefs(chatThreadsStore
 
 // ==================== LOCAL CHAT & UI STATE ====================
 const userInput = ref('')
+const agentInputAreaRef = ref(null)
 const sendCooldownActive = ref(false)
 const cancellingRequestIds = reactive(new Set())
 const steeringRequestIds = reactive(new Set())
@@ -2378,15 +2381,46 @@ const handleArtifactSaved = async () => {
   showFileTreePanel()
 }
 
-const fetchAgentState = async (agentId, threadId) => {
-  if (!threadId) return
+const invalidateAgentStateRequest = (threadId) => {
+  const threadState = getThreadState(threadId)
+  if (!threadState) return
+  threadState.agentStateRequestVersion = (threadState.agentStateRequestVersion || 0) + 1
+}
+
+const fetchAgentState = async (agentId, threadId, { required = false } = {}) => {
+  if (!threadId) return false
+  const targetState = getThreadState(threadId)
+  if (!targetState) return false
+  const requestVersion = (targetState.agentStateRequestVersion || 0) + 1
+  targetState.agentStateRequestVersion = requestVersion
+
   try {
     const res = await agentApi.getAgentState(threadId)
-    const targetState = getThreadState(threadId)
-    if (!targetState) return
-    targetState.agentState = res.agent_state || null
-  } catch {
-    // agent state is optional UI state
+    const latestState = getThreadState(threadId)
+    if (!latestState || latestState.agentStateRequestVersion !== requestVersion) return false
+
+    latestState.agentState = res.agent_state || null
+    const pendingInterrupt = extractPendingInterrupt(res.interrupt, threadId)
+    // resume 已开始或 active run 已切换时，旧 checkpoint 响应不能重新显示审批。
+    const interruptIsCurrent =
+      pendingInterrupt &&
+      !latestState.isStreaming &&
+      (!pendingInterrupt.interruptedRunId ||
+        !latestState.activeRunId ||
+        pendingInterrupt.interruptedRunId === latestState.activeRunId)
+    if (required && !interruptIsCurrent) {
+      throw new Error('checkpoint 中没有可恢复的审批状态')
+    }
+    if (interruptIsCurrent) {
+      latestState.pendingInterrupt = pendingInterrupt
+      if (currentChatId.value === threadId) {
+        restorePendingInterruptForThread(threadId)
+      }
+    }
+    return true
+  } catch (error) {
+    if (required) throw error
+    return false
   }
 }
 
@@ -2823,7 +2857,23 @@ const handleSendMessage = async ({ image, queuePolicy = 'enqueue' } = {}) => {
       resetOnGoingConv(threadId)
     }
     rollbackAttachments(threadId, previousAttachments)
-    if (queuePolicy === 'steer' && !userInput.value) userInput.value = text
+    if (isRunInterruptedConflict(error)) {
+      threadState.isStreaming = false
+      threadState.activeRunSteerable = false
+      if (currentChatId.value === threadId) {
+        const currentDraft = userInput.value
+        userInput.value = [text, currentDraft].filter(Boolean).join('\n')
+        agentInputAreaRef.value?.restoreImage?.(image)
+      }
+      try {
+        await fetchAgentState(currentAgentId.value, threadId, { required: true })
+      } catch {
+        message.error('审批状态恢复失败，请刷新页面后重试')
+      }
+    }
+    if (queuePolicy === 'steer' && currentChatId.value === threadId && !userInput.value) {
+      userInput.value = text
+    }
     handleChatError(error, 'send')
   }
 }
@@ -2884,6 +2934,7 @@ const handleApprovalWithStream = async (answer) => {
   const pendingInterrupt = threadState.pendingInterrupt
 
   try {
+    invalidateAgentStateRequest(threadId)
     hideApprovalState()
     threadState.pendingInterrupt = null
     threadState.isStreaming = true

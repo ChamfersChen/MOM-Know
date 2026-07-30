@@ -38,6 +38,7 @@ export function useAgentThreadState({
         replyLoadingVisible: false,
         pendingRequestId: null,
         pendingInterrupt: null,
+        agentStateRequestVersion: 0,
         onGoingConv: createOnGoingConvState(),
         agentState: null,
         contextCompressing: false,

@@ -146,7 +146,7 @@ async def test_normalize_agent_context_config_expands_null_and_filters_explicit_
         types.SimpleNamespace(
             get_tool_metadata=lambda category=None: [
                 {"slug": "ask_user_question", "name": "Ask User", "description": ""},
-                {"slug": "tavily_search", "name": "Tavily", "description": ""},
+                {"slug": "web_search", "name": "Web Search", "description": ""},
             ]
         ),
     )
@@ -189,7 +189,7 @@ async def test_normalize_agent_context_config_expands_null_and_filters_explicit_
         context_schema=ChatBotContext,
     )
 
-    assert normalized["tools"] == ["ask_user_question", "tavily_search"]
+    assert normalized["tools"] == ["ask_user_question", "web_search"]
     assert normalized["knowledges"] == ["kb-b"]
     assert normalized["mcps"] == ["mcp-a", "mcp-b"]
     assert normalized["skills"] == []

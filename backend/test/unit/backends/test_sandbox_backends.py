@@ -28,6 +28,7 @@ def _runtime(
     uid: str | None = "user-1",
     skills: list[str] | None = None,
     readable_skills: list[str] | None = None,
+    skill_sources: dict[str, str] | None = None,
     visible_kbs: list[dict] | None = None,
 ):
     configurable = {"thread_id": thread_id, "uid": uid} if thread_id and uid else {}
@@ -36,6 +37,7 @@ def _runtime(
         context=SimpleNamespace(
             skills=skills or [],
             _readable_skills=readable_skills,
+            _runtime_skill_sources=skill_sources or {},
             _visible_knowledge_bases=visible_kbs or [],
             uid=uid,
         ),
@@ -46,7 +48,11 @@ def test_create_agent_composite_backend_uses_prepared_readable_skills(monkeypatc
     monkeypatch.setattr("yuxi.agents.backends.sandbox.backend.get_sandbox_provider", lambda: object())
 
     backend = create_agent_composite_backend(
-        _runtime(readable_skills=["reporter"], visible_kbs=[{"slug": "db-1", "name": "Docs"}])
+        _runtime(
+            readable_skills=["reporter"],
+            skill_sources={"reporter": "/tmp/reporter"},
+            visible_kbs=[{"slug": "db-1", "name": "Docs"}],
+        )
     )
 
     assert isinstance(backend.default, ProvisionerSandboxBackend)
@@ -71,7 +77,12 @@ def test_create_agent_composite_backend_ignores_unprepared_context_skills(monkey
 
 def test_create_agent_composite_backend_uses_split_thread_scopes(monkeypatch):
     monkeypatch.setattr("yuxi.agents.backends.sandbox.backend.get_sandbox_provider", lambda: object())
-    runtime = _runtime(thread_id="child-thread", uid="user-1", readable_skills=["worker-skill"])
+    runtime = _runtime(
+        thread_id="child-thread",
+        uid="user-1",
+        readable_skills=["worker-skill"],
+        skill_sources={"worker-skill": "/tmp/worker-skill"},
+    )
     runtime.config["configurable"].update(
         {"file_thread_id": "parent-thread", "skills_thread_id": "child-skills-thread"}
     )
@@ -86,7 +97,12 @@ def test_create_agent_composite_backend_uses_split_thread_scopes(monkeypatch):
 
 def test_create_agent_composite_backend_uses_split_thread_scopes_from_state(monkeypatch):
     monkeypatch.setattr("yuxi.agents.backends.sandbox.backend.get_sandbox_provider", lambda: object())
-    runtime = _runtime(thread_id="child-thread", uid="user-1", readable_skills=["worker-skill"])
+    runtime = _runtime(
+        thread_id="child-thread",
+        uid="user-1",
+        readable_skills=["worker-skill"],
+        skill_sources={"worker-skill": "/tmp/worker-skill"},
+    )
     runtime.state = {"file_thread_id": "parent-thread", "skills_thread_id": "child-skills-thread"}
 
     backend = create_agent_composite_backend(runtime)
@@ -104,15 +120,51 @@ def test_create_agent_filesystem_middleware_uses_context_scope(monkeypatch):
         file_thread_id="parent-thread",
         skills_thread_id="child-skills-thread",
         _readable_skills=["worker-skill"],
+        _runtime_skill_sources={"worker-skill": "/tmp/worker-skill"},
     )
 
     middleware = create_agent_filesystem_middleware(context=context)
-    backend = middleware.backend
+    backend = middleware.backend(None)
 
     assert backend.default._thread_id == "child-thread"
     assert backend.default._file_thread_id == "parent-thread"
     assert backend.default._skills_thread_id == "child-skills-thread"
     assert backend.default._readable_skills == ["worker-skill"]
+
+
+def test_context_backend_rebuild_drops_shared_projection_after_personal_override(monkeypatch):
+    """运行中同名个人 Skill 生效后，后续文件工具不得恢复旧共享投影。"""
+    monkeypatch.setattr("yuxi.agents.backends.sandbox.backend.get_sandbox_provider", lambda: object())
+    context = SimpleNamespace(
+        thread_id="thread-1",
+        uid="user-1",
+        _readable_skills=["demo"],
+        _runtime_skill_sources={"demo": "/tmp/shared-demo"},
+    )
+    middleware = create_agent_filesystem_middleware(context=context)
+
+    before_install = middleware.backend(None)
+    context._runtime_skill_sources.pop("demo")
+    after_install = middleware.backend(None)
+
+    assert before_install.default._readable_skills == ["demo"]
+    assert after_install.default._readable_skills == []
+    assert after_install.routes["/skills/"]._selected_slugs == set()
+
+
+def test_create_agent_composite_backend_does_not_project_personal_skills(monkeypatch):
+    """没有线程投影来源的个人 Skill 不应进入 /skills 路由。"""
+    monkeypatch.setattr("yuxi.agents.backends.sandbox.backend.get_sandbox_provider", lambda: object())
+
+    backend = create_agent_composite_backend(
+        _runtime(
+            readable_skills=["shared-skill", "personal-skill"],
+            skill_sources={"shared-skill": "/tmp/shared-skill"},
+        )
+    )
+
+    assert backend.default._readable_skills == ["shared-skill"]
+    assert backend.routes["/skills/"]._selected_slugs == {"shared-skill"}
 
 
 def test_create_agent_filesystem_middleware_uses_outputs_for_internal_artifacts() -> None:
@@ -200,7 +252,10 @@ def test_custom_composite_glob_only_searches_routes_from_root() -> None:
 
 def test_skills_middleware_extracts_slug_for_new_paths() -> None:
     middleware = SkillsMiddleware()
-    assert middleware.skills_sources_for_prompt == ["/home/gem/skills/"]
+    assert middleware.skills_sources_for_prompt == [
+        "/home/gem/skills/",
+        "/home/gem/user-data/workspace/agents/skills/",
+    ]
     assert middleware._extract_skill_slug_from_skill_md_path("/home/gem/skills/demo-skill/SKILL.md") == "demo-skill"
 
 
@@ -330,7 +385,7 @@ def test_provisioner_uses_file_and_skills_thread_ids(monkeypatch) -> None:
     monkeypatch.setattr("yuxi.agents.backends.sandbox.backend.get_sandbox_provider", lambda: FakeProvider())
     monkeypatch.setattr(
         "yuxi.agents.backends.sandbox.backend.sync_thread_readable_skills",
-        lambda thread_id, skills: synced.append((thread_id, skills)),
+        lambda thread_id, skills, sources: synced.append((thread_id, skills, sources)),
     )
 
     backend = ProvisionerSandboxBackend(
@@ -345,7 +400,7 @@ def test_provisioner_uses_file_and_skills_thread_ids(monkeypatch) -> None:
     client = backend._get_client()
 
     assert client.url == "http://sandbox"
-    assert synced == [("child-skills-thread", ["worker-skill"])]
+    assert synced == [("child-skills-thread", ["worker-skill"], {})]
     assert provider_calls == [
         (
             "child-thread",

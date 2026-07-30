@@ -299,11 +299,9 @@ defineExpose({
     <template #title>
       <div class="agent-modal-titlebar">
         <span class="agent-modal-title">{{ agentModalTitle }}</span>
-        <div class="agent-modal-actions">
+        <div class="agent-modal-actions" v-if="agentStore.hasConfigChanges">
           <a-button :disabled="saving" @click="closeAgentModal">取消</a-button>
-          <a-button type="primary" :loading="saving" @click="saveAgent">
-            {{ agentStore.hasConfigChanges ? '保存（有修改）' : '保存' }}
-          </a-button>
+          <a-button type="primary" :loading="saving" @click="saveAgent"> 保存（有修改） </a-button>
         </div>
       </div>
     </template>
@@ -526,8 +524,8 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  min-height: 38px;
-  padding: 8px 10px;
+  min-height: 34px;
+  padding: 6px 9px;
   border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
@@ -553,8 +551,8 @@ defineExpose({
   }
 
   &.active {
-    background: var(--main-30);
-    color: var(--main-800);
+    background: var(--gray-100);
+    color: var(--gray-900);
 
     span {
       font-weight: 600;
@@ -575,7 +573,7 @@ defineExpose({
 }
 
 .agent-modal-nav-item.active .nav-item-main svg {
-  color: var(--main-700);
+  color: var(--gray-700);
 }
 
 .nav-dirty-dot {

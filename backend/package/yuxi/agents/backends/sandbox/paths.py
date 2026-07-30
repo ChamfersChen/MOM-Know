@@ -12,6 +12,7 @@ from yuxi.utils.paths import (
     WORKSPACE_AGENT_CONTEXT_FILES,
     WORKSPACE_AGENTS_DIR_NAME,
     WORKSPACE_DIR_NAME,
+    ensure_within_root,
 )
 
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -70,9 +71,7 @@ def _threads_root_dir() -> Path:
 def _resolve_threads_child_path(path: Path) -> Path:
     root = _threads_root_dir()
     resolved = path.resolve(strict=False)
-    if not resolved.is_relative_to(root):
-        raise ValueError("path resolved outside threads root")
-    return resolved
+    return ensure_within_root(resolved, root, error_message="path resolved outside threads root")
 
 
 def _chmod_writable(path: Path, *, dir: bool = False) -> None:
@@ -164,10 +163,7 @@ def resolve_virtual_path(thread_id: str, virtual_path: str, *, uid: str) -> Path
     relative_path = clean_virtual_path[len(virtual_prefix) :].lstrip("/")
     base_dir, target_path = _resolve_user_data_base_dir(thread_id, uid, relative_path)
 
-    try:
-        target_path.relative_to(base_dir)
-    except ValueError as exc:
-        raise ValueError("path traversal detected") from exc
+    ensure_within_root(target_path, base_dir, error_message="path traversal detected")
 
     return target_path
 

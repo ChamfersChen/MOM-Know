@@ -257,7 +257,12 @@ export class MessageProcessor {
 
       for (const toolCall of msg.tool_calls) {
         const toolName = (toolCall?.name || toolCall?.function?.name || '').toLowerCase()
-        if (!toolName.includes('tavily_search')) continue
+        if (
+          !toolName.includes('web_search') &&
+          !toolName.includes('tavily_search') &&
+          !toolName.includes('doubao_search')
+        )
+          continue
 
         const content = toolCall?.tool_call_result?.content
         const parsed = parseToolResultContent(content)
