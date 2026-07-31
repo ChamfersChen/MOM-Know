@@ -56,7 +56,7 @@ def test_validate_queue_policy_rejects_unknown():
 
 
 @pytest.mark.asyncio
-async def test_intake_rejects_steer_for_non_chat_source(session):
+async def test_intake_rejects_steer_for_unsupported_source(session):
     from fastapi import HTTPException
     from yuxi.services.input_message_service import build_chat_input_message
 
@@ -75,6 +75,36 @@ async def test_intake_rejects_steer_for_non_chat_source(session):
         )
 
     assert exc_info.value.status_code == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("active_source", ["chat", "channel"])
+async def test_channel_steer_is_accepted_for_active_message_run(
+    session, monkeypatch: pytest.MonkeyPatch, active_source: str
+):
+    from yuxi.services import agent_request_queue_service
+    from yuxi.services.input_message_service import build_chat_input_message
+
+    monkeypatch.setattr(agent_request_queue_service, "resolve_agent_run_config", lambda *args: ("model", "default"))
+    await _seed_thread(session)
+    await _seed_active_run(session, source=active_source)
+
+    result = await intake_request(
+        db=session,
+        request_id="request-channel-steer",
+        uid="user-1",
+        agent_slug="main",
+        thread_id="t1",
+        source="channel",
+        channel="cli",
+        queue_policy="steer",
+        input_message=build_chat_input_message("steer"),
+        agent_item=MagicMock(),
+        agent_backend=MagicMock(),
+    )
+
+    assert result.status == "queued"
+    assert result.queue_policy == "steer"
 
 
 # ── AgentRunCreate request model ──

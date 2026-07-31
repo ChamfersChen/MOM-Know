@@ -6,13 +6,15 @@
 
 ## v0.7.2 (current)
 
-- 新增个人工作区 Skill：支持个人/共享安装；个人项保存到 `workspace/agents/skills` 且不入库，按用户缓存元数据并覆盖同名共享项；Agent 直接读取工作区路径，共享 Skill 仅在 Run 初始化或运行中安装后通过工作线程同步到线程投影，避免每轮模型调用扫描目录和阻塞事件循环。
-- 优化工作区与智能体编辑界面：快捷入口改为“保存的交付物 / 智能体文件”；编辑侧栏按钮更紧凑，hover/active 统一为 gray 色系；共享权限卡激活时保持原背景并移除图标边框。
+- 收敛消息型 AgentRun 提交：Web Chat 与 Agent Call/Eval 共用 `run_submission_service.submit_run_command`，Call/Eval 拆为独立 Router；Request/Run 固化 `source/channel/external_id/origin_metadata` 来源快照，Eval 评估上下文继续透传到 worker 与 Langfuse，保留现有接口与响应兼容性，Resume、Subagent 生命周期不变。
+- 新增个人工作区 Skill：安装确认可选择个人或共享位置；个人 Skill 保存到 `workspace/agents/skills` 且不入库，元数据按用户缓存 5 分钟并在安装、删除、手动刷新后立即更新；Card List 与 Agent 运行时统一按个人版本覆盖同名共享版本，卡片与聊天技能选择列表共用 slug 到 Lucide 图标映射；Agent 直接读取工作区真实路径，不再复制到线程 `/home/gem/skills` 投影；共享 Skill 投影统一以来源映射为单一数据源。
 - 统一后端真实路径根目录校验：Skill、工作区和沙盒复用 `ensure_within_root`，保持原有越界拒绝语义并减少重复安全判断。
 - 统一前端单元测试目录为 `web/test/unit`，测试脚本仅收集该目录；测试规范同步说明主应用与独立 CLI 包的目录约定，避免同一子项目混用 `test` 和 `tests`。
 - Skill 推荐区升级为套件卡片，首批提供 Anthropic 文档处理套件；统一选择、短时加载、生效范围和结果四步弹窗，远程仓库与全局搜索保持在同一弹窗，选择页标签居中并以桌面三列网格展示，技能列表支持纵向滚动；确认页支持移除、范围摘要及失败草稿清理；公共扩展卡片采用紧凑 gray 样式；上传入口共用普通请求流程，支持部分失败与重试。
 - 新增 PDF 解析前置页树校验：PDF 进入 PyPDFLoader、MinerU 或 OCR 引擎前会用 PyMuPDF 逐页加载页槽，提前识别加密、空文档、null 页槽和非 Page 对象等结构异常，并返回可操作的中文错误，避免解析服务内层延迟失败。
 - 修复真实 API 测试资源清理：integration 与 E2E 会在测试会话前后通过公开接口删除名称以 `pytest`（兼容旧 `py_test`）开头的评估基准、评估运行和知识库；知识库删除改用列表真实返回的 `kb_id`，清理失败会明确中止测试，避免测试数据长期残留。
+- CLI 新增 `yuxi chat` 本地网页调试入口：临时服务仅监听 `127.0.0.1`，使用本地保存的 remote 与 API Key 代理 Agent Call 和 Run SSE，浏览器可连续对话并实时显示文本增量；API Key 不进入页面，支持指定智能体、remote 及仅打印地址。
+- 新增纯文本 Channel 入口：`/api/agent-invocation/channel/messages` 统一接收 CLI/未来 IM 消息，普通文本复用 `submit_run_command` 并默认使用 `steer`，首版支持 `/state` 查询线程状态与 `/approve` 恢复工具审批；`yuxi chat` 已切换到该入口，并将工具审批中断显示为等待 `/approve` 的正常状态，页面采用无侧边栏的微信 PC 对话布局与色块头像，暂不处理 `ask_user_question`。同步修复测试模块重名、Subagent Run 来源快照错误，并在 HTTP 与共享提交边界拒绝超长来源字段。
 - 优化知识图谱构建：以持续队列并发执行 LLM 抽取、结构写入和向量索引，失败自动重试并持久化进度；已有结果支持断点恢复，新增按最近 Chunk 查询失败样例和向量 reconcile 接口，任务与前端分别展示抽取、结构、向量进度，索引面板支持键盘操作。
 - HTML 辅助可视化迁移为内置 `html-preview` Skill：默认 Chatbot Prompt 不再常驻注入 `html:preview` 专属说明，Agent 改为通过统一的 Skill 描述发现并按需读取静态 HTML/CSS 的适用场景、布局和安全边界；未显式配置 Skills 的 Agent 按现有默认规则自动获得该能力，使用显式 Skills 允许列表的 Agent 需选择 `html-preview`，内置 `deep-research` 已声明依赖；保留前端既有围栏清洗、sandboxed iframe、自适应高度和流式占位行为，普通 HTML 源码继续使用 `html` 代码块。
 - 模型供应商的单个 chat 模型配置新增“模型请求参数 JSON”：管理员可为每个模型独立保存、回显、修改和清空思考参数，未配置或空对象保持原行为；运行时模型缓存会携带该配置，测试模型连接与正式聊天/Agent 调用统一在模型加载入口合并。该字段仅面向 OpenAI/OpenRouter 等 OpenAI 兼容供应商，并通过 `extra_body` 透传；出于安全考虑，顶层字段采用白名单机制，当前支持 `enable_thinking`、`thinking_budget`、`thinking`、`reasoning` 和 `reasoning_effort`，对象内部结构交由供应商校验。

@@ -611,6 +611,22 @@ class PostgresManager(metaclass=SingletonMeta):
             "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS conversation_thread_id VARCHAR(64)",
             "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS created_by_run_id VARCHAR(64)",
             "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS subagent_thread_relation_id INTEGER",
+            "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS source VARCHAR(32) NOT NULL DEFAULT 'chat'",
+            "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS channel VARCHAR(32) NOT NULL DEFAULT 'web'",
+            "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS external_id VARCHAR(128)",
+            (
+                "ALTER TABLE IF EXISTS agent_runs ADD COLUMN IF NOT EXISTS "
+                "origin_metadata JSONB NOT NULL DEFAULT '{}'::jsonb"
+            ),
+            (
+                "ALTER TABLE IF EXISTS agent_run_requests ADD COLUMN IF NOT EXISTS "
+                "channel VARCHAR(32) NOT NULL DEFAULT 'web'"
+            ),
+            "ALTER TABLE IF EXISTS agent_run_requests ADD COLUMN IF NOT EXISTS external_id VARCHAR(128)",
+            (
+                "ALTER TABLE IF EXISTS agent_run_requests ADD COLUMN IF NOT EXISTS "
+                "origin_metadata JSONB NOT NULL DEFAULT '{}'::jsonb"
+            ),
             "ALTER TABLE IF EXISTS subagent_threads ADD COLUMN IF NOT EXISTS subagent_slug VARCHAR(64)",
             "ALTER TABLE IF EXISTS subagent_threads ADD COLUMN IF NOT EXISTS created_by_run_id VARCHAR(64)",
             """

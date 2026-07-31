@@ -108,6 +108,9 @@ async def intake_request(
     agent_slug: str,
     thread_id: str,
     source: str = "chat",
+    channel: str = "web",
+    external_id: str | None = None,
+    origin_metadata: dict | None = None,
     queue_policy: str = "enqueue",
     input_message: AgentRunInputMessage,
     agent_item: Any,
@@ -122,8 +125,8 @@ async def intake_request(
     返回 IntakeResult：dispatched 时含 run_id（调用方需 commit 后 enqueue ARQ）。
     """
     policy = validate_queue_policy(queue_policy)
-    if policy == "steer" and source != "chat":
-        raise HTTPException(status_code=422, detail="queue_policy 'steer' 仅支持主会话 Chat")
+    if policy == "steer" and source not in {"chat", "channel"}:
+        raise HTTPException(status_code=422, detail="queue_policy 'steer' 仅支持主会话 Chat/Channel")
     meta = meta or {}
     uid_str = str(uid)
     repo = AgentRunRequestRepository(db)
@@ -140,6 +143,8 @@ async def intake_request(
             agent_slug=agent_slug,
             thread_id=thread_id,
             source=source,
+            channel=channel,
+            external_id=external_id,
             queue_policy=policy,
         )
 
@@ -173,7 +178,7 @@ async def intake_request(
     )
     if latest_run is not None and latest_run.status == "interrupted":
         raise _queue_conflict("run_interrupted", "线程正在等待用户回答或审批")
-    if policy == "steer" and active_run is not None and not await _is_steerable_main_chat_run(db=db, run=active_run):
+    if policy == "steer" and active_run is not None and not await _is_steerable_message_run(db=db, run=active_run):
         raise _queue_conflict("run_not_steerable", "当前运行不支持引导")
     if policy == "steer" and await repo.get_pending_steer(
         uid=uid_str,
@@ -217,6 +222,9 @@ async def intake_request(
                 agent_slug=agent_slug,
                 conversation_thread_id=thread_id,
                 source=source,
+                channel=channel,
+                external_id=external_id,
+                origin_metadata=origin_metadata,
                 queue_policy=policy,
                 input_message_id=persisted_message.id,
                 input_payload=input_payload,
@@ -309,6 +317,8 @@ async def steer_queued_request(
             agent_slug=request.agent_slug,
             thread_id=request.conversation_thread_id,
             source=request.source,
+            channel=request.channel,
+            external_id=request.external_id,
             queue_policy="steer",
         )
     if request.status != REQUEST_STATUS_QUEUED or request.queue_policy != "enqueue" or request.source != "chat":
@@ -327,7 +337,7 @@ async def steer_queued_request(
         agent_slug=request.agent_slug,
         conversation_thread_id=request.conversation_thread_id,
     )
-    if active_run is None or not await _is_steerable_main_chat_run(db=db, run=active_run):
+    if active_run is None or not await _is_steerable_message_run(db=db, run=active_run):
         raise _queue_conflict("run_not_steerable", "当前运行不支持引导")
 
     request.queue_policy = "steer"
@@ -347,7 +357,7 @@ async def should_end_run_for_steer(run_id: str) -> bool:
     """判断当前 Chat Run 是否应在模型调用前让位给 Steer。"""
     async with pg_manager.get_async_session_context() as db:
         run = await AgentRunRepository(db).get_run(run_id)
-        if run is None or not await _is_steerable_main_chat_run(db=db, run=run):
+        if run is None or not await _is_steerable_message_run(db=db, run=run):
             return False
         request = await AgentRunRequestRepository(db).get_pending_steer(
             uid=run.uid,
@@ -667,14 +677,18 @@ async def _build_existing_intake_result(
     agent_slug: str,
     thread_id: str,
     source: str,
+    channel: str,
+    external_id: str | None,
     queue_policy: str,
 ) -> IntakeResult:
-    expected_scope = (str(uid), agent_slug, thread_id, source, queue_policy)
+    expected_scope = (str(uid), agent_slug, thread_id, source, channel, external_id, queue_policy)
     actual_scope = (
         request.uid,
         request.agent_slug,
         request.conversation_thread_id,
         request.source,
+        request.channel,
+        request.external_id,
         request.queue_policy,
     )
     if actual_scope != expected_scope:
@@ -699,6 +713,8 @@ def _build_message_metadata(
     metadata: dict[str, Any] = {"request_id": request_id}
     if source:
         metadata["source"] = source
+    if channel := meta.get("channel"):
+        metadata["channel"] = channel
     if raw_message := input_message.raw_message():
         metadata["raw_message"] = raw_message
     if attachment_file_ids := meta.get("attachment_file_ids"):
@@ -710,12 +726,12 @@ def _build_message_metadata(
     return metadata
 
 
-async def _is_steerable_main_chat_run(*, db: AsyncSession, run: AgentRun) -> bool:
-    """确认 Run 正在运行且来自主会话 Chat 请求。"""
+async def _is_steerable_message_run(*, db: AsyncSession, run: AgentRun) -> bool:
+    """确认 Run 正在运行且来自支持 Steer 的消息入口。"""
     if run.status != "running" or run.run_type != "chat":
         return False
     request = await AgentRunRequestRepository(db).get_by_request_id(run.request_id)
-    return request is not None and request.source == "chat"
+    return request is not None and request.source in {"chat", "channel"}
 
 
 async def _get_thread_conversation(
@@ -850,6 +866,10 @@ async def _dispatch_locked_head(
                 uid=uid,
                 request_id=head.request_id,
                 input_payload=head.input_payload or {},
+                source=head.source,
+                channel=head.channel,
+                external_id=head.external_id,
+                origin_metadata=head.origin_metadata,
                 conversation_id=conversation_id,
                 run_type="chat",
                 input_message_id=head.input_message_id,

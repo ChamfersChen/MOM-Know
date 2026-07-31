@@ -7,7 +7,7 @@ extracts UI-facing agent state.
 
 Do not put run creation, request id idempotency, queueing or external
 invocation response formatting here. Those responsibilities belong to
-``agent_run_service`` and ``agent_invocation_service`` respectively. Keeping
+``agent_run_service`` and the Invocation HTTP adapters respectively. Keeping
 this file focused on execution makes normal chat, resume runs and subagent runs
 share the same runtime behavior once they reach the worker.
 """
