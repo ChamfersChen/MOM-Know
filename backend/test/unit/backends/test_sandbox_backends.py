@@ -15,6 +15,7 @@ from yuxi.agents.backends.composite import (
     CustomCompositeBackend,
     create_agent_composite_backend,
     create_agent_filesystem_middleware,
+    sync_agent_context_skills,
 )
 from yuxi.agents.backends.sandbox import resolve_virtual_path, sandbox_id_for_thread
 from yuxi.agents.backends.sandbox.backend import ProvisionerSandboxBackend
@@ -60,6 +61,37 @@ def test_create_agent_composite_backend_uses_prepared_readable_skills(monkeypatc
     assert backend.artifacts_root == "/home/gem/user-data/outputs"
     assert "/skills/" in backend.routes
     assert "/home/gem/kbs/" not in backend.routes
+
+
+@pytest.mark.asyncio
+async def test_sync_agent_context_skills_uses_split_scope_without_blocking(monkeypatch):
+    """Run 初始化应在线程池同步共享 Skill，并使用独立的 Skill 线程作用域。"""
+    calls = []
+
+    async def sync_thread_readable_skills_async(thread_id, skills, sources):
+        calls.append((thread_id, skills, sources))
+
+    monkeypatch.setattr(
+        "yuxi.agents.backends.composite.sync_thread_readable_skills_async",
+        sync_thread_readable_skills_async,
+    )
+    context = SimpleNamespace(
+        thread_id="child-thread",
+        uid="user-1",
+        skills_thread_id="child-skills-thread",
+        _readable_skills=["worker-skill", "personal-skill"],
+        _runtime_skill_sources={"worker-skill": "/tmp/worker-skill"},
+    )
+
+    await sync_agent_context_skills(context)
+
+    assert calls == [
+        (
+            "child-skills-thread",
+            ["worker-skill"],
+            {"worker-skill": "/tmp/worker-skill"},
+        )
+    ]
 
 
 def test_create_agent_composite_backend_requires_thread_id():
@@ -130,6 +162,30 @@ def test_create_agent_filesystem_middleware_uses_context_scope(monkeypatch):
     assert backend.default._file_thread_id == "parent-thread"
     assert backend.default._skills_thread_id == "child-skills-thread"
     assert backend.default._readable_skills == ["worker-skill"]
+
+
+def test_context_backend_construction_does_not_sync_skill_projection(monkeypatch, tmp_path) -> None:
+    """每轮模型调用重建 backend 时不得扫描或复制 Skill。"""
+    from yuxi.agents.skills import service as skill_service
+
+    monkeypatch.setattr("yuxi.agents.backends.sandbox.backend.get_sandbox_provider", lambda: object())
+    monkeypatch.setattr(skill_service.sys_config, "save_dir", tmp_path)
+    source_dir = tmp_path / "source" / "shared-skill"
+    source_dir.mkdir(parents=True)
+    (source_dir / "SKILL.md").write_text("# Shared", encoding="utf-8")
+    context = SimpleNamespace(
+        thread_id="thread-1",
+        uid="user-1",
+        _readable_skills=["shared-skill"],
+        _runtime_skill_sources={"shared-skill": str(source_dir)},
+    )
+
+    middleware = create_agent_filesystem_middleware(context=context)
+    middleware.backend(None)
+    middleware.backend(None)
+
+    thread_skill = skill_service.get_thread_skills_root_dir("thread-1") / "shared-skill"
+    assert not thread_skill.exists()
 
 
 def test_context_backend_rebuild_drops_shared_projection_after_personal_override(monkeypatch):
@@ -375,7 +431,6 @@ def test_provider_get_create_if_missing_ensures_expected_split_scope(monkeypatch
 
 def test_provisioner_uses_file_and_skills_thread_ids(monkeypatch) -> None:
     provider_calls = []
-    synced = []
 
     class FakeProvider:
         def get(self, thread_id, **kwargs):
@@ -383,10 +438,6 @@ def test_provisioner_uses_file_and_skills_thread_ids(monkeypatch) -> None:
             return SimpleNamespace(sandbox_url="http://sandbox")
 
     monkeypatch.setattr("yuxi.agents.backends.sandbox.backend.get_sandbox_provider", lambda: FakeProvider())
-    monkeypatch.setattr(
-        "yuxi.agents.backends.sandbox.backend.sync_thread_readable_skills",
-        lambda thread_id, skills, sources: synced.append((thread_id, skills, sources)),
-    )
 
     backend = ProvisionerSandboxBackend(
         thread_id="child-thread",
@@ -400,7 +451,6 @@ def test_provisioner_uses_file_and_skills_thread_ids(monkeypatch) -> None:
     client = backend._get_client()
 
     assert client.url == "http://sandbox"
-    assert synced == [("child-skills-thread", ["worker-skill"], {})]
     assert provider_calls == [
         (
             "child-thread",

@@ -343,6 +343,20 @@ def get_thread_skills_root_dir(thread_id: str) -> Path:
     return root
 
 
+async def sync_thread_readable_skills_async(
+    thread_id: str,
+    selected_slugs: list[str] | None,
+    source_dirs: dict[str, str | Path] | None = None,
+) -> Path:
+    """在线程池同步共享 Skill 投影，避免阻塞 Agent 事件循环。"""
+    return await asyncio.to_thread(
+        sync_thread_readable_skills,
+        thread_id,
+        selected_slugs,
+        source_dirs,
+    )
+
+
 def sync_thread_readable_skills(
     thread_id: str,
     selected_slugs: list[str] | None,

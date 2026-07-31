@@ -848,21 +848,38 @@ watch(
 }
 
 .preview-tab-close {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  margin-right: 3px;
   border: none;
+  border-radius: 6px;
   background: transparent;
   color: var(--gray-500);
   cursor: pointer;
   padding: 0;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    transform 160ms ease;
 
   &:hover {
     color: var(--gray-900);
     background: var(--gray-100);
+    transform: scale(1.04);
+  }
+
+  &:active {
+    background: var(--gray-150);
+    transform: scale(0.96);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--main-400);
+    outline-offset: 1px;
   }
 }
 

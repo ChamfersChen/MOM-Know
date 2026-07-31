@@ -471,6 +471,33 @@ def test_sync_thread_readable_skills_none_keeps_no_skills(tmp_path: Path, monkey
     assert list(thread_root.iterdir()) == []
 
 
+@pytest.mark.asyncio
+async def test_sync_thread_readable_skills_async_runs_in_thread(monkeypatch: pytest.MonkeyPatch):
+    """异步同步入口必须把目录扫描和复制下沉到工作线程。"""
+    calls = []
+    expected_root = Path("/tmp/thread-skills")
+
+    async def to_thread(func, *args):
+        calls.append((func, args))
+        return expected_root
+
+    monkeypatch.setattr(svc.asyncio, "to_thread", to_thread)
+
+    result = await svc.sync_thread_readable_skills_async(
+        "thread-1",
+        ["alpha"],
+        {"alpha": "/tmp/alpha"},
+    )
+
+    assert result == expected_root
+    assert calls == [
+        (
+            svc.sync_thread_readable_skills,
+            ("thread-1", ["alpha"], {"alpha": "/tmp/alpha"}),
+        )
+    ]
+
+
 def test_sync_thread_readable_skills_only_keeps_selected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(svc.sys_config, "save_dir", str(tmp_path))
     skills_root = tmp_path / "skills"

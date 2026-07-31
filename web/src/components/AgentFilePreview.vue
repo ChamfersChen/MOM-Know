@@ -535,7 +535,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 4px 12px;
+  padding: 4px calc(var(--page-padding) - 4px);
   border-bottom: 1px solid var(--gray-150);
   background: var(--gray-25);
 }

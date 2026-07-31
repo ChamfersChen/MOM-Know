@@ -1610,7 +1610,9 @@ defineExpose({
   }
 
   .skills-list-viewport {
-    overflow: visible;
+    max-height: min(42vh, 420px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     background: var(--gray-0);
   }
 
