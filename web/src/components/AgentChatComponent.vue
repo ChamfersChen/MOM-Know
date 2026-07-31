@@ -621,6 +621,7 @@
           :thread-id="currentChatId"
           :panel-ratio="panelRatio"
           :preview-tabs="agentPanelPreviewTabs"
+          :preview-cache="agentPanelPreviewCache"
           :active-preview-path="agentPanelActivePreviewPath"
           :view-mode="agentPanelViewMode"
           @close="closeFilePanel"
@@ -838,6 +839,7 @@ const statePanelDockMinChatWidth = 800
 const panelRatio = ref(defaultPanelRatio) // 面板宽度比例 (0-1)
 const filePanelDragWidth = ref(null)
 const agentPanelPreviewTabs = ref([])
+const agentPanelPreviewCache = reactive(new Map())
 const agentPanelActivePreviewPath = ref('')
 const agentPanelViewMode = ref('tree')
 const chatContentContainerRef = ref(null)
@@ -983,6 +985,24 @@ const resetAgentPanelState = () => {
   agentPanelViewMode.value = 'tree'
 }
 
+const previewCacheKey = (path, threadId = currentChatId.value) => `${threadId}:${path}`
+
+const releasePreviewCacheEntry = (path, threadId = currentChatId.value) => {
+  const key = previewCacheKey(path, threadId)
+  const entry = agentPanelPreviewCache.get(key)
+  if (entry?.file?.previewUrl) window.URL.revokeObjectURL(entry.file.previewUrl)
+  agentPanelPreviewCache.delete(key)
+}
+
+const invalidatePreviewCachePath = (targetPath, threadId = currentChatId.value) => {
+  for (const key of agentPanelPreviewCache.keys()) {
+    const separatorIndex = key.indexOf(':')
+    if (separatorIndex < 0 || key.slice(0, separatorIndex) !== String(threadId)) continue
+    const path = key.slice(separatorIndex + 1)
+    if (isSameOrChildPanelPath(path, targetPath)) releasePreviewCacheEntry(path, threadId)
+  }
+}
+
 const setAgentPanelViewMode = (mode) => {
   agentPanelViewMode.value =
     mode === 'preview' && agentPanelActivePreviewPath.value ? 'preview' : 'tree'
@@ -1006,6 +1026,13 @@ const openPanelPreview = (file, keepTreeOpen = false) => {
   const existingIndex = agentPanelPreviewTabs.value.findIndex((item) => item.path === tab.path)
 
   if (existingIndex >= 0) {
+    const existingTab = agentPanelPreviewTabs.value[existingIndex]
+    if (
+      existingTab.modified_at !== tab.modified_at ||
+      existingTab.size !== tab.size
+    ) {
+      releasePreviewCacheEntry(tab.path)
+    }
     agentPanelPreviewTabs.value = agentPanelPreviewTabs.value.map((item, index) =>
       index === existingIndex ? { ...item, ...tab } : item
     )
@@ -1019,6 +1046,8 @@ const openPanelPreview = (file, keepTreeOpen = false) => {
 
 const closePanelPreviewTab = (path) => {
   if (!path) return
+
+  releasePreviewCacheEntry(path)
 
   const closingIndex = agentPanelPreviewTabs.value.findIndex((item) => item.path === path)
   const nextTabs = agentPanelPreviewTabs.value.filter((item) => item.path !== path)
@@ -1034,6 +1063,8 @@ const closePanelPreviewTab = (path) => {
 
 const closePanelPreviewPath = (targetPath) => {
   if (!targetPath) return
+
+  invalidatePreviewCachePath(targetPath)
 
   const nextTabs = agentPanelPreviewTabs.value.filter(
     (item) => !isSameOrChildPanelPath(item.path, targetPath)
@@ -2268,6 +2299,10 @@ onUnmounted(() => {
   }
   // 清理所有线程状态
   resetOnGoingConv()
+  for (const entry of agentPanelPreviewCache.values()) {
+    if (entry.file?.previewUrl) window.URL.revokeObjectURL(entry.file.previewUrl)
+  }
+  agentPanelPreviewCache.clear()
 })
 
 // ==================== 线程管理方法 ====================
@@ -3301,6 +3336,7 @@ watch(currentChatId, (threadId, oldThreadId) => {
   }
   emit('thread-change', threadId || '')
 })
+
 </script>
 
 <style lang="less" scoped>
