@@ -24,7 +24,6 @@ from deepagents.backends.protocol import (
 from deepagents.backends.sandbox import MAX_BINARY_BYTES, BaseSandbox
 from deepagents.backends.utils import _get_file_type
 
-from yuxi.agents.skills.service import sync_thread_readable_skills
 from yuxi.utils.logging_config import logger
 from yuxi.utils.paths import (
     OUTPUTS_DIR_NAME,
@@ -225,7 +224,6 @@ class ProvisionerSandboxBackend(BaseSandbox):
         )
 
     def _get_client(self) -> Any:
-        sync_thread_readable_skills(self._skills_thread_id, self._readable_skills, self._skill_sources)
         connection = self._provider.get(
             self._thread_id,
             uid=self._uid,

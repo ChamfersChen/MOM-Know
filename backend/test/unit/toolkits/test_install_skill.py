@@ -61,7 +61,7 @@ async def test_install_skill_from_sandbox_installs_as_current_user_private_skill
         calls["enable"] = {"db": db_arg, "thread_id": thread_id, "uid": uid, "skill_slugs": skill_slugs}
         return True
 
-    def sync_thread_readable_skills(thread_id, skills, sources):
+    async def sync_thread_readable_skills_async(thread_id, skills, sources):
         calls["sync"] = {"thread_id": thread_id, "skills": skills, "sources": sources}
 
     monkeypatch.setattr(
@@ -80,7 +80,7 @@ async def test_install_skill_from_sandbox_installs_as_current_user_private_skill
         lambda: _AsyncSessionContext(db),
     )
     monkeypatch.setattr(skill_service, "install_personal_skill_dir", install_personal_skill_dir)
-    monkeypatch.setattr(skill_service, "sync_thread_readable_skills", sync_thread_readable_skills)
+    monkeypatch.setattr(skill_service, "sync_thread_readable_skills_async", sync_thread_readable_skills_async)
 
     runtime = _runtime(
         uid="normal-user",

@@ -177,7 +177,7 @@ async def _run_install_task(
             install_personal_skill_dir,
             list_personal_skills,
             normalize_string_list,
-            sync_thread_readable_skills,
+            sync_thread_readable_skills_async,
         )
 
         installed_items = []
@@ -249,7 +249,7 @@ async def _run_install_task(
             skill_sources.pop(slug, None)
         setattr(runtime_context, "_runtime_skill_sources", skill_sources)
         projected_skills = [slug for slug in runtime_context._readable_skills if slug in skill_sources]
-        sync_thread_readable_skills(thread_id, projected_skills, skill_sources)
+        await sync_thread_readable_skills_async(thread_id, projected_skills, skill_sources)
 
         lines = []
         if installed_slugs:

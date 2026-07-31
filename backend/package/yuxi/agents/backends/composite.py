@@ -11,7 +11,11 @@ from deepagents.backends.composite import (
 from deepagents.backends.protocol import FileInfo, GlobResult
 from deepagents.middleware.filesystem import FilesystemMiddleware
 
-from yuxi.agents.skills.service import normalize_string_list, sync_thread_readable_skills
+from yuxi.agents.skills.service import (
+    get_thread_skills_root_dir,
+    normalize_string_list,
+    sync_thread_readable_skills_async,
+)
 from yuxi.utils.paths import VIRTUAL_PATH_CONVERSATION_HISTORY, VIRTUAL_PATH_LARGE_TOOL_RESULTS, VIRTUAL_PATH_OUTPUTS
 
 from .sandbox import ProvisionerSandboxBackend
@@ -168,11 +172,7 @@ class _BackendScope:
         )
 
     def create_backend(self) -> CompositeBackend:
-        thread_skills_root = sync_thread_readable_skills(
-            self.skills_thread_id,
-            list(self.skill_sources),
-            self.skill_sources,
-        )
+        thread_skills_root = get_thread_skills_root_dir(self.skills_thread_id)
         return CustomCompositeBackend(
             default=ProvisionerSandboxBackend(
                 thread_id=self.thread_id,
@@ -192,6 +192,20 @@ class _BackendScope:
         )
 
 
+async def sync_agent_context_skills(context) -> None:
+    """在 Agent Run 初始化时同步当前上下文的共享 Skill 投影。"""
+    scope = _BackendScope.from_sources(
+        context,
+        readable_skills_source=context,
+        error_context="runtime context",
+    )
+    await sync_thread_readable_skills_async(
+        scope.skills_thread_id,
+        list(scope.skill_sources),
+        scope.skill_sources,
+    )
+
+
 def create_agent_composite_backend(runtime) -> CompositeBackend:
     return _BackendScope.from_runtime(runtime).create_backend()
 
@@ -205,7 +219,7 @@ def create_agent_filesystem_middleware(
     if context is not None:
 
         def build_context_backend(_runtime):
-            """按可变运行上下文重建文件作用域，支持运行中安装个人 Skill。"""
+            """按可变运行上下文重建文件作用域，读取已同步的 Skill 投影。"""
             return _BackendScope.from_sources(
                 context,
                 readable_skills_source=context,
