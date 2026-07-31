@@ -28,6 +28,34 @@ class _EmptyRunRepo:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("source", "channel", "detail"),
+    [
+        ("x" * 33, "web", "Run origin source 不能超过 32 个字符"),
+        ("chat", "x" * 33, "Run origin channel 不能超过 32 个字符"),
+    ],
+)
+async def test_submit_run_command_rejects_overlong_origin_before_repository_access(source, channel, detail):
+    command = svc.RunSubmissionCommand(
+        agent_slug="translator",
+        thread_id="thread-1",
+        request_id="req-1",
+        input_message=build_chat_input_message("hello"),
+        origin=svc.RunOrigin(source=source, channel=channel),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await svc.submit_run_command(
+            command=command,
+            current_user=SimpleNamespace(uid="user-1"),
+            db=object(),
+        )
+
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.detail == detail
+
+
+@pytest.mark.asyncio
 async def test_submit_run_command_shares_conversation_intake_and_finalize(monkeypatch: pytest.MonkeyPatch):
     calls: dict[str, object] = {}
     current_user = SimpleNamespace(uid="user-1", role="user")

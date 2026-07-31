@@ -28,6 +28,11 @@ def test_channel_rejects_overlong_message_id_at_schema_boundary():
         _payload("你好", message_id="x" * 129)
 
 
+def test_channel_rejects_overlong_channel_at_schema_boundary():
+    with pytest.raises(ValidationError):
+        _payload("你好", channel="x" * 33)
+
+
 @pytest.mark.asyncio
 async def test_plain_channel_text_uses_shared_submission(monkeypatch: pytest.MonkeyPatch):
     calls: dict[str, object] = {}

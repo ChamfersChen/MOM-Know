@@ -36,7 +36,7 @@ class ChannelTextMessage(BaseModel):
 class ChannelMessageRequest(BaseModel):
     """Channel 消息信封，承载来源账号、线程与幂等标识。"""
 
-    channel: str = Field("cli", description="通道名称")
+    channel: str = Field("cli", max_length=32, description="通道名称")
     account_id: str = Field("default", description="通道账号标识")
     chat_id: str | None = Field(None, description="通道侧会话标识")
     thread_id: str | None = Field(None, description="可选 Yuxi Thread ID")

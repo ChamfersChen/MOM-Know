@@ -66,6 +66,10 @@ async def submit_run_command(
     origin = command.origin
     if not origin.source.strip() or not origin.channel.strip():
         raise HTTPException(status_code=422, detail="Run origin source/channel 不能为空")
+    if len(origin.source) > 32:
+        raise HTTPException(status_code=422, detail="Run origin source 不能超过 32 个字符")
+    if len(origin.channel) > 32:
+        raise HTTPException(status_code=422, detail="Run origin channel 不能超过 32 个字符")
     external_id = str(origin.external_id).strip() if origin.external_id is not None else None
     if external_id == "":
         external_id = None
