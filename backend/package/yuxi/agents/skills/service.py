@@ -227,12 +227,10 @@ def can_skill_depend_on(parent: Skill, dependency: Skill) -> bool:
     dep_config = normalize_permission_config(
         dependency.share_config,
         default_scope={"access_level": "user", "department_ids": [], "user_uids": [dependency.created_by or ""]},
-        legacy_permission=ResourcePermission.MANAGE,
     )
     parent_config = normalize_permission_config(
         parent.share_config,
         default_scope={"access_level": "user", "department_ids": [], "user_uids": [parent.created_by or ""]},
-        legacy_permission=ResourcePermission.MANAGE,
     )
     dependency_scopes = [scope for scope in (dep_config["read_scope"], dep_config["manage_scope"]) if scope]
     parent_scopes = [scope for scope in (parent_config["read_scope"], parent_config["manage_scope"]) if scope]
@@ -902,7 +900,6 @@ def _resolved_shared_skill(item: Skill, *, shadowed_by_personal: bool = False) -
                 "department_ids": [],
                 "user_uids": [str(item.created_by or "")],
             },
-            legacy_permission=ResourcePermission.MANAGE,
         ),
         tool_dependencies=normalize_string_list(item.tool_dependencies),
         mcp_dependencies=normalize_string_list(item.mcp_dependencies),

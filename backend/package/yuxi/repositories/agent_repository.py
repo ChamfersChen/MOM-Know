@@ -517,7 +517,6 @@ class AgentRepository:
         data["share_config"] = normalize_permission_config(
             agent.share_config,
             default_scope={"access_level": "global", "department_ids": [], "user_uids": []},
-            legacy_permission=ResourcePermission.MANAGE,
         )
         data["can_manage"] = user_can_manage_agent(user, agent)
         data["effective_permission"] = resolve_agent_permission(user, agent).value

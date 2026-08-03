@@ -100,7 +100,6 @@ def test_legacy_knowledge_base_scope_is_migrated_to_read_and_manage():
 
     normalized = normalize_permission_config(
         {"access_level": "department", "department_ids": [1]},
-        legacy_permission=ResourcePermission.MANAGE,
     )
 
     assert normalized["read_scope"] == normalized["manage_scope"]

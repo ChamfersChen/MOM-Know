@@ -104,7 +104,6 @@ def normalize_permission_config(
     share_config: dict | None,
     *,
     default_scope: dict | None = None,
-    legacy_permission: ResourcePermission = ResourcePermission.READ,
     allowed_access_levels: Collection[str] | None = None,
     strict: bool = False,
 ) -> dict:
@@ -135,7 +134,7 @@ def normalize_permission_config(
     return {
         "version": 2,
         "read_scope": legacy_scope,
-        "manage_scope": legacy_scope if legacy_permission == ResourcePermission.MANAGE else None,
+        "manage_scope": legacy_scope,
     }
 
 
@@ -178,7 +177,6 @@ def resolve_resource_permission(
     policy: ResourcePermissionPolicy,
     *,
     default_scope: dict | None = None,
-    legacy_permission: ResourcePermission = ResourcePermission.READ,
 ) -> ResourcePermission:
     """解析资源所有权、共享范围和角色上限后的有效权限。"""
 
@@ -189,7 +187,6 @@ def resolve_resource_permission(
     config = normalize_permission_config(
         raw_share_config,
         default_scope=default_scope,
-        legacy_permission=legacy_permission if raw_share_config else ResourcePermission.READ,
     )
     if str(_value(resource, "created_by", "") or "") == str(_value(user, "uid", "") or ""):
         return ResourcePermission.MANAGE
@@ -203,12 +200,7 @@ def resolve_resource_permission(
         granted = ResourcePermission.NONE
 
     ceiling = policy.role_ceiling.get(_value(user, "role"), ResourcePermission.READ)
-    if (
-        raw_share_config
-        and raw_share_config.get("version") != 2
-        and legacy_permission == ResourcePermission.MANAGE
-        and _value(user, "role") == "user"
-    ):
+    if raw_share_config and raw_share_config.get("version") != 2 and _value(user, "role") == "user":
         ceiling = ResourcePermission.READ
     return _minimum_permission(granted, ceiling)
 
@@ -231,7 +223,6 @@ def resolve_knowledge_base_permission(user: Any, resource: ShareableResource) ->
         resource,
         KNOWLEDGE_BASE_PERMISSION_POLICY,
         default_scope=DEFAULT_SCOPE,
-        legacy_permission=ResourcePermission.MANAGE,
     )
 
 
@@ -243,7 +234,6 @@ def resolve_agent_permission(user: Any, resource: ShareableResource) -> Resource
         resource,
         AGENT_PERMISSION_POLICY,
         default_scope=DEFAULT_SCOPE,
-        legacy_permission=ResourcePermission.MANAGE,
     )
 
 
@@ -259,5 +249,4 @@ def resolve_skill_permission(user: Any, resource: ShareableResource) -> Resource
             "department_ids": [],
             "user_uids": [str(_value(resource, "created_by", ""))],
         },
-        legacy_permission=ResourcePermission.MANAGE,
     )
