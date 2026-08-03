@@ -170,7 +170,7 @@ const loadSavedConfig = () => {
   meta.include_distances = true
 }
 
-const save = async () => {
+const save = async ({ notify = true } = {}) => {
   if (!props.kbId) {
     message.error('无法保存配置：缺少知识库ID')
     return false
@@ -183,7 +183,7 @@ const save = async () => {
     if (response.message === 'success') {
       localStorage.setItem(`search-config-${props.kbId}`, JSON.stringify(meta))
       Object.assign(store.meta, meta)
-      message.success('配置已保存')
+      if (notify) message.success('配置已保存')
       emit('save', { ...meta })
       return true
     } else {

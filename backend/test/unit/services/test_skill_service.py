@@ -134,7 +134,18 @@ async def test_list_visible_skills_for_management_includes_owned_disabled_and_en
             _user("root", role="user"),
         ),
         (
-            Skill(slug="admin-disabled", name="admin-disabled", description="", created_by="other", enabled=False),
+            Skill(
+                slug="admin-disabled",
+                name="admin-disabled",
+                description="",
+                created_by="other",
+                enabled=False,
+                share_config={
+                    "version": 2,
+                    "read_scope": {"access_level": "global"},
+                    "manage_scope": {"access_level": "global"},
+                },
+            ),
             _user("root", role="admin"),
         ),
         (
@@ -240,9 +251,9 @@ async def test_normal_user_skill_upload_draft_defaults_to_user_share(tmp_path: P
     )
 
     assert draft["default_share_config"] == {
-        "access_level": "user",
-        "department_ids": [],
-        "user_uids": ["normal-user"],
+        "version": 2,
+        "read_scope": {"access_level": "user", "department_ids": [], "user_uids": ["normal-user"]},
+        "manage_scope": None,
     }
     assert draft["allowed_access_levels"] == ["user"]
 
@@ -930,6 +941,7 @@ async def test_update_skill_dependencies(monkeypatch: pytest.MonkeyPatch):
         description="alpha",
         source_type="upload",
         dir_path="skills/alpha",
+        created_by="root",
         share_config={"access_level": "user", "department_ids": [], "user_uids": ["root"]},
         enabled=True,
         tool_dependencies=[],
@@ -942,6 +954,7 @@ async def test_update_skill_dependencies(monkeypatch: pytest.MonkeyPatch):
         description="beta",
         source_type="upload",
         dir_path="skills/beta",
+        created_by="root",
         share_config={"access_level": "user", "department_ids": [], "user_uids": ["root"]},
         enabled=True,
         tool_dependencies=[],
@@ -1012,6 +1025,37 @@ async def test_update_skill_dependencies(monkeypatch: pytest.MonkeyPatch):
     assert captured["skill_dependencies"] == ["beta"]
     assert captured["updated_by"] == "root"
     assert updated.skill_dependencies == ["beta"]
+
+
+def test_skill_dependency_scope_covers_read_and_manage_audiences():
+    parent = Skill(
+        slug="parent",
+        name="parent",
+        description="parent",
+        source_type="upload",
+        dir_path="skills/parent",
+        share_config={
+            "version": 2,
+            "read_scope": {"access_level": "department", "department_ids": [1]},
+            "manage_scope": {"access_level": "user", "user_uids": ["manager"]},
+        },
+        enabled=True,
+    )
+    dependency = Skill(
+        slug="dependency",
+        name="dependency",
+        description="dependency",
+        source_type="upload",
+        dir_path="skills/dependency",
+        share_config={
+            "version": 2,
+            "read_scope": {"access_level": "department", "department_ids": [1]},
+            "manage_scope": {"access_level": "user", "user_uids": ["manager"]},
+        },
+        enabled=True,
+    )
+
+    assert svc.can_skill_depend_on(parent, dependency) is True
 
 
 @pytest.mark.asyncio

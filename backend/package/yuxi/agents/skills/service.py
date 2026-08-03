@@ -25,6 +25,7 @@ from yuxi import config as sys_config
 from yuxi.agents.mcp.service import get_enabled_mcp_server_slugs
 from yuxi.agents.skills.repository import SkillRepository
 from yuxi.storage.postgres.models_business import Skill, User
+from yuxi.permissions import ResourcePermission, normalize_permission_config, resolve_skill_permission
 from yuxi.storage.redis import get_async_redis_client
 from yuxi.utils.logging_config import logger
 from yuxi.utils.paths import ensure_within_root
@@ -183,9 +184,16 @@ def normalize_skill_share_config(
     allowed_access_levels: set[str] | None = None,
 ) -> dict:
     if source_type == "builtin":
-        return BUILTIN_SKILL_SHARE_CONFIG.copy()
+        return {"version": 2, "read_scope": BUILTIN_SKILL_SHARE_CONFIG.copy(), "manage_scope": None}
 
-    return normalize_share_config(
+    if share_config and share_config.get("version") == 2:
+        return normalize_permission_config(
+            share_config,
+            allowed_access_levels=allowed_access_levels,
+            strict=True,
+        )
+
+    legacy = normalize_share_config(
         share_config,
         default_config=DEFAULT_SKILL_SHARE_CONFIG,
         default_access_level="user",
@@ -195,38 +203,19 @@ def normalize_skill_share_config(
         allowed_access_levels=allowed_access_levels,
         unauthorized_access_level_message="当前用户无权使用该 Skill 共享范围",
     )
+    return {"version": 2, "read_scope": legacy, "manage_scope": None}
 
 
 def user_can_access_skill(user: User, skill: Skill, *, require_enabled: bool = True) -> bool:
     if require_enabled and not skill.enabled:
         return False
-    if user.role == "superadmin":
-        return True
-
-    user_uid = str(user.uid or "")
-    if user_uid and skill.created_by == user_uid:
-        return True
-
-    share_config = skill.share_config or DEFAULT_SKILL_SHARE_CONFIG.copy()
-    access_level = share_config.get("access_level")
-    if access_level == "global":
-        return True
-    if access_level == "department":
-        if user.department_id is None:
-            return False
-        try:
-            return int(user.department_id) in [int(value) for value in share_config.get("department_ids") or []]
-        except (TypeError, ValueError):
-            return False
-    if access_level == "user":
-        return bool(user_uid and user_uid in (share_config.get("user_uids") or []))
-    return False
+    return resolve_skill_permission(user, skill) != ResourcePermission.NONE
 
 
 def user_can_manage_skill(user: User, skill: Skill) -> bool:
     if is_builtin_skill(skill):
         return user.role in ADMIN_ROLES
-    return user.role in ADMIN_ROLES or skill.created_by == str(user.uid or "")
+    return resolve_skill_permission(user, skill) == ResourcePermission.MANAGE
 
 
 def can_skill_depend_on(parent: Skill, dependency: Skill) -> bool:
@@ -235,23 +224,41 @@ def can_skill_depend_on(parent: Skill, dependency: Skill) -> bool:
     if is_builtin_skill(dependency):
         return True
 
-    dep_config = dependency.share_config or DEFAULT_SKILL_SHARE_CONFIG.copy()
-    parent_config = parent.share_config or DEFAULT_SKILL_SHARE_CONFIG.copy()
-    dep_level = dep_config.get("access_level")
-    parent_level = parent_config.get("access_level")
-
-    if dep_level == "global":
-        return True
-    if parent_level == "global":
+    dep_config = normalize_permission_config(
+        dependency.share_config,
+        default_scope={"access_level": "user", "department_ids": [], "user_uids": [dependency.created_by or ""]},
+    )
+    parent_config = normalize_permission_config(
+        parent.share_config,
+        default_scope={"access_level": "user", "department_ids": [], "user_uids": [parent.created_by or ""]},
+    )
+    dependency_scopes = [scope for scope in (dep_config["read_scope"], dep_config["manage_scope"]) if scope]
+    parent_scopes = [scope for scope in (parent_config["read_scope"], parent_config["manage_scope"]) if scope]
+    if not dependency_scopes or not parent_scopes:
         return False
-    if parent_level == "department" and dep_level == "department":
-        parent_ids = {int(value) for value in parent_config.get("department_ids") or []}
-        dep_ids = {int(value) for value in dep_config.get("department_ids") or []}
-        return parent_ids.issubset(dep_ids)
-    if parent_level == "user" and dep_level == "user":
-        parent_uids = {str(value) for value in parent_config.get("user_uids") or []}
-        dep_uids = {str(value) for value in dep_config.get("user_uids") or []}
-        return parent_uids.issubset(dep_uids)
+    return all(
+        any(_scope_contains(dependency_scope, parent_scope) for dependency_scope in dependency_scopes)
+        for parent_scope in parent_scopes
+    )
+
+
+def _scope_contains(container: dict, target: dict) -> bool:
+    """判断一个共享范围是否完整覆盖另一个范围。"""
+
+    container_level = container.get("access_level")
+    target_level = target.get("access_level")
+    if container_level == "global":
+        return True
+    if target_level == "global" or container_level != target_level:
+        return False
+    if target_level == "department":
+        container_ids = {int(value) for value in container.get("department_ids") or []}
+        target_ids = {int(value) for value in target.get("department_ids") or []}
+        return target_ids.issubset(container_ids)
+    if target_level == "user":
+        container_uids = {str(value) for value in container.get("user_uids") or []}
+        target_uids = {str(value) for value in target.get("user_uids") or []}
+        return target_uids.issubset(container_uids)
     return False
 
 
@@ -883,7 +890,14 @@ def _resolved_shared_skill(item: Skill, *, shadowed_by_personal: bool = False) -
         source_dir=_resolve_skill_dir(item),
         enabled=bool(item.enabled),
         created_by=item.created_by,
-        share_config=item.share_config or DEFAULT_SKILL_SHARE_CONFIG.copy(),
+        share_config=normalize_permission_config(
+            item.share_config,
+            default_scope={
+                "access_level": "user",
+                "department_ids": [],
+                "user_uids": [str(item.created_by or "")],
+            },
+        ),
         tool_dependencies=normalize_string_list(item.tool_dependencies),
         mcp_dependencies=normalize_string_list(item.mcp_dependencies),
         skill_dependencies=normalize_string_list(item.skill_dependencies),
@@ -1490,7 +1504,12 @@ async def import_skill_dir(
         source_skill_dir=source_skill_dir,
         created_by=created_by,
         source_type=source_type,
-        share_config=share_config or DEFAULT_SKILL_SHARE_CONFIG.copy(),
+        share_config=normalize_skill_share_config(
+            share_config,
+            operator_uid=created_by or "",
+            operator_department_id=None,
+            source_type=source_type,
+        ),
     )
 
 

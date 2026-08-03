@@ -42,7 +42,11 @@ const saving = ref(false)
 const agentShareConfigFormRef = ref(null)
 const runtimeConfigFormRef = ref(null)
 const agentNameInputRef = ref(null)
-const agentShareConfig = ref({ access_level: 'user', department_ids: [], user_uids: [] })
+const agentShareConfig = ref({
+  version: 2,
+  read_scope: { access_level: 'user', department_ids: [], user_uids: [] },
+  manage_scope: null
+})
 const agentForm = reactive({
   slug: '',
   name: '',
@@ -79,22 +83,18 @@ const getDefaultBackendId = () => DEFAULT_AGENT_BACKEND_ID
 const isSubAgentBackend = (backendId) => backendId === SUB_AGENT_BACKEND_ID
 
 const getInitialShareConfig = () => ({
-  access_level: userStore.isAdmin ? 'global' : 'user',
-  department_ids: [],
-  user_uids: userStore.uid ? [userStore.uid] : []
+  version: 2,
+  read_scope: userStore.isAdmin
+    ? { access_level: 'global', department_ids: [], user_uids: [] }
+    : { access_level: 'user', department_ids: [], user_uids: userStore.uid ? [userStore.uid] : [] },
+  manage_scope: null
 })
 
 const normalizeShareConfigForPayload = () => {
   if (isBuiltinAgent({ id: editingAgentId.value })) {
-    return { access_level: 'global', department_ids: [], user_uids: [] }
+    return { version: 2, read_scope: { access_level: 'global', department_ids: [], user_uids: [] }, manage_scope: null }
   }
-  const config = agentShareConfig.value || getInitialShareConfig()
-  const accessLevel = userStore.isAdmin ? config.access_level : 'user'
-  return {
-    access_level: accessLevel,
-    department_ids: accessLevel === 'department' ? config.department_ids || [] : [],
-    user_uids: accessLevel === 'user' ? config.user_uids || [] : []
-  }
+  return agentShareConfig.value || getInitialShareConfig()
 }
 
 const isEditingBuiltinAgent = computed(() => isBuiltinAgent({ id: editingAgentId.value }))
@@ -168,7 +168,7 @@ const openEdit = async (agent) => {
     icon: detail.icon || ''
   })
   agentShareConfig.value = isBuiltinAgent(detail)
-    ? { access_level: 'global', department_ids: [], user_uids: [] }
+    ? { version: 2, read_scope: { access_level: 'global', department_ids: [], user_uids: [] }, manage_scope: null }
     : detail.share_config || getInitialShareConfig()
   await agentStore.selectAgent(detail.id, { allowSubagent: true })
   showAgentModal.value = true

@@ -139,7 +139,7 @@ async def test_create_agent_for_normal_user_forces_private_share(monkeypatch):
         creator=creator,
     )
 
-    assert agent.share_config == {"access_level": "user", "department_ids": [], "user_uids": ["user"]}
+    assert agent.share_config == {"version": 2, "read_scope": None, "manage_scope": None}
     assert db.added is agent
 
 

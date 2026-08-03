@@ -63,6 +63,9 @@ class FakeKnowledgeFileRepository:
                 created_at=None,
                 updated_at=None,
                 file_size=0,
+                chunk_count=0,
+                token_count=0,
+                created_by="user_1",
             ),
             SimpleNamespace(
                 file_id="file_1",
@@ -78,6 +81,9 @@ class FakeKnowledgeFileRepository:
                 created_at=None,
                 updated_at=None,
                 file_size=1024,
+                chunk_count=9,
+                token_count=128,
+                created_by="user_1",
             ),
         ]
 
@@ -113,6 +119,19 @@ class FakeKnowledgeFileRepository:
         return {"folder_1": 1}
 
 
+class FakeUserRepository:
+    async def list_by_uids(self, uids):
+        if "user_1" not in uids:
+            return []
+        return [
+            SimpleNamespace(
+                uid="user_1",
+                username="测试用户",
+                to_dict=lambda: {"avatar": "https://example.com/avatar.png"},
+            )
+        ]
+
+
 @pytest.fixture(autouse=True)
 def patch_repositories(monkeypatch):
     FakeKnowledgeFileRepository.list_calls = []
@@ -125,6 +144,10 @@ def patch_repositories(monkeypatch):
     monkeypatch.setattr(
         "yuxi.repositories.knowledge_file_repository.KnowledgeFileRepository",
         FakeKnowledgeFileRepository,
+    )
+    monkeypatch.setattr(
+        "yuxi.repositories.user_repository.UserRepository",
+        FakeUserRepository,
     )
     monkeypatch.setattr(
         "yuxi.knowledge.manager.KnowledgeBaseFactory.is_type_supported",
@@ -246,14 +269,17 @@ async def test_list_document_files_returns_lightweight_paginated_items():
     ]
     assert result["items"][0]["has_children"] is True
     assert result["items"][1]["file_size"] == 1024
+    assert result["items"][1]["chunk_count"] == 9
+    assert result["items"][1]["token_count"] == 128
+    assert result["items"][1]["created_by"] == "user_1"
+    assert result["items"][1]["created_by_name"] == "测试用户"
+    assert result["items"][1]["created_by_avatar"] == "https://example.com/avatar.png"
     assert result["items"][1]["has_original_file"] is True
     assert result["items"][1]["has_parsed_markdown"] is True
 
     returned_keys = set(result["items"][1])
     assert "path" not in returned_keys
     assert "markdown_file" not in returned_keys
-    assert "chunk_count" not in returned_keys
-    assert "token_count" not in returned_keys
     assert "processing_params" not in returned_keys
 
 

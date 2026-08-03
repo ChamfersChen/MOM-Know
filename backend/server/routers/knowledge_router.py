@@ -5,7 +5,7 @@ import time
 import traceback
 from urllib.parse import quote, unquote
 
-from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.responses import StreamingResponse
@@ -30,6 +30,12 @@ from yuxi.knowledge.utils.sample_question_utils import (
     get_database_sample_questions,
 )
 from yuxi.knowledge.utils.url_fetcher import fetch_url_content
+from yuxi.permissions import (
+    ResourcePermission,
+    ResourcePermissionDenied,
+    require_resource_permission,
+    resolve_knowledge_base_permission,
+)
 from yuxi.models.providers.cache import model_cache
 from yuxi.services.ocr_service import parse_document
 from yuxi.services.task_service import TaskContext, tasker
@@ -39,7 +45,7 @@ from yuxi.storage.postgres.models_business import User
 from yuxi.utils import logger
 from yuxi.utils.upload_utils import MAX_UPLOAD_SIZE_BYTES, read_upload_with_limit, write_upload_to_path
 
-from server.utils.auth_middleware import get_admin_user, get_required_user
+from server.utils.auth_middleware import get_required_user
 
 knowledge = APIRouter(prefix="/knowledge", tags=["knowledge"])
 
@@ -139,6 +145,69 @@ async def _ensure_database_supports_documents(kb_id: str, operation: str) -> dic
     if not supports_documents:
         raise HTTPException(status_code=400, detail=f"{db_info.get('name') or kb_type} 只支持检索，不支持{operation}")
     return db_info
+
+
+async def _ensure_database_permission(
+    kb_id: str,
+    current_user: User,
+    required: ResourcePermission,
+) -> dict:
+    """加载知识库并校验当前用户的有效资源权限。"""
+
+    db_info = await knowledge_base.get_database_info(kb_id)
+    if not db_info:
+        raise HTTPException(status_code=404, detail=f"知识库 {kb_id} 不存在")
+    actual = resolve_knowledge_base_permission(current_user, db_info)
+    try:
+        require_resource_permission(actual, required)
+    except ResourcePermissionDenied as error:
+        raise HTTPException(status_code=403, detail="无权操作该知识库") from error
+    return db_info
+
+
+def _redact_database_secrets(database: dict) -> None:
+    """只读用户不能从知识库元数据响应中获取连接凭据。"""
+
+    params = database.get("additional_params")
+    if not isinstance(params, dict):
+        return
+    database["additional_params"] = {
+        key: value
+        for key, value in params.items()
+        if not any(marker in key.lower() for marker in ("token", "secret", "password", "api_key"))
+    }
+
+
+def _knowledge_route_required_permission(request: Request) -> ResourcePermission:
+    """按知识库路由的读写语义确定所需资源权限。"""
+
+    if request.method == "GET":
+        return ResourcePermission.READ
+    path = request.url.path
+    if request.method == "POST" and path.endswith(("/query", "/query-test")):
+        return ResourcePermission.READ
+    return ResourcePermission.MANAGE
+
+
+async def get_admin_user(request: Request, current_user: User = Depends(get_required_user)) -> User:
+    """兼容原有知识库管理员入口，同时按知识库 ACL 校验资源权限。"""
+
+    if current_user.role not in {"admin", "superadmin"}:
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+
+    kb_id = request.path_params.get("kb_id")
+    if not kb_id:
+        return current_user
+
+    db_info = await knowledge_base.get_database_info(kb_id)
+    if not db_info:
+        raise HTTPException(status_code=404, detail=f"知识库 {kb_id} 不存在")
+    actual = resolve_knowledge_base_permission(current_user, db_info)
+    try:
+        require_resource_permission(actual, _knowledge_route_required_permission(request))
+    except ResourcePermissionDenied as error:
+        raise HTTPException(status_code=403, detail="无权操作该知识库") from error
+    return current_user
 
 
 def _ensure_document_params(params: dict | None) -> dict:
@@ -388,6 +457,11 @@ async def get_database_info(
     database = await knowledge_base.get_database_info(kb_id, include_files=include_files)
     if database is None:
         raise HTTPException(status_code=404, detail="Database not found")
+    permission = resolve_knowledge_base_permission(current_user, database)
+    database["effective_permission"] = permission.value
+    database["can_manage"] = permission == ResourcePermission.MANAGE
+    if permission != ResourcePermission.MANAGE:
+        _redact_database_secrets(database)
     return database
 
 
@@ -1828,6 +1902,8 @@ async def fetch_url(
     """
     logger.debug(f"Fetching URL: {url} for kb_id: {kb_id}")
     try:
+        if kb_id and getattr(current_user, "role", None):
+            await _ensure_database_permission(kb_id, current_user, ResourcePermission.MANAGE)
         # 1. 下载内容 (包含白名单校验、大小限制、类型检查)
         content_bytes, final_url = await fetch_url_content(url)
 
@@ -1900,6 +1976,8 @@ async def import_workspace_files(
     if not paths:
         raise HTTPException(status_code=400, detail="请选择至少一个工作区文件")
 
+    if getattr(current_user, "role", None):
+        await _ensure_database_permission(kb_id, current_user, ResourcePermission.MANAGE)
     await _ensure_database_supports_documents(kb_id, "文档添加/解析/入库")
 
     bucket_name = MinIOClient.KB_BUCKETS["documents"]
@@ -1964,6 +2042,8 @@ async def upload_file(
         raise HTTPException(status_code=400, detail="No selected file")
 
     if kb_id:
+        if getattr(current_user, "role", None):
+            await _ensure_database_permission(kb_id, current_user, ResourcePermission.MANAGE)
         await _ensure_database_supports_documents(kb_id, "文档上传")
 
     logger.debug(f"Received upload file with filename: {file.filename}")

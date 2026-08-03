@@ -241,7 +241,11 @@ const progressItems = ref([])
 const drafts = ref([])
 const reviewItems = ref([])
 const installItems = ref([])
-const shareConfig = ref({ access_level: 'user', department_ids: [], user_uids: [] })
+const shareConfig = ref({
+  version: 2,
+  read_scope: { access_level: 'user', department_ids: [], user_uids: [] },
+  manage_scope: null
+})
 const installTarget = ref('personal')
 const allowedAccessLevels = ref(['user'])
 const flowError = ref('')
@@ -295,10 +299,10 @@ const loadingSourceCount = computed(
   () => new Set(progressItems.value.map((item) => item.source).filter(Boolean)).size
 )
 const shareScopeLabel = computed(
-  () =>
-    ({ global: '全局共享', department: '部门共享', user: '指定人' })[
-      shareConfig.value.access_level
-    ] || '指定人'
+  () => {
+    const scope = shareConfig.value.read_scope || shareConfig.value.manage_scope || shareConfig.value
+    return ({ global: '全局共享', department: '部门共享', user: '指定人' })[scope.access_level] || '指定人'
+  }
 )
 const installTargetLabel = computed(() =>
   installTarget.value === 'personal' ? '个人工作区' : shareScopeLabel.value
@@ -333,9 +337,27 @@ const footerSummary = computed(() => {
 })
 
 const cloneShareConfig = (config) => ({
-  access_level: config?.access_level || 'user',
-  department_ids: [...(config?.department_ids || [])],
-  user_uids: [...(config?.user_uids || [])]
+  version: 2,
+  read_scope: config?.version === 2
+    ? config.read_scope
+      ? {
+          access_level: config.read_scope.access_level || 'user',
+          department_ids: [...(config.read_scope.department_ids || [])],
+          user_uids: [...(config.read_scope.user_uids || [])]
+        }
+      : null
+    : {
+        access_level: config?.access_level || 'user',
+        department_ids: [...(config?.department_ids || [])],
+        user_uids: [...(config?.user_uids || [])]
+      },
+  manage_scope: config?.version === 2 && config.manage_scope
+    ? {
+        access_level: config.manage_scope.access_level || 'global',
+        department_ids: [...(config.manage_scope.department_ids || [])],
+        user_uids: [...(config.manage_scope.user_uids || [])]
+      }
+    : null
 })
 
 const isInstalled = (slug) => installedSet.value.has(String(slug).toLowerCase())

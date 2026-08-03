@@ -524,7 +524,11 @@ async def test_create_database_defaults_to_global_share_config(test_client, admi
     database = await _create_test_database(test_client, admin_headers)
     kb_id = database["kb_id"]
     try:
-        assert database["share_config"] == {"access_level": "global", "department_ids": [], "user_uids": []}
+        assert database["share_config"] == {
+            "version": 2,
+            "read_scope": {"access_level": "global", "department_ids": [], "user_uids": []},
+            "manage_scope": None,
+        }
     finally:
         await test_client.delete(f"/api/knowledge/databases/{kb_id}", headers=admin_headers)
 
@@ -545,8 +549,8 @@ async def test_department_share_config_filters_accessible_databases(test_client,
         )
 
         saved_config = database["share_config"]
-        assert saved_config["access_level"] == "department"
-        assert department_a["id"] in saved_config["department_ids"]
+        assert saved_config["manage_scope"]["access_level"] == "department"
+        assert department_a["id"] in saved_config["manage_scope"]["department_ids"]
 
         assert database["kb_id"] in await _accessible_kb_ids(test_client, user_a["headers"])
         assert database["kb_id"] not in await _accessible_kb_ids(test_client, user_b["headers"])
@@ -577,8 +581,8 @@ async def test_user_share_config_filters_accessible_databases(test_client, admin
         )
 
         saved_config = database["share_config"]
-        assert saved_config["access_level"] == "user"
-        assert user_a["user"]["uid"] in saved_config["user_uids"]
+        assert saved_config["manage_scope"]["access_level"] == "user"
+        assert user_a["user"]["uid"] in saved_config["manage_scope"]["user_uids"]
 
         assert database["kb_id"] in await _accessible_kb_ids(test_client, user_a["headers"])
         assert database["kb_id"] not in await _accessible_kb_ids(test_client, user_b["headers"])

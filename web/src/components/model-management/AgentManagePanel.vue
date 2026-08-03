@@ -66,7 +66,9 @@ const agentStats = computed(() => ({
   total: managedAgents.value.length,
   builtin: managedAgents.value.filter(isBuiltinAgent).length,
   manageable: managedAgents.value.filter((agent) => agent.can_manage).length,
-  global: managedAgents.value.filter((agent) => agent.share_config?.access_level === 'global')
+  global: managedAgents.value.filter(
+    (agent) => (agent.share_config?.read_scope || agent.share_config)?.access_level === 'global'
+  )
     .length
 }))
 const canManageAgent = (agent) => !!agent?.can_manage

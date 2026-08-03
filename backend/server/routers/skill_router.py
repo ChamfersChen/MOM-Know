@@ -41,6 +41,7 @@ from yuxi.agents.skills.service import (
     update_skill_share_config,
     user_can_manage_skill,
 )
+from yuxi.permissions import resolve_skill_permission
 from yuxi.agents.skills.remote_install import list_remote_skills, search_remote_skills
 from yuxi.storage.postgres.models_business import User
 from yuxi.utils.logging_config import logger
@@ -126,6 +127,7 @@ def _summarize_results(results: list[dict]) -> dict[str, int]:
 def _serialize_skill_for_user(item, user: User) -> dict:
     data = item.to_dict()
     data["can_manage"] = user_can_manage_skill(user, item)
+    data["effective_permission"] = resolve_skill_permission(user, item).value
     data["is_builtin"] = is_builtin_skill(item)
     return data
 
