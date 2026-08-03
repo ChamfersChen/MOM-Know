@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 
@@ -36,18 +37,25 @@ def _thread_root_dir(thread_id: str) -> Path:
     return Path(conf.save_dir) / "threads" / safe_thread_id / "user-data"
 
 
-def _validate_uid(uid: str) -> str:
+def _workspace_uid_dirname(uid: str) -> str:
+    """Return a path-safe, stable workspace directory name for a logical UID.
+
+    Database and OIDC subject identifiers may contain characters such as ``:``
+    that are valid identity data but unsafe in filesystem path components.
+    Legacy simple UIDs retain their directory name; all other values use a
+    namespaced SHA-256 digest at the filesystem boundary only.
+    """
     value = str(uid or "").strip()
     if not value:
         raise ValueError("uid is required")
-    if not _SAFE_ID_RE.match(value):
-        raise ValueError("uid contains invalid characters")
-    return value
+    if _SAFE_ID_RE.fullmatch(value):
+        return value
+    return f"uid-{hashlib.sha256(value.encode('utf-8')).hexdigest()}"
 
 
 def _global_user_data_dir(uid: str) -> Path:
     """Return the shared host-side directory used for one user's workspace files."""
-    safe_uid = _validate_uid(uid)
+    safe_uid = _workspace_uid_dirname(uid)
     return Path(conf.save_dir) / "threads" / "shared" / safe_uid
 
 
