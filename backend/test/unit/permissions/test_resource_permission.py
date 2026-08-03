@@ -60,6 +60,26 @@ def test_strict_config_rejects_manage_scope_outside_read_scope():
         )
 
 
+def test_strict_config_rejects_user_manage_scope_under_department_read_scope():
+    from yuxi.permissions import normalize_permission_config
+
+    with pytest.raises(ValueError, match="管理范围"):
+        normalize_permission_config(
+            {
+                "version": 2,
+                "read_scope": {"access_level": "department", "department_ids": [1]},
+                "manage_scope": {"access_level": "user", "user_uids": ["user-1"]},
+            },
+            strict=True,
+        )
+
+
+def test_legacy_agent_scope_preserves_admin_management():
+    resource = _resource(share_config={"access_level": "global"})
+
+    assert resolve_agent_permission(_user(role="admin"), resource) == ResourcePermission.MANAGE
+
+
 def test_knowledge_base_owner_and_superadmin_can_manage():
     resource = _resource(created_by="owner", share_config={"version": 2})
 

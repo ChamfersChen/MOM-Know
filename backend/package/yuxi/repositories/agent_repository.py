@@ -478,11 +478,20 @@ class AgentRepository:
             if is_builtin_agent(agent):
                 agent.share_config = DEFAULT_SHARE_CONFIG.copy()
             else:
+                current_config = normalize_permission_config(
+                    agent.share_config,
+                    default_scope={"access_level": "global", "department_ids": [], "user_uids": []},
+                )
                 normalized_share_config = normalize_agent_share_config(
                     share_config,
                     user_uid=str(updater.uid) if updater else updated_by,
                     department_id=updater.department_id if updater else None,
-                    force_private=bool(updater and updater.role not in ADMIN_ROLES),
+                    force_private=bool(
+                        updater
+                        and updater.role not in ADMIN_ROLES
+                        and not current_config["read_scope"]
+                        and not current_config["manage_scope"]
+                    ),
                 )
                 agent.share_config = normalized_share_config
 
@@ -508,6 +517,7 @@ class AgentRepository:
         data["share_config"] = normalize_permission_config(
             agent.share_config,
             default_scope={"access_level": "global", "department_ids": [], "user_uids": []},
+            legacy_permission=ResourcePermission.MANAGE,
         )
         data["can_manage"] = user_can_manage_agent(user, agent)
         data["effective_permission"] = resolve_agent_permission(user, agent).value

@@ -29,6 +29,20 @@ def test_knowledge_route_permission_classification_keeps_query_params_manage_onl
         knowledge_router._knowledge_route_required_permission(_request("POST", "/api/knowledge/databases/kb-1/query"))
         == ResourcePermission.READ
     )
+
+
+def test_redact_database_secrets_removes_credentials_from_metadata_and_params():
+    database = {
+        "additional_params": {"dify_token": "secret", "chunk_size": 100},
+        "metadata": {"notion_token": "secret", "chunk_size": 100},
+    }
+
+    knowledge_router.redact_database_secrets(database)
+
+    assert database == {
+        "additional_params": {"chunk_size": 100},
+        "metadata": {"chunk_size": 100},
+    }
     assert (
         knowledge_router._knowledge_route_required_permission(
             _request("PUT", "/api/knowledge/databases/kb-1/query-params")

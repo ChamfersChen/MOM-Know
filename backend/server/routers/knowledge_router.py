@@ -12,6 +12,7 @@ from starlette.responses import StreamingResponse
 from yuxi import config
 from yuxi.knowledge.chunking.ragflow_like.presets import get_chunk_preset_options
 from yuxi.knowledge.factory import KnowledgeBaseFactory
+from yuxi.knowledge.manager import redact_database_secrets
 from yuxi.knowledge.graphs.milvus_graph_service import GRAPH_TASK_TYPE, MilvusGraphService
 from yuxi.knowledge.parser.unified import SUPPORTED_FILE_EXTENSIONS, is_supported_file_extension
 from yuxi.knowledge.runtime import knowledge_base
@@ -163,19 +164,6 @@ async def _ensure_database_permission(
     except ResourcePermissionDenied as error:
         raise HTTPException(status_code=403, detail="无权操作该知识库") from error
     return db_info
-
-
-def _redact_database_secrets(database: dict) -> None:
-    """只读用户不能从知识库元数据响应中获取连接凭据。"""
-
-    params = database.get("additional_params")
-    if not isinstance(params, dict):
-        return
-    database["additional_params"] = {
-        key: value
-        for key, value in params.items()
-        if not any(marker in key.lower() for marker in ("token", "secret", "password", "api_key"))
-    }
 
 
 def _knowledge_route_required_permission(request: Request) -> ResourcePermission:
@@ -461,7 +449,7 @@ async def get_database_info(
     database["effective_permission"] = permission.value
     database["can_manage"] = permission == ResourcePermission.MANAGE
     if permission != ResourcePermission.MANAGE:
-        _redact_database_secrets(database)
+        redact_database_secrets(database)
     return database
 
 

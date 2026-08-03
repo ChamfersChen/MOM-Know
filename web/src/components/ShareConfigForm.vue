@@ -274,7 +274,7 @@ const normalizeScope = (scope, { includeCurrent = false } = {}) => {
 
 const isManageScopeWithinRead = (manageScope, readScope = scopes.read_scope) => {
   if (!manageScope || !readScope || readScope.access_level === 'global') return true
-  if (manageScope.access_level === 'global') return false
+  if (manageScope.access_level !== readScope.access_level) return false
   if (readScope.access_level === 'user') {
     return manageScope.access_level === 'user' && manageScope.user_uids.every((uid) => readScope.user_uids.includes(uid))
   }

@@ -1058,6 +1058,31 @@ def test_skill_dependency_scope_covers_read_and_manage_audiences():
     assert svc.can_skill_depend_on(parent, dependency) is True
 
 
+def test_owner_only_skill_can_depend_on_visible_skill():
+    parent = Skill(
+        slug="parent-owner-only",
+        name="parent-owner-only",
+        description="parent",
+        source_type="upload",
+        dir_path="skills/parent-owner-only",
+        created_by="owner",
+        share_config={"version": 2, "read_scope": None, "manage_scope": None},
+        enabled=True,
+    )
+    dependency = Skill(
+        slug="dependency-global",
+        name="dependency-global",
+        description="dependency",
+        source_type="upload",
+        dir_path="skills/dependency-global",
+        created_by="other",
+        share_config={"version": 2, "read_scope": {"access_level": "global"}, "manage_scope": None},
+        enabled=True,
+    )
+
+    assert svc.can_skill_depend_on(parent, dependency) is True
+
+
 @pytest.mark.asyncio
 async def test_init_builtin_skills_create_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(svc.sys_config, "save_dir", str(tmp_path))

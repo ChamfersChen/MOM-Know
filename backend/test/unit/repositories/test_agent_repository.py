@@ -155,3 +155,38 @@ def test_shared_agent_is_accessible_but_not_manageable_for_normal_user():
 
     assert user_can_access_agent(user, agent) is True
     assert user_can_manage_agent(user, agent) is False
+
+
+@pytest.mark.asyncio
+async def test_delegated_manager_update_preserves_shared_agent_acl():
+    db = FakeDb()
+    repo = AgentRepository(db)
+    share_config = {
+        "version": 2,
+        "read_scope": {"access_level": "user", "user_uids": ["manager"]},
+        "manage_scope": {"access_level": "user", "user_uids": ["manager"]},
+    }
+    agent = SimpleNamespace(
+        slug="shared-bot",
+        backend_id="ChatbotAgent",
+        share_config=share_config,
+        created_by="owner",
+        updated_by=None,
+        updated_at=None,
+        name="Shared Bot",
+        description="",
+        icon=None,
+        pics=[],
+        config_json={},
+    )
+    manager = User(username="manager", uid="manager", password_hash="x", role="user", department_id=1)
+
+    await repo.update(
+        agent,
+        share_config=share_config,
+        updated_by="manager",
+        updater=manager,
+    )
+
+    assert agent.share_config["read_scope"]["user_uids"] == ["manager"]
+    assert agent.share_config["manage_scope"]["user_uids"] == ["manager"]

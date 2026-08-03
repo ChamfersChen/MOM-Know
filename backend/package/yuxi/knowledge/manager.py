@@ -14,6 +14,21 @@ from yuxi.utils.share_config import SHARE_ACCESS_LEVELS, normalize_share_config
 DEFAULT_SHARE_CONFIG = {"access_level": "global", "department_ids": [], "user_uids": []}
 ACCESS_LEVELS = SHARE_ACCESS_LEVELS
 KB_FILE_SEARCH_SCAN_LIMIT = 5000
+_SENSITIVE_PARAMETER_MARKERS = ("token", "secret", "password", "api_key")
+
+
+def redact_database_secrets(database: dict) -> None:
+    """移除知识库响应中连接器参数里的敏感凭据。"""
+
+    for field in ("additional_params", "metadata"):
+        params = database.get(field)
+        if not isinstance(params, dict):
+            continue
+        database[field] = {
+            key: value
+            for key, value in params.items()
+            if not any(marker in key.lower() for marker in _SENSITIVE_PARAMETER_MARKERS)
+        }
 
 
 class KnowledgeBaseManager:
@@ -325,6 +340,8 @@ class KnowledgeBaseManager:
             permission = resolve_knowledge_base_permission(user_info, database)
             if permission == ResourcePermission.NONE:
                 continue
+            if permission == ResourcePermission.READ:
+                redact_database_secrets(database)
             database["effective_permission"] = permission.value
             database["can_manage"] = permission == ResourcePermission.MANAGE
             filtered_databases.append(database)

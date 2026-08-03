@@ -227,15 +227,20 @@ def can_skill_depend_on(parent: Skill, dependency: Skill) -> bool:
     dep_config = normalize_permission_config(
         dependency.share_config,
         default_scope={"access_level": "user", "department_ids": [], "user_uids": [dependency.created_by or ""]},
+        legacy_permission=ResourcePermission.MANAGE,
     )
     parent_config = normalize_permission_config(
         parent.share_config,
         default_scope={"access_level": "user", "department_ids": [], "user_uids": [parent.created_by or ""]},
+        legacy_permission=ResourcePermission.MANAGE,
     )
     dependency_scopes = [scope for scope in (dep_config["read_scope"], dep_config["manage_scope"]) if scope]
     parent_scopes = [scope for scope in (parent_config["read_scope"], parent_config["manage_scope"]) if scope]
-    if not dependency_scopes or not parent_scopes:
-        return False
+    owner_scope = {"access_level": "user", "department_ids": [], "user_uids": []}
+    if not dependency_scopes:
+        dependency_scopes = [{**owner_scope, "user_uids": [str(dependency.created_by or "")]}]
+    if not parent_scopes:
+        parent_scopes = [{**owner_scope, "user_uids": [str(parent.created_by or "")]}]
     return all(
         any(_scope_contains(dependency_scope, parent_scope) for dependency_scope in dependency_scopes)
         for parent_scope in parent_scopes
@@ -897,6 +902,7 @@ def _resolved_shared_skill(item: Skill, *, shadowed_by_personal: bool = False) -
                 "department_ids": [],
                 "user_uids": [str(item.created_by or "")],
             },
+            legacy_permission=ResourcePermission.MANAGE,
         ),
         tool_dependencies=normalize_string_list(item.tool_dependencies),
         mcp_dependencies=normalize_string_list(item.mcp_dependencies),

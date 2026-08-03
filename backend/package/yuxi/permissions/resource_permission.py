@@ -57,6 +57,8 @@ SKILL_PERMISSION_POLICY = AGENT_PERMISSION_POLICY
 
 
 def _normalize_scope(scope: dict | None) -> dict | None:
+    """规范化共享范围并校验其访问级别与成员列表。"""
+
     if scope is None:
         return None
     if not isinstance(scope, dict):
@@ -88,7 +90,7 @@ def _validate_manage_scope(read_scope: dict | None, manage_scope: dict | None) -
 
     read_level = read_scope["access_level"]
     manage_level = manage_scope["access_level"]
-    if manage_level == "global" or (read_level == "user" and manage_level != "user"):
+    if manage_level != read_level:
         raise ValueError("管理范围必须包含在读取范围内")
     if read_level == manage_level == "department":
         if not set(manage_scope["department_ids"]).issubset(read_scope["department_ids"]):
@@ -157,12 +159,16 @@ def scope_matches(user: Any, scope: dict | None) -> bool:
 
 
 def _value(source: Any, key: str, default: Any = None) -> Any:
+    """从字典或对象读取属性，统一权限解析的输入访问方式。"""
+
     if isinstance(source, Mapping):
         return source.get(key, default)
     return getattr(source, key, default)
 
 
 def _minimum_permission(left: ResourcePermission, right: ResourcePermission) -> ResourcePermission:
+    """按权限等级顺序返回两者中更低的权限。"""
+
     return left if RESOURCE_PERMISSION_ORDER[left] <= RESOURCE_PERMISSION_ORDER[right] else right
 
 
@@ -179,10 +185,11 @@ def resolve_resource_permission(
     if _value(user, "role") == "superadmin":
         return ResourcePermission.MANAGE
 
+    raw_share_config = _value(resource, "share_config")
     config = normalize_permission_config(
-        _value(resource, "share_config"),
+        raw_share_config,
         default_scope=default_scope,
-        legacy_permission=legacy_permission,
+        legacy_permission=legacy_permission if raw_share_config else ResourcePermission.READ,
     )
     if str(_value(resource, "created_by", "") or "") == str(_value(user, "uid", "") or ""):
         return ResourcePermission.MANAGE
@@ -196,6 +203,13 @@ def resolve_resource_permission(
         granted = ResourcePermission.NONE
 
     ceiling = policy.role_ceiling.get(_value(user, "role"), ResourcePermission.READ)
+    if (
+        raw_share_config
+        and raw_share_config.get("version") != 2
+        and legacy_permission == ResourcePermission.MANAGE
+        and _value(user, "role") == "user"
+    ):
+        ceiling = ResourcePermission.READ
     return _minimum_permission(granted, ceiling)
 
 
@@ -229,6 +243,7 @@ def resolve_agent_permission(user: Any, resource: ShareableResource) -> Resource
         resource,
         AGENT_PERMISSION_POLICY,
         default_scope=DEFAULT_SCOPE,
+        legacy_permission=ResourcePermission.MANAGE,
     )
 
 
@@ -244,4 +259,5 @@ def resolve_skill_permission(user: Any, resource: ShareableResource) -> Resource
             "department_ids": [],
             "user_uids": [str(_value(resource, "created_by", ""))],
         },
+        legacy_permission=ResourcePermission.MANAGE,
     )

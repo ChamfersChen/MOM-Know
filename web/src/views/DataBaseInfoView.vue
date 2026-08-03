@@ -281,6 +281,14 @@
                   :loading="chunkPresetLoading"
                 />
               </a-form-item>
+              <a-form-item v-if="!isConnector" name="auto_generate_questions">
+                <a-switch
+                  v-model:checked="editForm.auto_generate_questions"
+                  checked-children="开启"
+                  un-checked-children="关闭"
+                />
+                <span class="form-item-help-text">上传文件后自动生成测试问题</span>
+              </a-form-item>
 
               <template v-if="isDifyKb">
                 <a-form-item label="Dify API URL" name="dify_api_url">
@@ -722,6 +730,7 @@ const editForm = reactive({
   name: '',
   description: '',
   chunk_preset_id: DEFAULT_CHUNK_PRESET_ID,
+  auto_generate_questions: false,
   dify_api_url: '',
   dify_token: '',
   dify_dataset_id: '',
@@ -802,6 +811,7 @@ const showEditModal = () => {
   editForm.description = database.value.description || ''
   editForm.chunk_preset_id =
     database.value.additional_params?.chunk_preset_id || DEFAULT_CHUNK_PRESET_ID
+  editForm.auto_generate_questions = Boolean(database.value.additional_params?.auto_generate_questions)
   editForm.dify_api_url = database.value.additional_params?.dify_api_url || ''
   editForm.dify_token = database.value.additional_params?.dify_token || ''
   editForm.dify_dataset_id = database.value.additional_params?.dify_dataset_id || ''
@@ -882,7 +892,8 @@ const handleEditSubmit = async () => {
       }
     } else {
       updateData.additional_params = {
-        chunk_preset_id: editForm.chunk_preset_id || DEFAULT_CHUNK_PRESET_ID
+        chunk_preset_id: editForm.chunk_preset_id || DEFAULT_CHUNK_PRESET_ID,
+        auto_generate_questions: editForm.auto_generate_questions
       }
     }
 
@@ -1261,6 +1272,12 @@ onMounted(() => {
   color: var(--gray-500);
   cursor: help;
   font-size: 14px;
+}
+
+.form-item-help-text {
+  margin-left: 8px;
+  color: var(--gray-500);
+  font-size: 12px;
 }
 
 @media (max-width: 1024px) {
