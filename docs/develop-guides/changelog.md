@@ -6,6 +6,7 @@
 
 ## v0.7.2 (current)
 
+- 修复编辑智能体弹窗基本配置缺少保存按钮：在 `basic` tab 修改名称、描述、图标或共享权限后也能出现「保存（有修改）」，撤回改动、tab 切换与再次打开弹窗后按钮状态正确；slug / backend_id 仅在创建模式可编辑，未参与 dirty 判断；保存按钮改用 `size="small"`（24px）与标题等高，避免撑高 header；选中"部门共享"或"指定人"后权限卡片高度保持不变。
 - 统一 Agent、Skill 与知识库共享权限：配置拆分读取/管理范围并统一解析 `none/read/manage`；知识库读取范围必填、管理范围不得越界且可为空，创建者与超管保留管理权；旧范围复制为读/管两份。知识库配置弹窗按基础信息、权限、检索分栏，保存后保持打开。
 - 收敛消息型 AgentRun 提交：Web Chat 与 Agent Call/Eval 共用 `run_submission_service.submit_run_command`，Call/Eval 拆为独立 Router；Request/Run 固化 `source/channel/external_id/origin_metadata` 来源快照，Eval 评估上下文继续透传到 worker 与 Langfuse，保留现有接口与响应兼容性，Resume、Subagent 生命周期不变。
 - 新增个人工作区 Skill：安装确认可选择个人或共享位置；个人 Skill 保存到 `workspace/agents/skills` 且不入库，元数据按用户缓存 5 分钟并在安装、删除、手动刷新后立即更新；Card List 与 Agent 运行时统一按个人版本覆盖同名共享版本，卡片与聊天技能选择列表共用 slug 到 Lucide 图标映射；Agent 直接读取工作区真实路径，不再复制到线程 `/home/gem/skills` 投影；共享 Skill 投影统一以来源映射为单一数据源。

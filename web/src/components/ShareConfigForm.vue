@@ -513,6 +513,10 @@ defineExpose({ scopes, validate })
   color: var(--gray-800);
   font-size: 13px;
   font-weight: 600;
+  line-height: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
 }
 
 .card-description {
@@ -523,11 +527,23 @@ defineExpose({ scopes, validate })
 
 .card-icon-wrapper {
   display: inline-flex;
+  align-items: center;
   color: var(--main-color);
+  height: 20px;
 }
 
 .card-action {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  height: 20px;
+
+  :deep(.ant-btn) {
+    height: 20px;
+    padding: 0 8px;
+    font-size: 12px;
+    line-height: 1;
+  }
 }
 
 .access-count {
