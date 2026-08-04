@@ -383,6 +383,37 @@ def test_provider_uses_distinct_sandbox_scope_for_different_uid(monkeypatch) -> 
     assert created[1][2] == "user-2"
 
 
+def test_provider_maps_external_uid_only_at_provisioner_filesystem_boundary(monkeypatch) -> None:
+    from yuxi.agents.backends.sandbox.paths import _workspace_uid_dirname
+    from yuxi.agents.backends.sandbox.provider import ProvisionerSandboxProvider
+
+    calls = []
+
+    class FakeClient:
+        def create(self, sandbox_id, thread_id, uid, env, *, file_thread_id=None, skills_thread_id=None):
+            calls.append((uid, env))
+            return SimpleNamespace(sandbox_id=sandbox_id, sandbox_url="http://sandbox")
+
+        def touch(self, _sandbox_id):
+            return True
+
+    provider = ProvisionerSandboxProvider.__new__(ProvisionerSandboxProvider)
+    provider._client = FakeClient()
+    provider._lock = threading.Lock()
+    provider._thread_locks = {}
+    provider._connections = {}
+    provider._last_touch_at = {}
+    provider._touch_interval_seconds = 30
+    logical_uid = "oidc:12345678-1234-1234-1234-123456789abc"
+    monkeypatch.setattr("yuxi.agents.backends.sandbox.provider.load_user_agent_env", lambda uid: {"OWNER": uid})
+
+    provider.acquire("thread-1", uid=logical_uid)
+
+    assert calls == [(_workspace_uid_dirname(logical_uid), {"OWNER": logical_uid})]
+    assert calls[0][0].startswith("uid-")
+    assert ":" not in calls[0][0]
+
+
 def test_provider_get_create_if_missing_ensures_expected_split_scope(monkeypatch) -> None:
     from yuxi.agents.backends.sandbox.provider import ProvisionerSandboxProvider
 
