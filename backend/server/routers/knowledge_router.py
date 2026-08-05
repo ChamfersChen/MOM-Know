@@ -1458,6 +1458,11 @@ async def get_document_content(kb_id: str, doc_id: str, current_user: User = Dep
 
     try:
         info = await knowledge_base.get_file_content(kb_id, doc_id)
+        internal_graph_fields = {"ent_id", "ent_ids", "extraction_result"}
+        info["lines"] = [
+            {key: value for key, value in line.items() if key not in internal_graph_fields}
+            for line in info.get("lines", [])
+        ]
         return info
     except Exception as e:
         logger.error(f"Failed to get file content, {e}, {kb_id=}, {doc_id=}, {traceback.format_exc()}")
