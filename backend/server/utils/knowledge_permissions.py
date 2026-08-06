@@ -3,6 +3,7 @@
 from fastapi import Depends, HTTPException
 
 from server.utils.auth_middleware import get_admin_user
+from yuxi.knowledge.contracts import KnowledgeBaseDetail
 from yuxi.knowledge.runtime import knowledge_base
 from yuxi.permissions import (
     ResourcePermission,
@@ -16,7 +17,7 @@ async def ensure_knowledge_base_permission(
     kb_id: str,
     current_user: User,
     required: ResourcePermission,
-) -> dict:
+) -> KnowledgeBaseDetail:
     """加载知识库并校验当前用户的有效资源权限。"""
 
     db_info = await knowledge_base.get_database_info(kb_id)

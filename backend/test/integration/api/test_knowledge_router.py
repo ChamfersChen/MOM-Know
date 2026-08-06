@@ -116,11 +116,19 @@ async def test_admin_can_manage_knowledge_databases(test_client, admin_headers, 
     list_response = await test_client.get("/api/knowledge/databases", headers=admin_headers)
     assert list_response.status_code == 200, list_response.text
     databases = list_response.json().get("databases", [])
-    assert any(entry["kb_id"] == kb_id for entry in databases)
+    database = next(entry for entry in databases if entry["kb_id"] == kb_id)
+    assert database["metadata"] == database["additional_params"]
+    assert database["status"] == "已连接"
+    assert database["row_count"] == (database["stats"]["row_count"] or database["stats"]["file_count"])
+    assert database["effective_permission"] == "manage"
+    assert database["can_manage"] is True
 
     get_response = await test_client.get(f"/api/knowledge/databases/{kb_id}", headers=admin_headers)
     assert get_response.status_code == 200, get_response.text
-    assert get_response.json()["kb_id"] == kb_id
+    detail = get_response.json()
+    assert detail["kb_id"] == kb_id
+    assert detail["metadata"] == detail["additional_params"]
+    assert detail["stats"]["row_count"] == detail["row_count"]
 
     update_response = await test_client.put(
         f"/api/knowledge/databases/{kb_id}",

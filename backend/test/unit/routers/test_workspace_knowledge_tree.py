@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from server.routers import workspace_router
 from server.routers.workspace_router import workspace
 from server.utils.auth_middleware import get_required_user
+from yuxi.knowledge.contracts import KnowledgeBaseDetail
 from yuxi.storage.postgres.models_business import User
 
 
@@ -26,11 +27,19 @@ class FakeKnowledgeBase:
         return True
 
     async def get_database_info(self, kb_id):
-        return {
-            "kb_id": kb_id,
-            "name": "知识库",
-            "kb_type": "milvus" if self.supports else "dify",
-        }
+        return KnowledgeBaseDetail(
+            kb_id=kb_id,
+            name="知识库",
+            description=None,
+            kb_type="milvus" if self.supports else "dify",
+            embedding_model_spec=None,
+            llm_model_spec=None,
+            query_params={},
+            additional_params={},
+            share_config={"version": 2, "read_scope": None, "manage_scope": None},
+            created_by=None,
+            created_at=None,
+        )
 
     async def list_document_files(self, **kwargs):
         self.list_calls.append(kwargs)

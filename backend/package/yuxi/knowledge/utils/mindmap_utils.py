@@ -523,8 +523,8 @@ async def get_mindmap_databases_overview(uid: str) -> dict[str, Any]:
     file_repo = KnowledgeFileRepository()
     databases = await knowledge_base.get_databases_by_uid(uid)
     db_list = []
-    for db_info in databases.get("databases", []):
-        kb_id = db_info.get("kb_id") or db_info.get("slug")
+    for db_info in databases:
+        kb_id = db_info.kb_id
         if not kb_id:
             continue
 
@@ -533,9 +533,9 @@ async def get_mindmap_databases_overview(uid: str) -> dict[str, Any]:
             {
                 "kb_id": kb_id,
                 "slug": kb_id,
-                "name": db_info.get("name", ""),
-                "description": db_info.get("description", ""),
-                "kb_type": db_info.get("kb_type", ""),
+                "name": db_info.name,
+                "description": db_info.description or "",
+                "kb_type": db_info.kb_type,
                 "file_count": file_count,
             }
         )

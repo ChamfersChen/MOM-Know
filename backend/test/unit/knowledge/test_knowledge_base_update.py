@@ -165,7 +165,11 @@ async def test_create_database_persists_allowed_record_fields(tmp_path, monkeypa
 
     manager = KnowledgeBaseManager(str(tmp_path))
     kb = FakeKnowledgeBase(str(tmp_path))
-    share_config = {"access_level": "user", "department_ids": [], "user_uids": ["root"]}
+    share_config = {
+        "version": 2,
+        "read_scope": {"access_level": "user", "department_ids": [], "user_uids": ["root"]},
+        "manage_scope": None,
+    }
 
     async def database_name_available(_database_name: str) -> bool:
         return False

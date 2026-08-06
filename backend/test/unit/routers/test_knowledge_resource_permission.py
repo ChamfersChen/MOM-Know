@@ -4,20 +4,31 @@ import pytest
 from fastapi import HTTPException
 
 from server.routers import knowledge_router
+from server.utils.knowledge_response import serialize_knowledge_base
+from yuxi.knowledge.contracts import KnowledgeBaseSummary
 
 
-def test_redact_database_secrets_removes_credentials_from_metadata_and_params():
-    database = {
-        "additional_params": {"dify_token": "secret", "chunk_size": 100},
-        "metadata": {"notion_token": "secret", "chunk_size": 100},
-    }
+def test_serialize_knowledge_base_redacts_credentials_from_compatibility_fields():
+    database = KnowledgeBaseSummary(
+        kb_id="kb-1",
+        name="知识库",
+        description=None,
+        kb_type="dify",
+        embedding_model_spec=None,
+        llm_model_spec=None,
+        query_params={},
+        additional_params={"dify_token": "secret", "chunk_size": 100},
+        share_config={"version": 2, "read_scope": None, "manage_scope": None},
+        created_by=None,
+        created_at=None,
+    )
 
-    knowledge_router.redact_database_secrets(database)
+    response = serialize_knowledge_base(database, redact_secrets=True)
 
-    assert database == {
-        "additional_params": {"chunk_size": 100},
-        "metadata": {"chunk_size": 100},
-    }
+    assert response["additional_params"]["chunk_size"] == 100
+    assert response["metadata"]["chunk_size"] == 100
+    assert "dify_token" not in response["additional_params"]
+    assert "dify_token" not in response["metadata"]
 
 
 @pytest.mark.asyncio
@@ -37,10 +48,7 @@ async def test_readonly_admin_can_read_but_cannot_update_knowledge_base(monkeypa
     monkeypatch.setattr(knowledge_router.knowledge_base, "get_database_info", fake_get_database_info)
     admin = SimpleNamespace(uid="admin-1", role="admin", department_id=2)
 
-    assert (
-        await knowledge_router.require_knowledge_base_read("kb-1", admin)
-        is admin
-    )
+    assert await knowledge_router.require_knowledge_base_read("kb-1", admin) is admin
 
     with pytest.raises(HTTPException) as exc_info:
         await knowledge_router.require_knowledge_base_manage("kb-1", admin)
@@ -84,10 +92,7 @@ async def test_query_parameter_routes_apply_knowledge_base_acl(monkeypatch):
     monkeypatch.setattr(knowledge_router.knowledge_base, "get_database_info", fake_get_database_info)
     readonly_admin = SimpleNamespace(uid="admin-1", role="admin", department_id=2)
 
-    assert (
-        await knowledge_router.require_knowledge_base_read("kb-1", readonly_admin)
-        is readonly_admin
-    )
+    assert await knowledge_router.require_knowledge_base_read("kb-1", readonly_admin) is readonly_admin
 
     with pytest.raises(HTTPException) as exc_info:
         await knowledge_router.require_knowledge_base_read(

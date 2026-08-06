@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from yuxi.knowledge.implementations.notion import NOTION_DEFAULT_VERSION, NotionAPIError, NotionKB
-from yuxi.knowledge.runtime_config import KnowledgeBaseConfig
+from yuxi.knowledge.contracts import KnowledgeBaseConfig
 
 
 PAGE_ID = "page-1"

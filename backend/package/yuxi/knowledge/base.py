@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from yuxi.knowledge.chunking.ragflow_like.presets import ensure_chunk_defaults_in_additional_params
-from yuxi.knowledge.runtime_config import KnowledgeBaseConfig
+from yuxi.knowledge.contracts import KnowledgeBaseConfig
 from yuxi.knowledge.schemas import (
     FindOutputSchema,
     FindWindowSchema,

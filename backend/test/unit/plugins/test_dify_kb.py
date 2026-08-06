@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from yuxi.knowledge.implementations.dify import DifyKB
-from yuxi.knowledge.runtime_config import KnowledgeBaseConfig
+from yuxi.knowledge.contracts import KnowledgeBaseConfig
 
 
 class _FakeResponse:

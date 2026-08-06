@@ -13,7 +13,7 @@ from yuxi.knowledge.implementations.milvus import (
     VECTOR_METRIC_TYPE,
     MilvusKB,
 )
-from yuxi.knowledge.runtime_config import KnowledgeBaseConfig
+from yuxi.knowledge.contracts import KnowledgeBaseConfig
 
 EMBEDDING_MODEL_SPEC = "test-provider:test-embedding"
 

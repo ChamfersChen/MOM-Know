@@ -6,7 +6,7 @@
 
 ## v0.7.2 (current)
 
-- 收窄知识库状态边界：移除 `databases_meta`、`_runtime_configs` 及 Base 层重复 KBInfo/CRUD；展示信息由 Manager 从 PostgreSQL 组装，查询 executor 接收单次 frozen `KnowledgeBaseConfig`，内部 helper 和其他路径只接收实际使用的字段。
+- 收窄知识库状态边界：移除 `databases_meta`、`_runtime_configs` 及 Base 层重复 KBInfo/CRUD；Manager 统一返回 `KnowledgeBaseSummary/Detail` 内部读取模型，HTTP 边界装配兼容展示字段，查询 executor 接收单次 frozen `KnowledgeBaseConfig`。
 - 修复 Agent worker 知识库运行配置不一致：`get_kb_config` 从 Redis 读取最小 Config 快照，未命中时在 KB 级分布式锁内回源 PostgreSQL，Redis 连接故障时只读请求直接回源且不回填；更新与删除先可靠失效缓存再提交数据库，避免旧请求回填过期配置。查询参数在数据库行锁内合并，并发保存不再互相覆盖。
 - 精简知识库文档内容接口响应：`GET /api/knowledge/databases/{kb_id}/documents/{doc_id}/content` 不再返回分块内部的实体 ID 与抽取结果，避免向文档预览请求传输仅供知识图谱构建使用的数据。
 - 清理未使用的共享访问级别常量模块，移除 Agent、Skill 与知识库中的冗余导入和别名；共享范围校验继续由统一权限模块负责。

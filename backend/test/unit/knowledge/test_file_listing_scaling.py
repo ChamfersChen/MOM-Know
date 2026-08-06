@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from yuxi.knowledge.manager import KnowledgeBaseManager
+from yuxi.permissions import ResourcePermission
 
 pytestmark = pytest.mark.asyncio
 
@@ -38,6 +39,7 @@ class FakeKnowledgeBaseRepository:
             share_config=None,
             mindmap=None,
             sample_questions=[],
+            created_by="user_1",
             created_at=None,
         )
 
@@ -164,10 +166,10 @@ async def test_get_database_info_omits_files_by_default():
 
     result = await manager.get_database_info("kb_1")
 
-    assert result["kb_id"] == "kb_1"
-    assert "files" not in result
-    assert result["stats"]["file_count"] == 2
-    assert result["stats"]["total_size"] == 1024
+    assert result.kb_id == "kb_1"
+    assert result.files is None
+    assert result.file_count == 2
+    assert result.total_size == 1024
 
 
 async def test_get_databases_does_not_initialize_knowledge_backend(monkeypatch):
@@ -180,13 +182,14 @@ async def test_get_databases_does_not_initialize_knowledge_backend(monkeypatch):
 
     result = await manager.get_databases()
 
-    database = result["databases"][0]
-    assert database["kb_id"] == "kb_1"
-    assert database["name"] == "知识库"
-    assert database["row_count"] == 3
-    assert database["stats"]["file_count"] == 2
-    assert database["additional_params"]["chunk_preset_id"] == "general"
-    assert database["created_by"] == "user_1"
+    database = result[0]
+    assert database.kb_id == "kb_1"
+    assert database.name == "知识库"
+    assert database.row_count == 3
+    assert database.file_count == 2
+    assert database.additional_params["chunk_preset_id"] == "general"
+    assert "stats" not in database.additional_params
+    assert database.created_by == "user_1"
 
 
 async def test_get_databases_skips_rows_with_invalid_metadata(monkeypatch):
@@ -238,7 +241,32 @@ async def test_get_databases_skips_rows_with_invalid_metadata(monkeypatch):
     manager = KnowledgeBaseManager("/tmp/yuxi-test")
     result = await manager.get_databases()
 
-    assert [db["kb_id"] for db in result["databases"]] == ["kb_good"]
+    assert [db.kb_id for db in result] == ["kb_good"]
+
+
+async def test_get_databases_by_user_sets_permission_and_redacts_readonly_secrets(monkeypatch):
+    class SecretKnowledgeBaseRepository(FakeKnowledgeBaseRepository):
+        async def get_all(self):
+            record = await self.get_by_kb_id("kb_1")
+            record.additional_params = {"dify_token": "secret", "chunk_preset_id": "general"}
+            record.created_by = "user_1"
+            return [record]
+
+    monkeypatch.setattr(
+        "yuxi.repositories.knowledge_base_repository.KnowledgeBaseRepository",
+        SecretKnowledgeBaseRepository,
+    )
+    manager = KnowledgeBaseManager("/tmp/yuxi-test")
+
+    readonly = await manager.get_databases_by_user({"uid": "user_2", "role": "admin", "department_id": None})
+    owner = await manager.get_databases_by_user({"uid": "user_1", "role": "admin", "department_id": None})
+
+    assert readonly[0].effective_permission == ResourcePermission.READ
+    assert readonly[0].can_manage is False
+    assert "dify_token" not in readonly[0].additional_params
+    assert owner[0].effective_permission == ResourcePermission.MANAGE
+    assert owner[0].can_manage is True
+    assert owner[0].additional_params["dify_token"] == "secret"
 
 
 async def test_list_document_files_returns_lightweight_paginated_items():

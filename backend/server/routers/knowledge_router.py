@@ -12,8 +12,8 @@ from starlette.responses import StreamingResponse
 from yuxi import config
 from yuxi.knowledge.chunking.ragflow_like.presets import get_chunk_preset_options
 from yuxi.knowledge.factory import KnowledgeBaseFactory
-from yuxi.knowledge.manager import redact_database_secrets
 from yuxi.knowledge.graphs.milvus_graph_service import GRAPH_TASK_TYPE, MilvusGraphService
+from yuxi.knowledge.contracts import KnowledgeBaseDetail
 from yuxi.knowledge.parser.unified import SUPPORTED_FILE_EXTENSIONS, is_supported_file_extension
 from yuxi.knowledge.runtime import knowledge_base
 from yuxi.knowledge.utils import calculate_content_hash, is_minio_url, parse_minio_url
@@ -45,6 +45,7 @@ from yuxi.utils import logger
 from yuxi.utils.upload_utils import MAX_UPLOAD_SIZE_BYTES, read_upload_with_limit, write_upload_to_path
 
 from server.utils.auth_middleware import get_admin_user, get_required_user
+from server.utils.knowledge_response import serialize_knowledge_base, serialize_knowledge_base_list
 from server.utils.knowledge_permissions import (
     ensure_knowledge_base_permission as _ensure_database_permission,
     require_knowledge_base_manage,
@@ -151,9 +152,9 @@ async def _ensure_database_supports_documents(kb_id: str, operation: str) -> dic
     db_info, supports_documents = await knowledge_base.get_database_document_support(kb_id)
     if not db_info:
         raise HTTPException(status_code=404, detail=f"知识库 {kb_id} 不存在")
-    kb_type = (db_info.get("kb_type") or "").lower()
+    kb_type = db_info.kb_type.lower()
     if not supports_documents:
-        raise HTTPException(status_code=400, detail=f"{db_info.get('name') or kb_type} 只支持检索，不支持{operation}")
+        raise HTTPException(status_code=400, detail=f"{db_info.name or kb_type} 只支持检索，不支持{operation}")
     return db_info
 
 
@@ -223,7 +224,7 @@ async def _has_running_graph_build_task(kb_id: str) -> bool:
 async def get_databases(current_user: User = Depends(get_admin_user)):
     """获取所有知识库（根据用户权限过滤）"""
     try:
-        return await knowledge_base.get_databases_by_uid(current_user.uid)
+        return serialize_knowledge_base_list(await knowledge_base.get_databases_by_uid(current_user.uid))
     except Exception as e:
         logger.error(f"获取数据库列表失败 {e}, {traceback.format_exc()}")
         return {"message": f"获取数据库列表失败 {e}", "databases": []}
@@ -312,14 +313,14 @@ async def get_accessible_databases(current_user: User = Depends(get_required_use
 
         accessible = [
             {
-                "name": db.get("name", ""),
-                "kb_id": db.get("kb_id"),
-                "description": db.get("description", ""),
-                "created_by": db.get("created_by"),
-                "kb_type": db.get("kb_type"),
-                "supports_documents": knowledge_base.database_type_supports_documents(db.get("kb_type")),
+                "name": db.name,
+                "kb_id": db.kb_id,
+                "description": db.description or "",
+                "created_by": db.created_by,
+                "kb_type": db.kb_type,
+                "supports_documents": knowledge_base.database_type_supports_documents(db.kb_type),
             }
-            for db in databases.get("databases", [])
+            for db in databases
         ]
 
         return {"databases": accessible}
@@ -405,11 +406,11 @@ async def get_database_info(
     if database is None:
         raise HTTPException(status_code=404, detail="Database not found")
     permission = resolve_knowledge_base_permission(current_user, database)
-    database["effective_permission"] = permission.value
-    database["can_manage"] = permission == ResourcePermission.MANAGE
-    if permission != ResourcePermission.MANAGE:
-        redact_database_secrets(database)
-    return database
+    return serialize_knowledge_base(
+        database,
+        permission=permission,
+        redact_secrets=permission != ResourcePermission.MANAGE,
+    )
 
 
 @knowledge.post("/databases/{kb_id}/stats/repair")
@@ -445,9 +446,9 @@ async def update_database_info(
             if not db_info:
                 raise HTTPException(status_code=404, detail=f"知识库 {kb_id} 不存在")
 
-            kb_type = (db_info.get("kb_type") or "").lower()
+            kb_type = db_info.kb_type.lower()
             kb_class = KnowledgeBaseFactory.get_kb_class(kb_type)
-            merged_params = dict(db_info.get("additional_params") or {})
+            merged_params = dict(db_info.additional_params)
             merged_params.update(additional_params)
             kb_class.normalize_additional_params(merged_params)
             additional_params = (
@@ -467,7 +468,7 @@ async def update_database_info(
             operator_uid=current_user.uid,
             operator_department_id=current_user.department_id,
         )
-        return {"message": "更新成功", "database": database}
+        return {"message": "更新成功", "database": serialize_knowledge_base(database)}
     except HTTPException:
         raise
     except Exception as e:
@@ -556,7 +557,7 @@ async def index_graph_build(
             return result
 
         task, created = await tasker.enqueue_unique_by_payload(
-            name=f"图谱构建 ({database['name']})",
+            name=f"图谱构建 ({database.name})",
             task_type=GRAPH_TASK_TYPE,
             payload={"kb_id": kb_id},
             coroutine=run_graph_index,
@@ -645,7 +646,7 @@ async def reconcile_graph_build(
             return result
 
         task, created = await tasker.enqueue_unique_by_payload(
-            name=f"图谱向量索引修复 ({database['name']})",
+            name=f"图谱向量索引修复 ({database.name})",
             task_type=GRAPH_TASK_TYPE,
             payload={"kb_id": kb_id, "reconcile_mode": mode},
             coroutine=run_graph_reconcile,
@@ -741,14 +742,14 @@ async def search_documents(
     database = await knowledge_base.get_database_info(kb_id)
     if not database:
         raise HTTPException(status_code=404, detail=f"知识库 {kb_id} 不存在或无权访问")
-    if not knowledge_base.database_type_supports_documents(database.get("kb_type")):
-        kb_type = (database.get("kb_type") or "").lower()
-        raise HTTPException(status_code=400, detail=f"{database.get('name') or kb_type} 只支持检索，不支持文档搜索")
+    if not knowledge_base.database_type_supports_documents(database.kb_type):
+        kb_type = database.kb_type.lower()
+        raise HTTPException(status_code=400, detail=f"{database.name or kb_type} 只支持检索，不支持文档搜索")
     normalized_query = (query or "").strip()
     if not normalized_query:
         return {"files": [], "total": 0, "offset": 0, "limit": limit, "has_more": False}
     return await knowledge_base.search_document_files(
-        [database],
+        [{"kb_id": database.kb_id, "name": database.name}],
         query=normalized_query,
         offset=offset,
         limit=limit,
@@ -940,7 +941,7 @@ async def add_documents(
     try:
         database = await knowledge_base.get_database_info(kb_id)
         task = await tasker.enqueue(
-            name=f"知识库文档处理 ({database['name']})",
+            name=f"知识库文档处理 ({database.name})",
             task_type="knowledge_ingest",
             payload={
                 "kb_id": kb_id,
@@ -1256,7 +1257,12 @@ async def _run_index_pending_statuses(
     return result_payload
 
 
-async def _enqueue_parse_task(kb_id: str, file_ids: list[str], operator_id: str, db_info: dict) -> dict:
+async def _enqueue_parse_task(
+    kb_id: str,
+    file_ids: list[str],
+    operator_id: str,
+    db_info: KnowledgeBaseDetail,
+) -> dict:
     """提交管理端指定 file_ids 的解析任务。"""
 
     async def run_parse(context: TaskContext):
@@ -1273,7 +1279,7 @@ async def _enqueue_parse_task(kb_id: str, file_ids: list[str], operator_id: str,
 
     try:
         task = await tasker.enqueue(
-            name=f"文档解析 ({db_info['name']})",
+            name=f"文档解析 ({db_info.name})",
             task_type="knowledge_parse",
             payload={"kb_id": kb_id, "file_ids": file_ids},
             coroutine=run_parse,
@@ -1283,10 +1289,10 @@ async def _enqueue_parse_task(kb_id: str, file_ids: list[str], operator_id: str,
         return {"message": f"提交失败: {e}", "status": "failed"}
 
 
-async def _enqueue_parse_pending_task(kb_id: str, operator_id: str, db_info: dict) -> dict:
+async def _enqueue_parse_pending_task(kb_id: str, operator_id: str, db_info: KnowledgeBaseDetail) -> dict:
     """提交管理端按状态全量待解析任务。"""
     try:
-        pending_count = int((db_info.get("stats") or {}).get("pending_parse_count") or 0)
+        pending_count = db_info.pending_parse_count
         if pending_count <= 0:
             return {"message": "没有待解析文档", "status": "success", "queued_count": 0}
 
@@ -1304,7 +1310,7 @@ async def _enqueue_parse_pending_task(kb_id: str, operator_id: str, db_info: dic
                 raise
 
         task, created = await tasker.enqueue_unique_by_payload(
-            name=f"待解析文档解析 ({db_info['name']})",
+            name=f"待解析文档解析 ({db_info.name})",
             task_type="knowledge_parse",
             payload={
                 "kb_id": kb_id,
@@ -1327,7 +1333,13 @@ async def _enqueue_parse_pending_task(kb_id: str, operator_id: str, db_info: dic
         return {"message": f"提交失败: {e}", "status": "failed"}
 
 
-async def _enqueue_index_task(kb_id: str, file_ids: list[str], params: dict, operator_id: str, db_info: dict) -> dict:
+async def _enqueue_index_task(
+    kb_id: str,
+    file_ids: list[str],
+    params: dict,
+    operator_id: str,
+    db_info: KnowledgeBaseDetail,
+) -> dict:
     """提交管理端指定 file_ids 的入库任务。"""
 
     async def run_index(context: TaskContext):
@@ -1345,7 +1357,7 @@ async def _enqueue_index_task(kb_id: str, file_ids: list[str], params: dict, ope
 
     try:
         task = await tasker.enqueue(
-            name=f"文档入库 ({db_info['name']})",
+            name=f"文档入库 ({db_info.name})",
             task_type="knowledge_index",
             payload={"kb_id": kb_id, "file_ids": file_ids, "params": params},
             coroutine=run_index,
@@ -1355,10 +1367,15 @@ async def _enqueue_index_task(kb_id: str, file_ids: list[str], params: dict, ope
         return {"message": f"提交失败: {e}", "status": "failed"}
 
 
-async def _enqueue_index_pending_task(kb_id: str, params: dict, operator_id: str, db_info: dict) -> dict:
+async def _enqueue_index_pending_task(
+    kb_id: str,
+    params: dict,
+    operator_id: str,
+    db_info: KnowledgeBaseDetail,
+) -> dict:
     """提交管理端按状态全量待入库任务。"""
     try:
-        pending_count = int((db_info.get("stats") or {}).get("pending_index_count") or 0)
+        pending_count = db_info.pending_index_count
         if pending_count <= 0:
             return {"message": "没有待入库文档", "status": "success", "queued_count": 0}
 
@@ -1377,7 +1394,7 @@ async def _enqueue_index_pending_task(kb_id: str, params: dict, operator_id: str
                 raise
 
         task, created = await tasker.enqueue_unique_by_payload(
-            name=f"待入库文档入库 ({db_info['name']})",
+            name=f"待入库文档入库 ({db_info.name})",
             task_type="knowledge_index",
             payload={
                 "kb_id": kb_id,

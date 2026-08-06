@@ -51,10 +51,10 @@ async def _ensure_knowledge_supports_documents(kb_id: str) -> None:
     db_info = await knowledge_base.get_database_info(kb_id)
     if not db_info:
         raise HTTPException(status_code=404, detail=f"知识库 {kb_id} 不存在")
-    kb_type = (db_info.get("kb_type") or "").lower()
+    kb_type = db_info.kb_type.lower()
     kb_class = KnowledgeBaseFactory.get_kb_class(kb_type)
     if not kb_class.supports_documents:
-        raise HTTPException(status_code=501, detail=f"{db_info.get('name') or kb_type} 不支持文件浏览")
+        raise HTTPException(status_code=501, detail=f"{db_info.name or kb_type} 不支持文件浏览")
 
 
 def _raise_knowledge_read_error(error: ValueError) -> None:
