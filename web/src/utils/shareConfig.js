@@ -1,10 +1,13 @@
 export function getShareConfigLabel(shareConfig) {
   const config = shareConfig || {}
-  if (config.access_level === 'department') {
-    return `部门共享(${config.department_ids?.length || 0})`
+  const readScope = config.version === 2 ? config.read_scope : config
+  const manageScope = config.manage_scope
+  if (config.version === 2 && !config.read_scope && !manageScope) return '仅所有者'
+  const scopeLabel = (scope) => {
+    if (!scope) return '无'
+    if (scope.access_level === 'global') return '全局'
+    if (scope.access_level === 'department') return `部门(${scope.department_ids?.length || 0})`
+    return `用户(${scope.user_uids?.length || 0})`
   }
-  if (config.access_level === 'user') {
-    return `指定用户(${config.user_uids?.length || 0})`
-  }
-  return '全局共享'
+  return manageScope ? `读${scopeLabel(readScope)} · 管${scopeLabel(manageScope)}` : `只读${scopeLabel(readScope)}`
 }

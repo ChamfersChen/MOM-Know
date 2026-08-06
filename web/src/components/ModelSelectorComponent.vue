@@ -517,7 +517,15 @@ const handleClear = () => {
 
 .model-search {
   padding: 8px;
-  border-bottom: 1px solid var(--gray-100);
+}
+
+.model-search :deep(.ant-input-affix-wrapper) {
+  border-color: var(--gray-0);
+  background: var(--gray-25);
+}
+
+.model-search :deep(.ant-input) {
+  background: transparent;
 }
 
 :deep(.ant-dropdown-menu) {
@@ -525,6 +533,10 @@ const handleClear = () => {
     max-height: 260px;
     overflow-y: auto;
     box-shadow: none;
+  }
+
+  .ant-dropdown-menu-item-group-list {
+    margin: 0;
   }
 
   .ant-dropdown-menu-item,
@@ -546,10 +558,6 @@ const handleClear = () => {
     background: var(--main-50);
   }
 
-  .ant-dropdown-menu-item {
-    padding-top: 7px;
-    padding-bottom: 7px;
-  }
 }
 
 .model-option {

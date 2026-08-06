@@ -17,14 +17,27 @@ from yuxi.knowledge.chunking.ragflow_like.presets import deep_merge
 from yuxi.knowledge.factory import KnowledgeBaseFactory
 from yuxi.knowledge.runtime_config import KnowledgeBaseConfig
 from yuxi.knowledge.schemas import FindOutputSchema, OpenOutputSchema
+from yuxi.permissions import ResourcePermission, normalize_permission_config, resolve_knowledge_base_permission
 from yuxi.storage.postgres.models_business import User
 from yuxi.utils import logger
 from yuxi.utils.datetime_utils import utc_isoformat
-from yuxi.utils.share_config import SHARE_ACCESS_LEVELS, normalize_share_config
 
-DEFAULT_SHARE_CONFIG = {"access_level": "global", "department_ids": [], "user_uids": []}
-ACCESS_LEVELS = SHARE_ACCESS_LEVELS
 KB_FILE_SEARCH_SCAN_LIMIT = 5000
+_SENSITIVE_PARAMETER_MARKERS = ("token", "secret", "password", "api_key")
+
+
+def redact_database_secrets(database: dict) -> None:
+    """移除知识库响应中连接器参数里的敏感凭据。"""
+
+    for field in ("additional_params", "metadata"):
+        params = database.get(field)
+        if not isinstance(params, dict):
+            continue
+        database[field] = {
+            key: value
+            for key, value in params.items()
+            if not any(marker in key.lower() for marker in _SENSITIVE_PARAMETER_MARKERS)
+        }
 
 
 class KnowledgeBaseManager:
@@ -178,14 +191,28 @@ class KnowledgeBaseManager:
         user_uid: str | None = None,
         department_id: int | str | None = None,
     ) -> dict:
-        return normalize_share_config(
-            share_config,
-            default_config=DEFAULT_SHARE_CONFIG,
-            default_access_level="global",
-            invalid_access_level_message="无效的知识库权限等级",
-            user_uid=user_uid,
-            department_id=department_id,
-        )
+        if share_config is None:
+            return {
+                "version": 2,
+                "read_scope": {"access_level": "global", "department_ids": [], "user_uids": []},
+                "manage_scope": None,
+            }
+
+        if share_config and share_config.get("version") == 2:
+            normalized = normalize_permission_config(
+                share_config,
+                strict=user_uid is not None or department_id is not None,
+            )
+            if normalized["read_scope"] is None and (user_uid is not None or department_id is not None):
+                raise ValueError("知识库必须设置读取范围")
+            read_scope = normalized["read_scope"]
+            if read_scope and read_scope["access_level"] == "department" and department_id is not None:
+                read_scope["department_ids"] = sorted({*read_scope["department_ids"], int(department_id)})
+            elif read_scope and read_scope["access_level"] == "user" and user_uid:
+                read_scope["user_uids"] = sorted({*read_scope["user_uids"], str(user_uid)})
+            return normalized
+
+        raise ValueError("知识库共享配置必须使用 version 2")
 
     async def get_databases(self) -> dict:
         """获取所有数据库信息"""
@@ -205,6 +232,7 @@ class KnowledgeBaseManager:
                 kb_class = KnowledgeBaseFactory.get_kb_class(kb_type)
                 additional_params = kb_class.normalize_additional_params(row.additional_params)
                 stats = KnowledgeBase._normalize_database_stats(additional_params.get("stats"))
+                share_config = self._normalize_share_config(row.share_config)
             except Exception as e:
                 logger.warning(f"Skip database with invalid metadata: kb_id={row.kb_id}, kb_type={kb_type}: {e}")
                 continue
@@ -222,7 +250,7 @@ class KnowledgeBaseManager:
                     "status": "已连接",
                     "stats": stats,
                     "row_count": stats["row_count"] or stats["file_count"],
-                    "share_config": row.share_config or DEFAULT_SHARE_CONFIG.copy(),
+                    "share_config": share_config,
                     "additional_params": additional_params,
                     "created_by": row.created_by,
                 }
@@ -231,32 +259,7 @@ class KnowledgeBaseManager:
 
     @staticmethod
     def _database_info_accessible(user: dict, db_info: dict) -> bool:
-        if user.get("role") == "superadmin":
-            return True
-
-        user_uid = str(user.get("uid") or "")
-        if user_uid and db_info.get("created_by") == user_uid:
-            return True
-
-        share_config = db_info.get("share_config") or DEFAULT_SHARE_CONFIG.copy()
-        access_level = share_config.get("access_level")
-        if access_level == "global":
-            return True
-
-        if access_level == "department":
-            user_department_id = user.get("department_id")
-            if user_department_id is None:
-                return False
-            try:
-                department_ids = [int(dept_id) for dept_id in share_config.get("department_ids") or []]
-                return int(user_department_id) in department_ids
-            except (ValueError, TypeError):
-                return False
-
-        if access_level == "user":
-            return bool(user_uid and user_uid in (share_config.get("user_uids") or []))
-
-        return False
+        return resolve_knowledge_base_permission(user, db_info) != ResourcePermission.NONE
 
     async def check_accessible(self, user: dict, kb_id: str) -> bool:
         """检查用户是否有权限访问数据库
@@ -345,12 +348,16 @@ class KnowledgeBaseManager:
         all_databases = (await self.get_databases()).get("databases", [])
 
         # 超级管理员可以看到所有知识库
-        if user_info.get("role") == "superadmin":
-            return {"databases": all_databases}
-
-        filtered_databases = [
-            database for database in all_databases if self._database_info_accessible(user_info, database)
-        ]
+        filtered_databases = []
+        for database in all_databases:
+            permission = resolve_knowledge_base_permission(user_info, database)
+            if permission == ResourcePermission.NONE:
+                continue
+            if permission == ResourcePermission.READ:
+                redact_database_secrets(database)
+            database["effective_permission"] = permission.value
+            database["can_manage"] = permission == ResourcePermission.MANAGE
+            filtered_databases.append(database)
 
         return {"databases": filtered_databases}
 
@@ -557,10 +564,15 @@ class KnowledgeBaseManager:
         return await kb_instance.export_data(kb_id, format=format, **kwargs)
 
     @staticmethod
-    def _file_record_list_item(record, child_counts: dict[str, int] | None = None) -> dict:
+    def _file_record_list_item(
+        record,
+        child_counts: dict[str, int] | None = None,
+        creator: User | None = None,
+    ) -> dict:
         child_counts = child_counts or {}
         file_id = getattr(record, "file_id")
         child_count = int(getattr(record, "virtual_children_count", 0) or child_counts.get(file_id, 0))
+        created_by = getattr(record, "created_by", None)
         created_at_value = getattr(record, "created_at", None)
         updated_at_value = getattr(record, "updated_at", None)
         created_at = utc_isoformat(created_at_value) if created_at_value else None
@@ -573,6 +585,11 @@ class KnowledgeBaseManager:
             "created_at": created_at,
             "updated_at": updated_at,
             "file_size": int(getattr(record, "file_size", None) or 0),
+            "chunk_count": int(getattr(record, "chunk_count", 0) or 0),
+            "token_count": int(getattr(record, "token_count", 0) or 0),
+            "created_by": created_by,
+            "created_by_name": creator.username if creator else created_by,
+            "created_by_avatar": creator.to_dict().get("avatar") if creator else None,
             "is_folder": bool(getattr(record, "is_folder", False)),
             "parent_id": getattr(record, "parent_id", None),
             "has_children": child_count > 0,
@@ -613,6 +630,7 @@ class KnowledgeBaseManager:
             "llm_model_spec": kb.llm_model_spec,
             "query_params": kb.query_params,
             "metadata": normalized_additional_params,
+            "created_by": kb.created_by,
             "created_at": utc_isoformat(kb.created_at) if kb.created_at else None,
             "status": "已连接",
         }
@@ -642,7 +660,7 @@ class KnowledgeBaseManager:
             db_info["files_page_size"] = 500
 
         db_info["additional_params"] = normalized_additional_params
-        db_info["share_config"] = kb.share_config or DEFAULT_SHARE_CONFIG.copy()
+        db_info["share_config"] = self._normalize_share_config(kb.share_config)
         db_info["mindmap"] = kb.mindmap
         db_info["sample_questions"] = kb.sample_questions or []
         db_info["query_params"] = kb.query_params
@@ -696,8 +714,15 @@ class KnowledgeBaseManager:
         )
         folder_ids = [record.file_id for record in records if record.is_folder]
         child_counts = await repo.count_children_by_parent_ids(kb_id=kb_id, parent_ids=folder_ids)
+        creator_uids = [record.created_by for record in records if getattr(record, "created_by", None)]
+        from yuxi.repositories.user_repository import UserRepository
+
+        creators = {user.uid: user for user in await UserRepository().list_by_uids(creator_uids)}
         stats = await repo.get_kb_file_stats(kb_id) if include_stats else None
-        items = [self._file_record_list_item(record, child_counts) for record in records]
+        items = [
+            self._file_record_list_item(record, child_counts, creators.get(getattr(record, "created_by", None)))
+            for record in records
+        ]
         normalize_path_prefix = getattr(repo, "_normalize_path_prefix", lambda value: value or "")
 
         result = {
