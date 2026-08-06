@@ -46,14 +46,9 @@ def test_knowledge_runtime_preserves_lite_mode(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_initialize_awaits_existing_kb_metadata_loading(monkeypatch):
-    """initialize() 必须等待 KB 元数据加载完成，避免启动后短期内操作命中未填充的缓存。"""
+async def test_initialize_creates_executors_without_loading_all_configs(monkeypatch):
+    """initialize() 只创建已使用类型的执行器，不加载全部 KB 配置。"""
     manager = KnowledgeBaseManager("/tmp/yuxi-test")
-
-    load_calls: list[str] = []
-
-    async def fake_load_metadata(_self):
-        load_calls.append("loaded")
 
     async def fake_get_all(_self):
         return [
@@ -61,7 +56,6 @@ async def test_initialize_awaits_existing_kb_metadata_loading(monkeypatch):
         ]
 
     fake_instance = SimpleNamespace()
-    fake_instance._load_metadata = fake_load_metadata.__get__(fake_instance)
 
     def fake_create(_kb_type, _work_dir):
         return fake_instance
@@ -81,5 +75,4 @@ async def test_initialize_awaits_existing_kb_metadata_loading(monkeypatch):
 
     await manager.initialize()
 
-    assert load_calls == ["loaded"]
     assert "milvus" in manager.kb_instances

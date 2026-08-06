@@ -6,6 +6,8 @@
 
 ## v0.7.2 (current)
 
+- 收窄知识库状态边界：移除 `databases_meta`、`_runtime_configs` 及 Base 层重复 KBInfo/CRUD；展示信息由 Manager 从 PostgreSQL 组装，查询 executor 接收单次 frozen `KnowledgeBaseConfig`，内部 helper 和其他路径只接收实际使用的字段。
+- 修复 Agent worker 知识库运行配置不一致：`get_kb_config` 从 Redis 读取最小 Config 快照，未命中时在 KB 级分布式锁内回源 PostgreSQL，Redis 连接故障时只读请求直接回源且不回填；更新与删除先可靠失效缓存再提交数据库，避免旧请求回填过期配置。查询参数在数据库行锁内合并，并发保存不再互相覆盖。
 - 精简知识库文档内容接口响应：`GET /api/knowledge/databases/{kb_id}/documents/{doc_id}/content` 不再返回分块内部的实体 ID 与抽取结果，避免向文档预览请求传输仅供知识图谱构建使用的数据。
 - 收敛消息型 AgentRun 提交：Web Chat 与 Agent Call/Eval 共用 `run_submission_service.submit_run_command`，Call/Eval 拆为独立 Router；Request/Run 固化 `source/channel/external_id/origin_metadata` 来源快照，Eval 评估上下文继续透传到 worker 与 Langfuse，保留现有接口与响应兼容性，Resume、Subagent 生命周期不变。
 - 新增个人工作区 Skill：安装确认可选择个人或共享位置；个人 Skill 保存到 `workspace/agents/skills` 且不入库，元数据按用户缓存 5 分钟并在安装、删除、手动刷新后立即更新；Card List 与 Agent 运行时统一按个人版本覆盖同名共享版本，卡片与聊天技能选择列表共用 slug 到 Lucide 图标映射；Agent 直接读取工作区真实路径，不再复制到线程 `/home/gem/skills` 投影；共享 Skill 投影统一以来源映射为单一数据源。

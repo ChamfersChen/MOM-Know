@@ -4,6 +4,7 @@ Integration tests for knowledge router endpoints.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from pathlib import Path
 
@@ -309,6 +310,39 @@ async def test_admin_can_create_vector_db_with_reranker(test_client, admin_heade
     use_reranker_option2 = next((opt for opt in options2 if opt.get("key") == "use_reranker"), None)
     assert use_reranker_option2 is not None
     assert use_reranker_option2.get("default") is True  # 保存的值
+
+
+async def test_concurrent_query_param_updates_preserve_all_options(test_client, admin_headers):
+    """并发的部分更新应在数据库事务内合并，而不是后写覆盖先写。"""
+    payload = {
+        "database_name": f"pytest_query_params_{uuid.uuid4().hex[:6]}",
+        "description": "Concurrent query params update",
+        "kb_type": "dify",
+        "additional_params": {
+            "dify_api_url": "https://api.dify.ai/v1",
+            "dify_token": "test-token",
+            "dify_dataset_id": "dataset-123",
+        },
+    }
+    create_response = await test_client.post("/api/knowledge/databases", json=payload, headers=admin_headers)
+    assert create_response.status_code == 200, create_response.text
+    kb_id = create_response.json()["kb_id"]
+    endpoint = f"/api/knowledge/databases/{kb_id}/query-params"
+
+    first_response, second_response = await asyncio.gather(
+        test_client.put(endpoint, json={"final_top_k": 7}, headers=admin_headers),
+        test_client.put(endpoint, json={"similarity_threshold": 0.42}, headers=admin_headers),
+    )
+
+    assert first_response.status_code == 200, first_response.text
+    assert second_response.status_code == 200, second_response.text
+
+    params_response = await test_client.get(endpoint, headers=admin_headers)
+    assert params_response.status_code == 200, params_response.text
+    options = params_response.json()["params"]["options"]
+    saved_options = {option["key"]: option["default"] for option in options}
+    assert saved_options["final_top_k"] == 7
+    assert saved_options["similarity_threshold"] == 0.42
 
 
 async def test_create_dify_database_success(test_client, admin_headers):

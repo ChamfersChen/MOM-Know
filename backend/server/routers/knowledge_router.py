@@ -1677,30 +1677,12 @@ async def update_knowledge_base_query_params(
 ):
     """更新知识库查询参数配置"""
     try:
-        # 获取知识库实例
-        kb_instance = await knowledge_base._get_kb_for_database(kb_id)
-        if not kb_instance:
-            raise HTTPException(status_code=404, detail="Knowledge base not found")
-
-        # 更新实例元数据中的查询参数
-        async with knowledge_base._metadata_lock:
-            # 确保 kb_id 在实例的 databases_meta 中
-            if kb_id not in kb_instance.databases_meta:
-                raise HTTPException(status_code=404, detail="Database not found in instance metadata")
-
-            # 确保 query_params 不为 None
-            if kb_instance.databases_meta[kb_id].get("query_params") is None:
-                kb_instance.databases_meta[kb_id]["query_params"] = {}
-
-            options = kb_instance.databases_meta[kb_id]["query_params"].setdefault("options", {})
-            options.update(params)
-            updated_query_params = kb_instance.databases_meta[kb_id]["query_params"]
-
-        # 直接通过 Repository 更新单条记录，避免调用 _save_metadata() 遍历所有数据库和文件
         from yuxi.repositories.knowledge_base_repository import KnowledgeBaseRepository
 
         kb_repo = KnowledgeBaseRepository()
-        await kb_repo.update(kb_id, {"query_params": updated_query_params})
+        kb = await kb_repo.merge_query_params_options(kb_id, params)
+        if kb is None:
+            raise HTTPException(status_code=404, detail="Knowledge base not found")
 
         logger.info(f"更新知识库 {kb_id} 查询参数: {params}")
 
@@ -1717,31 +1699,12 @@ async def update_knowledge_base_query_params(
 async def get_knowledge_base_query_params(kb_id: str, current_user: User = Depends(get_admin_user)):
     """获取知识库类型特定的查询参数"""
     try:
-        # 获取知识库实例
-        kb_instance = await knowledge_base._get_kb_for_database(kb_id)
-
-        # 调用知识库实例的方法获取配置
-        params = kb_instance.get_query_params_config(kb_id=kb_id)
-
-        # 获取用户保存的配置并合并（从实例 metadata 读取）
-        saved_options = kb_instance._get_query_params(kb_id)
-        if saved_options:
-            params = _merge_saved_options(params, saved_options)
-
+        params = await knowledge_base.get_kb_query_params_config(kb_id)
         return {"params": params, "message": "success"}
 
     except Exception as e:
         logger.error(f"获取知识库查询参数失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-def _merge_saved_options(params: dict, saved_options: dict) -> dict:
-    """将用户保存的配置合并到默认配置中"""
-    for option in params.get("options", []):
-        key = option.get("key")
-        if key in saved_options:
-            option["default"] = saved_options[key]
-    return params
 
 
 # =============================================================================
