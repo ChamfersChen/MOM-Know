@@ -91,14 +91,25 @@ async def test_list_visible_skills_for_management_includes_owned_disabled_and_en
     monkeypatch: pytest.MonkeyPatch,
 ):
     items = [
-        Skill(slug="owned-disabled", name="owned-disabled", description="", created_by="root", enabled=False),
+        Skill(
+            slug="owned-disabled",
+            name="owned-disabled",
+            description="",
+            created_by="root",
+            enabled=False,
+            share_config={"version": 2, "read_scope": None, "manage_scope": None},
+        ),
         Skill(
             slug="shared-enabled",
             name="shared-enabled",
             description="",
             created_by="other",
             enabled=True,
-            share_config={"access_level": "user", "department_ids": [], "user_uids": ["root"]},
+            share_config={
+                "version": 2,
+                "read_scope": {"access_level": "user", "user_uids": ["root"]},
+                "manage_scope": {"access_level": "user", "user_uids": ["root"]},
+            },
         ),
         Skill(
             slug="shared-disabled",
@@ -106,9 +117,20 @@ async def test_list_visible_skills_for_management_includes_owned_disabled_and_en
             description="",
             created_by="other",
             enabled=False,
-            share_config={"access_level": "user", "department_ids": [], "user_uids": ["root"]},
+            share_config={
+                "version": 2,
+                "read_scope": {"access_level": "user", "user_uids": ["root"]},
+                "manage_scope": {"access_level": "user", "user_uids": ["root"]},
+            },
         ),
-        Skill(slug="unrelated", name="unrelated", description="", created_by="other", enabled=True),
+        Skill(
+            slug="unrelated",
+            name="unrelated",
+            description="",
+            created_by="other",
+            enabled=True,
+            share_config={"version": 2, "read_scope": None, "manage_scope": None},
+        ),
     ]
 
     class FakeRepo:
@@ -122,7 +144,7 @@ async def test_list_visible_skills_for_management_includes_owned_disabled_and_en
 
     visible = await svc.list_visible_skills_for_management(None, _user("root", role="user"))
 
-    assert [item.slug for item in visible] == ["owned-disabled", "shared-enabled"]
+    assert [item.slug for item in visible] == ["owned-disabled", "shared-enabled", "shared-disabled"]
 
 
 @pytest.mark.asyncio
@@ -130,7 +152,14 @@ async def test_list_visible_skills_for_management_includes_owned_disabled_and_en
     "skill,operator",
     [
         (
-            Skill(slug="owned-disabled", name="owned-disabled", description="", created_by="root", enabled=False),
+            Skill(
+                slug="owned-disabled",
+                name="owned-disabled",
+                description="",
+                created_by="root",
+                enabled=False,
+                share_config={"version": 2, "read_scope": None, "manage_scope": None},
+            ),
             _user("root", role="user"),
         ),
         (
@@ -155,7 +184,11 @@ async def test_list_visible_skills_for_management_includes_owned_disabled_and_en
                 description="",
                 created_by="other",
                 enabled=True,
-                share_config={"access_level": "user", "department_ids": [], "user_uids": ["root"]},
+                share_config={
+                    "version": 2,
+                    "read_scope": {"access_level": "user", "user_uids": ["root"]},
+                    "manage_scope": {"access_level": "user", "user_uids": ["root"]},
+                },
             ),
             _user("root", role="user"),
         ),
@@ -182,14 +215,18 @@ async def test_management_readable_skill_allows_manageable_disabled_and_enabled_
 
 
 @pytest.mark.asyncio
-async def test_management_readable_skill_rejects_disabled_shared_readonly(monkeypatch: pytest.MonkeyPatch):
+async def test_management_readable_skill_allows_disabled_user_shared_manager(monkeypatch: pytest.MonkeyPatch):
     skill = Skill(
         slug="shared-disabled",
         name="shared-disabled",
         description="",
         created_by="other",
         enabled=False,
-        share_config={"access_level": "user", "department_ids": [], "user_uids": ["root"]},
+        share_config={
+            "version": 2,
+            "read_scope": {"access_level": "user", "user_uids": ["root"]},
+            "manage_scope": {"access_level": "user", "user_uids": ["root"]},
+        },
     )
 
     class FakeRepo:
@@ -202,8 +239,9 @@ async def test_management_readable_skill_rejects_disabled_shared_readonly(monkey
 
     monkeypatch.setattr(svc, "SkillRepository", FakeRepo)
 
-    with pytest.raises(ValueError, match="不存在或无权访问"):
-        await svc.get_management_readable_skill_or_raise(None, _user("root", role="user"), skill.slug)
+    result = await svc.get_management_readable_skill_or_raise(None, _user("root", role="user"), skill.slug)
+
+    assert result is skill
 
 
 @pytest.mark.asyncio
@@ -214,7 +252,11 @@ async def test_runtime_access_still_excludes_disabled_shared_skill(monkeypatch: 
         description="",
         created_by="other",
         enabled=False,
-        share_config={"access_level": "user", "department_ids": [], "user_uids": ["root"]},
+        share_config={
+            "version": 2,
+            "read_scope": {"access_level": "user", "user_uids": ["root"]},
+            "manage_scope": {"access_level": "user", "user_uids": ["root"]},
+        },
     )
 
     class FakeRepo:
@@ -231,7 +273,9 @@ async def test_runtime_access_still_excludes_disabled_shared_skill(monkeypatch: 
 
 
 @pytest.mark.asyncio
-async def test_normal_user_skill_upload_draft_defaults_to_user_share(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+async def test_normal_user_skill_upload_draft_defaults_to_personal_read_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     monkeypatch.setattr(svc.sys_config, "save_dir", str(tmp_path))
 
     class FakeRepo:
@@ -261,8 +305,16 @@ async def test_normal_user_skill_upload_draft_defaults_to_user_share(tmp_path: P
 @pytest.mark.parametrize(
     "share_config",
     [
-        {"access_level": "global", "department_ids": [], "user_uids": []},
-        {"access_level": "department", "department_ids": [1], "user_uids": []},
+        {
+            "version": 2,
+            "read_scope": {"access_level": "global"},
+            "manage_scope": {"access_level": "global"},
+        },
+        {
+            "version": 2,
+            "read_scope": {"access_level": "department", "department_ids": [1]},
+            "manage_scope": {"access_level": "department", "department_ids": [1]},
+        },
     ],
 )
 @pytest.mark.asyncio
@@ -326,7 +378,11 @@ async def test_confirm_skill_install_draft_only_processes_selected_slugs(
     results = await svc.confirm_skill_install_draft(
         None,
         draft_id="draft-1",
-        share_config={"access_level": "user", "department_ids": [], "user_uids": ["root"]},
+        share_config={
+            "version": 2,
+            "read_scope": {"access_level": "user", "user_uids": ["root"]},
+            "manage_scope": {"access_level": "user", "user_uids": ["root"]},
+        },
         slugs=["beta"],
         operator=_user(),
     )
@@ -355,7 +411,11 @@ async def test_confirm_skill_install_draft_rejects_invalid_selection(
         await svc.confirm_skill_install_draft(
             None,
             draft_id="draft-1",
-            share_config={"access_level": "user", "department_ids": [], "user_uids": ["root"]},
+            share_config={
+                "version": 2,
+                "read_scope": {"access_level": "user", "user_uids": ["root"]},
+                "manage_scope": {"access_level": "user", "user_uids": ["root"]},
+            },
             slugs=slugs,
             operator=_user(),
         )
@@ -942,7 +1002,11 @@ async def test_update_skill_dependencies(monkeypatch: pytest.MonkeyPatch):
         source_type="upload",
         dir_path="skills/alpha",
         created_by="root",
-        share_config={"access_level": "user", "department_ids": [], "user_uids": ["root"]},
+        share_config={
+            "version": 2,
+            "read_scope": {"access_level": "user", "user_uids": ["root"]},
+            "manage_scope": {"access_level": "user", "user_uids": ["root"]},
+        },
         enabled=True,
         tool_dependencies=[],
         mcp_dependencies=[],
@@ -955,7 +1019,11 @@ async def test_update_skill_dependencies(monkeypatch: pytest.MonkeyPatch):
         source_type="upload",
         dir_path="skills/beta",
         created_by="root",
-        share_config={"access_level": "user", "department_ids": [], "user_uids": ["root"]},
+        share_config={
+            "version": 2,
+            "read_scope": {"access_level": "user", "user_uids": ["root"]},
+            "manage_scope": {"access_level": "user", "user_uids": ["root"]},
+        },
         enabled=True,
         tool_dependencies=[],
         mcp_dependencies=[],
@@ -1185,7 +1253,11 @@ async def test_init_builtin_skills_updates_existing_record_and_preserves_disable
         tool_dependencies=[],
         mcp_dependencies=[],
         skill_dependencies=[],
-        share_config={"access_level": "global", "department_ids": [], "user_uids": []},
+        share_config={
+            "version": 2,
+            "read_scope": {"access_level": "global"},
+            "manage_scope": None,
+        },
         enabled=False,
         version="1.0.0",
         content_hash="old-hash",
@@ -1599,7 +1671,11 @@ async def test_personal_skill_overrides_shared_skill_and_drops_dependencies(
         dir_path="skills/demo",
         enabled=True,
         created_by="other",
-        share_config={"access_level": "global", "department_ids": [], "user_uids": []},
+        share_config={
+            "version": 2,
+            "read_scope": {"access_level": "global"},
+            "manage_scope": {"access_level": "global"},
+        },
         tool_dependencies=["calculator"],
         mcp_dependencies=["mcp-a"],
         skill_dependencies=["base"],
@@ -1675,6 +1751,7 @@ async def test_skill_cards_keep_shadowed_shared_item_for_management(
         dir_path="skills/demo",
         enabled=True,
         created_by="user-1",
+        share_config={"version": 2, "read_scope": None, "manage_scope": None},
     )
 
     class FakeRepo:

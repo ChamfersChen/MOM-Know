@@ -171,9 +171,7 @@ const isSubAgentBackend = (backendId) => backendId === SUB_AGENT_BACKEND_ID
 
 const getInitialShareConfig = () => ({
   version: 2,
-  read_scope: userStore.isAdmin
-    ? { access_level: 'global', department_ids: [], user_uids: [] }
-    : { access_level: 'user', department_ids: [], user_uids: userStore.uid ? [userStore.uid] : [] },
+  read_scope: { access_level: 'user', department_ids: [], user_uids: userStore.uid ? [userStore.uid] : [] },
   manage_scope: null
 })
 
@@ -188,7 +186,8 @@ const isEditingBuiltinAgent = computed(() => isBuiltinAgent({ id: editingAgentId
 const canEditAgentShareConfig = computed(() => !isEditingBuiltinAgent.value)
 const getAgentShareAllowedLevels = () => {
   if (isEditingBuiltinAgent.value) return ['global']
-  return userStore.isAdmin ? ['global', 'department', 'user'] : ['user']
+  if (userStore.isAdmin) return ['global', 'department', 'user']
+  return ['user']
 }
 
 const agentModalTitle = computed(() => (editingAgentId.value ? '编辑智能体' : '新增智能体'))

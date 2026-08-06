@@ -542,10 +542,11 @@ async def test_department_share_config_filters_accessible_databases(test_client,
     try:
         user_a = await _create_test_user(test_client, admin_headers, department_a["id"])
         user_b = await _create_test_user(test_client, admin_headers, department_b["id"])
+        scope = {"access_level": "department", "department_ids": [department_a["id"]], "user_uids": []}
         database = await _create_test_database(
             test_client,
             admin_headers,
-            {"access_level": "department", "department_ids": [department_a["id"]], "user_uids": []},
+            {"version": 2, "read_scope": scope, "manage_scope": scope},
         )
 
         saved_config = database["share_config"]
@@ -574,10 +575,11 @@ async def test_user_share_config_filters_accessible_databases(test_client, admin
     try:
         user_a = await _create_test_user(test_client, admin_headers, department_a["id"])
         user_b = await _create_test_user(test_client, admin_headers, department_b["id"])
+        scope = {"access_level": "user", "department_ids": [], "user_uids": [user_a["user"]["uid"]]}
         database = await _create_test_database(
             test_client,
             admin_headers,
-            {"access_level": "user", "department_ids": [], "user_uids": [user_a["user"]["uid"]]},
+            {"version": 2, "read_scope": scope, "manage_scope": scope},
         )
 
         saved_config = database["share_config"]

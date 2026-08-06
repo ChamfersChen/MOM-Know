@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from server.utils.auth_middleware import get_admin_user
+from server.utils.knowledge_permissions import require_knowledge_base_read
 from yuxi.knowledge.graphs.milvus_graph_service import MilvusGraphService
 from yuxi.knowledge.runtime import knowledge_base
 from yuxi.storage.postgres.models_business import User
@@ -54,7 +55,7 @@ async def get_subgraph(
     max_depth: int = Query(2, description="最大深度", ge=1, le=5),
     max_nodes: int = Query(100, description="最大节点数", ge=1, le=1000),
     exclude_chunk: bool = Query(False, description="是否排除 Chunk 节点"),
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(require_knowledge_base_read),
 ):
     """查询 Milvus 知识库图谱子图"""
     try:
@@ -77,7 +78,7 @@ async def get_subgraph(
 @graph.get("/labels")
 async def get_graph_labels(
     kb_id: str = Query(..., description="Milvus 知识库ID"),
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(require_knowledge_base_read),
 ):
     """获取 Milvus 知识库图谱的所有标签"""
     try:
@@ -94,7 +95,7 @@ async def get_graph_labels(
 @graph.get("/stats")
 async def get_graph_stats(
     kb_id: str = Query(..., description="Milvus 知识库ID"),
-    current_user: User = Depends(get_admin_user),
+    current_user: User = Depends(require_knowledge_base_read),
 ):
     """获取 Milvus 知识库图谱统计信息"""
     try:

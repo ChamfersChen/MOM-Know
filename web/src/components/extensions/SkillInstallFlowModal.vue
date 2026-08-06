@@ -130,6 +130,7 @@
                 <span>仅自己可用，保存在个人 workspace，不进入平台数据库。</span>
               </button>
               <button
+                v-if="userStore.isAdmin"
                 type="button"
                 class="install-target-option"
                 :class="{ selected: installTarget === 'shared' }"
@@ -226,6 +227,7 @@ import {
 } from 'lucide-vue-next'
 import ShareConfigForm from '@/components/ShareConfigForm.vue'
 import { skillApi } from '@/apis/skill_api'
+import { useUserStore } from '@/stores/user'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -233,6 +235,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'completed'])
+const userStore = useUserStore()
 
 const stepLabels = ['选择', '加载', '位置', '完成']
 const phase = ref('selecting')

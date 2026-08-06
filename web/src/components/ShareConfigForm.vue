@@ -292,7 +292,7 @@ const initConfig = () => {
   scopes.read_scope = normalizeScope(readScope, { includeCurrent: props.autoSelectUserDept })
   scopes.manage_scope = normalizeScope(isV2 ? source.manage_scope : null)
   const hadMissingRequiredRead = props.requireReadScope && !scopes.read_scope
-  if (props.requireReadScope && !scopes.read_scope) {
+  if (hadMissingRequiredRead) {
     scopes.read_scope = normalizeScope({ access_level: 'global' })
   }
   nextTick(() => {
@@ -311,11 +311,7 @@ const emitConfig = () => {
 
 const toggleScope = (scopeKey, enabled) => {
   if (props.disabled) return
-  const defaultManageLevel = scopes.read_scope?.access_level === 'user'
-    ? 'user'
-    : scopes.read_scope?.access_level === 'department'
-      ? 'department'
-      : 'global'
+  const defaultManageLevel = scopes.read_scope?.access_level || 'global'
   scopes[scopeKey] = enabled
     ? normalizeScope({ access_level: scopeKey === 'read_scope' ? 'global' : defaultManageLevel })
     : null

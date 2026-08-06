@@ -29,7 +29,6 @@ from yuxi.permissions import ResourcePermission, normalize_permission_config, re
 from yuxi.storage.redis import get_async_redis_client
 from yuxi.utils.logging_config import logger
 from yuxi.utils.paths import ensure_within_root
-from yuxi.utils.share_config import SHARE_ACCESS_LEVELS, normalize_share_config
 
 SKILL_SLUG_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 SKILL_NAME_PATTERN = SKILL_SLUG_PATTERN
@@ -66,7 +65,6 @@ TEXT_FILE_EXTENSIONS = {
 
 BUILTIN_SKILL_OPERATOR = "builtin-system"
 SKILL_SOURCE_TYPES = {"builtin", "upload", "remote"}
-ACCESS_LEVELS = SHARE_ACCESS_LEVELS
 ADMIN_ROLES = {"admin", "superadmin"}
 DEFAULT_SKILL_SHARE_CONFIG = {"access_level": "user", "department_ids": [], "user_uids": []}
 BUILTIN_SKILL_SHARE_CONFIG = {"access_level": "global", "department_ids": [], "user_uids": []}
@@ -179,31 +177,23 @@ def normalize_skill_share_config(
     share_config: dict | None,
     *,
     operator_uid: str,
-    operator_department_id: int | str | None,
     source_type: str = "upload",
     allowed_access_levels: set[str] | None = None,
 ) -> dict:
     if source_type == "builtin":
         return {"version": 2, "read_scope": BUILTIN_SKILL_SHARE_CONFIG.copy(), "manage_scope": None}
 
-    if share_config and share_config.get("version") == 2:
-        return normalize_permission_config(
-            share_config,
-            allowed_access_levels=allowed_access_levels,
-            strict=True,
-        )
-
-    legacy = normalize_share_config(
-        share_config,
-        default_config=DEFAULT_SKILL_SHARE_CONFIG,
-        default_access_level="user",
-        invalid_access_level_message="无效的 Skill 权限等级",
-        user_uid=operator_uid,
-        department_id=operator_department_id,
+    default_scope = {
+        "access_level": "user",
+        "department_ids": [],
+        "user_uids": [operator_uid],
+    }
+    return normalize_permission_config(
+        share_config or {"version": 2, "read_scope": default_scope, "manage_scope": None},
         allowed_access_levels=allowed_access_levels,
         unauthorized_access_level_message="当前用户无权使用该 Skill 共享范围",
+        strict=True,
     )
-    return {"version": 2, "read_scope": legacy, "manage_scope": None}
 
 
 def user_can_access_skill(user: User, skill: Skill, *, require_enabled: bool = True) -> bool:
@@ -224,14 +214,8 @@ def can_skill_depend_on(parent: Skill, dependency: Skill) -> bool:
     if is_builtin_skill(dependency):
         return True
 
-    dep_config = normalize_permission_config(
-        dependency.share_config,
-        default_scope={"access_level": "user", "department_ids": [], "user_uids": [dependency.created_by or ""]},
-    )
-    parent_config = normalize_permission_config(
-        parent.share_config,
-        default_scope={"access_level": "user", "department_ids": [], "user_uids": [parent.created_by or ""]},
-    )
+    dep_config = normalize_permission_config(dependency.share_config)
+    parent_config = normalize_permission_config(parent.share_config)
     dependency_scopes = [scope for scope in (dep_config["read_scope"], dep_config["manage_scope"]) if scope]
     parent_scopes = [scope for scope in (parent_config["read_scope"], parent_config["manage_scope"]) if scope]
     owner_scope = {"access_level": "user", "department_ids": [], "user_uids": []}
@@ -895,11 +879,6 @@ def _resolved_shared_skill(item: Skill, *, shadowed_by_personal: bool = False) -
         created_by=item.created_by,
         share_config=normalize_permission_config(
             item.share_config,
-            default_scope={
-                "access_level": "user",
-                "department_ids": [],
-                "user_uids": [str(item.created_by or "")],
-            },
         ),
         tool_dependencies=normalize_string_list(item.tool_dependencies),
         mcp_dependencies=normalize_string_list(item.mcp_dependencies),
@@ -1088,7 +1067,6 @@ def _build_default_share_payload(operator: User) -> dict[str, Any]:
     default_share_config = normalize_skill_share_config(
         None,
         operator_uid=operator.uid,
-        operator_department_id=operator.department_id,
         allowed_access_levels=set(get_allowed_skill_access_levels(operator)),
     )
     return {
@@ -1330,7 +1308,6 @@ async def confirm_skill_install_draft(
     normalized_share_config = normalize_skill_share_config(
         share_config,
         operator_uid=operator.uid,
-        operator_department_id=operator.department_id,
         source_type=source_type,
         allowed_access_levels=set(get_allowed_skill_access_levels(operator)),
     )
@@ -1510,7 +1487,6 @@ async def import_skill_dir(
         share_config=normalize_skill_share_config(
             share_config,
             operator_uid=created_by or "",
-            operator_department_id=None,
             source_type=source_type,
         ),
     )
@@ -1736,7 +1712,6 @@ async def update_skill_share_config(
     normalized = normalize_skill_share_config(
         share_config,
         operator_uid=operator.uid,
-        operator_department_id=operator.department_id,
         source_type=item.source_type,
         allowed_access_levels=set(get_allowed_skill_access_levels(operator)),
     )

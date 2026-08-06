@@ -189,6 +189,41 @@ async def test_ensure_business_schema_removes_unbound_api_keys_before_requiring_
 
 
 @pytest.mark.asyncio
+async def test_share_config_migration_wraps_legacy_scopes_as_read_only():
+    """Agent/skill 迁移只把旧 scope 写入 read_scope，manage_scope 置空，避免把历史只读/使用权限追溯升级为 MANAGE。"""
+    manager = PostgresManager()
+    original_initialized = manager._initialized
+    original_engine = manager.async_engine
+    connection = _RecordingConnection()
+
+    manager._initialized = True
+    manager.async_engine = _RecordingEngine(connection)
+    try:
+        await manager.ensure_business_schema()
+        await manager.ensure_knowledge_schema()
+    finally:
+        manager._initialized = original_initialized
+        manager.async_engine = original_engine
+
+    statements = "\n".join(connection.statements)
+    assert "UPDATE agents SET share_config = jsonb_build_object" in statements
+    assert "UPDATE skills SET share_config = jsonb_build_object" in statements
+    assert "UPDATE knowledge_bases SET share_config = jsonb_build_object" in statements
+    assert "'read_scope'" in statements
+    assert "'manage_scope', NULL" in statements
+    assert "ALTER TABLE IF EXISTS agents ALTER COLUMN share_config TYPE JSONB USING share_config::jsonb" in statements
+    assert "ALTER TABLE IF EXISTS skills ALTER COLUMN share_config TYPE JSONB USING share_config::jsonb" in statements
+    assert statements.index(
+        "ALTER TABLE IF EXISTS agents ALTER COLUMN share_config TYPE JSONB USING share_config::jsonb"
+    ) < statements.index("UPDATE agents SET share_config = jsonb_build_object")
+    assert statements.index(
+        "ALTER TABLE IF EXISTS skills ALTER COLUMN share_config TYPE JSONB USING share_config::jsonb"
+    ) < statements.index("UPDATE skills SET share_config = jsonb_build_object")
+    assert "ALTER TABLE IF EXISTS agents ALTER COLUMN share_config DROP DEFAULT" in statements
+    assert "ALTER TABLE IF EXISTS skills ALTER COLUMN share_config DROP DEFAULT" in statements
+
+
+@pytest.mark.asyncio
 async def test_ensure_knowledge_schema_rebuilds_vectors_for_incomplete_legacy_chunks():
     manager = PostgresManager()
     original_initialized = manager._initialized

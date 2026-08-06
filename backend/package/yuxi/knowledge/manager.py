@@ -9,10 +9,7 @@ from yuxi.permissions import ResourcePermission, normalize_permission_config, re
 from yuxi.storage.postgres.models_business import User
 from yuxi.utils import logger
 from yuxi.utils.datetime_utils import utc_isoformat
-from yuxi.utils.share_config import SHARE_ACCESS_LEVELS, normalize_share_config
 
-DEFAULT_SHARE_CONFIG = {"access_level": "global", "department_ids": [], "user_uids": []}
-ACCESS_LEVELS = SHARE_ACCESS_LEVELS
 KB_FILE_SEARCH_SCAN_LIMIT = 5000
 _SENSITIVE_PARAMETER_MARKERS = ("token", "secret", "password", "api_key")
 
@@ -173,10 +170,11 @@ class KnowledgeBaseManager:
         department_id: int | str | None = None,
     ) -> dict:
         if share_config is None:
-            read_scope = self._normalize_share_config(
-                {"access_level": "global"}, user_uid=user_uid, department_id=department_id
-            )["read_scope"]
-            return {"version": 2, "read_scope": read_scope, "manage_scope": None}
+            return {
+                "version": 2,
+                "read_scope": {"access_level": "global", "department_ids": [], "user_uids": []},
+                "manage_scope": None,
+            }
 
         if share_config and share_config.get("version") == 2:
             normalized = normalize_permission_config(
@@ -192,15 +190,7 @@ class KnowledgeBaseManager:
                 read_scope["user_uids"] = sorted({*read_scope["user_uids"], str(user_uid)})
             return normalized
 
-        legacy = normalize_share_config(
-            share_config,
-            default_config=DEFAULT_SHARE_CONFIG,
-            default_access_level="global",
-            invalid_access_level_message="无效的知识库权限等级",
-            user_uid=None,
-            department_id=None,
-        )
-        return {"version": 2, "read_scope": legacy.copy(), "manage_scope": legacy.copy()}
+        raise ValueError("知识库共享配置必须使用 version 2")
 
     async def get_databases(self) -> dict:
         """获取所有数据库信息"""
@@ -220,6 +210,7 @@ class KnowledgeBaseManager:
                 kb_class = KnowledgeBaseFactory.get_kb_class(kb_type)
                 additional_params = kb_class.normalize_additional_params(row.additional_params)
                 stats = KnowledgeBase._normalize_database_stats(additional_params.get("stats"))
+                share_config = self._normalize_share_config(row.share_config)
             except Exception as e:
                 logger.warning(f"Skip database with invalid metadata: kb_id={row.kb_id}, kb_type={kb_type}: {e}")
                 continue
@@ -237,7 +228,7 @@ class KnowledgeBaseManager:
                     "status": "已连接",
                     "stats": stats,
                     "row_count": stats["row_count"] or stats["file_count"],
-                    "share_config": self._normalize_share_config(row.share_config),
+                    "share_config": share_config,
                     "additional_params": additional_params,
                     "created_by": row.created_by,
                 }

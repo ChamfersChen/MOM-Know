@@ -15,12 +15,15 @@ from sqlalchemy import (
     String,
     Text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from yuxi.storage.minio.client import normalize_public_minio_url
 from yuxi.utils.datetime_utils import format_utc_datetime, utc_now_naive
 
 Base = declarative_base()
+
+JSON_VALUE = JSON().with_variant(JSONB, "postgresql")
 
 MAX_LOGIN_FAILED_ATTEMPTS = 5
 LOGIN_LOCK_DURATION_SECONDS = 300
@@ -193,7 +196,7 @@ class Agent(Base):
 
     pics = Column(JSON, nullable=False, default=list)
     config_json = Column(JSON, nullable=False, default=dict)
-    share_config = Column(JSON, nullable=False, default=dict)
+    share_config = Column(JSON_VALUE, nullable=False)
 
     is_default = Column(Boolean, nullable=False, default=False, index=True)
     is_subagent = Column(Boolean, nullable=False, default=False, index=True)
@@ -244,7 +247,7 @@ class Skill(Base):
     dir_path = Column(String(512), nullable=False, comment="技能目录路径（相对 save_dir）")
     version = Column(String(64), nullable=True, comment="技能版本（内置 skill 使用语义化版本）")
     content_hash = Column(String(128), nullable=True, comment="技能目录内容哈希（内置 skill 安装时计算）")
-    share_config = Column(JSON, nullable=False, default=dict, comment="共享权限配置")
+    share_config = Column(JSON_VALUE, nullable=False, comment="共享权限配置")
     enabled = Column(Boolean, nullable=False, default=True, comment="是否启用")
     created_by = Column(String(64), nullable=True)
     updated_by = Column(String(64), nullable=True)

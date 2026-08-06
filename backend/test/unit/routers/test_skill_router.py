@@ -52,7 +52,11 @@ def _skill(
         description="demo skill",
         source_type=source_type,
         dir_path=f"skills/{slug}",
-        share_config={"access_level": "user", "department_ids": [], "user_uids": user_uids or [created_by]},
+        share_config={
+            "version": 2,
+            "read_scope": {"access_level": "user", "user_uids": user_uids or [created_by]},
+            "manage_scope": {"access_level": "user", "user_uids": user_uids or [created_by]},
+        },
         enabled=enabled,
         created_by=created_by,
         updated_by=created_by,
@@ -101,7 +105,7 @@ def test_list_visible_skills_route_allows_normal_user_readonly_items(monkeypatch
     assert payload["success"] is True
     assert [(item["slug"], item["can_manage"]) for item in payload["data"]] == [
         ("owned-disabled", True),
-        ("shared", False),
+        ("shared", True),
     ]
     assert payload["allowed_access_levels"] == ["user"]
 
@@ -197,7 +201,7 @@ def test_prepare_skill_upload_route(monkeypatch):
     }
 
 
-def test_remote_skill_prepare_and_confirm_routes(monkeypatch):
+def test_remote_skill_prepare_and_admin_confirm_routes(monkeypatch):
     captured: dict[str, object] = {}
 
     async def fake_prepare_remote_skill_install(_db, *, source, skills, operator):
@@ -219,7 +223,7 @@ def test_remote_skill_prepare_and_confirm_routes(monkeypatch):
     monkeypatch.setattr("server.routers.skill_router.prepare_remote_skill_install", fake_prepare_remote_skill_install)
     monkeypatch.setattr("server.routers.skill_router.confirm_skill_install_draft", fake_confirm_skill_install_draft)
 
-    client = TestClient(_build_app(role="user"))
+    client = TestClient(_build_app(role="admin"))
     prepare_resp = client.post(
         "/api/skills/remote/prepare",
         json={"source": "anthropics/skills", "skills": ["frontend-design"]},
@@ -227,7 +231,11 @@ def test_remote_skill_prepare_and_confirm_routes(monkeypatch):
     confirm_resp = client.post(
         "/api/skills/install-drafts/draft-remote/confirm",
         json={
-            "share_config": {"access_level": "user", "department_ids": [], "user_uids": ["user"]},
+            "share_config": {
+                "version": 2,
+                "read_scope": {"access_level": "user", "user_uids": ["admin"]},
+                "manage_scope": None,
+            },
             "slugs": ["frontend-design"],
         },
     )
@@ -238,11 +246,26 @@ def test_remote_skill_prepare_and_confirm_routes(monkeypatch):
     assert captured["prepare"] == {
         "source": "anthropics/skills",
         "skills": ["frontend-design"],
-        "operator_uid": "user",
+        "operator_uid": "admin",
     }
     assert captured["confirm"]["draft_id"] == "draft-remote"
     assert captured["confirm"]["slugs"] == ["frontend-design"]
-    assert captured["confirm"]["operator_uid"] == "user"
+    assert captured["confirm"]["operator_uid"] == "admin"
+
+
+def test_normal_user_cannot_confirm_shared_skill_install(monkeypatch):
+    async def unexpected_confirm(*_args, **_kwargs):
+        raise AssertionError("普通用户不应进入共享 Skill 安装服务")
+
+    monkeypatch.setattr("server.routers.skill_router.confirm_skill_install_draft", unexpected_confirm)
+
+    client = TestClient(_build_app(role="user"))
+    response = client.post(
+        "/api/skills/install-drafts/draft-remote/confirm",
+        json={"share_config": None, "slugs": ["frontend-design"]},
+    )
+
+    assert response.status_code == 403
 
 
 def test_discard_skill_draft_route(monkeypatch):

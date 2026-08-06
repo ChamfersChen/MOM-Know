@@ -21,6 +21,8 @@ class ResourcePermissionDenied(PermissionError):
 
 
 class ShareableResource(Protocol):
+    """声明可通过共享配置进行权限解析的资源字段。"""
+
     created_by: str | None
     share_config: dict | None
 
@@ -103,11 +105,11 @@ def _validate_manage_scope(read_scope: dict | None, manage_scope: dict | None) -
 def normalize_permission_config(
     share_config: dict | None,
     *,
-    default_scope: dict | None = None,
     allowed_access_levels: Collection[str] | None = None,
+    unauthorized_access_level_message: str = "当前用户无权使用该资源共享范围",
     strict: bool = False,
 ) -> dict:
-    """将新旧共享配置规范化为统一的 read/manage scope 结构。"""
+    """规范化并校验 v2 共享配置。"""
 
     config = share_config if isinstance(share_config, dict) else {}
     if config.get("version") == 2:
@@ -127,15 +129,9 @@ def normalize_permission_config(
         if allowed_access_levels is not None:
             for scope in (normalized["read_scope"], normalized["manage_scope"]):
                 if scope and scope["access_level"] not in allowed_access_levels:
-                    raise ValueError("当前用户无权使用该资源共享范围")
+                    raise ValueError(unauthorized_access_level_message)
         return normalized
-
-    legacy_scope = _normalize_scope(config or default_scope or DEFAULT_SCOPE)
-    return {
-        "version": 2,
-        "read_scope": legacy_scope,
-        "manage_scope": legacy_scope,
-    }
+    raise ValueError("资源共享配置必须使用 version 2")
 
 
 def scope_matches(user: Any, scope: dict | None) -> bool:
@@ -175,8 +171,6 @@ def resolve_resource_permission(
     user: Any,
     resource: ShareableResource,
     policy: ResourcePermissionPolicy,
-    *,
-    default_scope: dict | None = None,
 ) -> ResourcePermission:
     """解析资源所有权、共享范围和角色上限后的有效权限。"""
 
@@ -186,7 +180,6 @@ def resolve_resource_permission(
     raw_share_config = _value(resource, "share_config")
     config = normalize_permission_config(
         raw_share_config,
-        default_scope=default_scope,
     )
     if str(_value(resource, "created_by", "") or "") == str(_value(user, "uid", "") or ""):
         return ResourcePermission.MANAGE
@@ -200,8 +193,6 @@ def resolve_resource_permission(
         granted = ResourcePermission.NONE
 
     ceiling = policy.role_ceiling.get(_value(user, "role"), ResourcePermission.READ)
-    if raw_share_config and raw_share_config.get("version") != 2 and _value(user, "role") == "user":
-        ceiling = ResourcePermission.READ
     return _minimum_permission(granted, ceiling)
 
 
@@ -222,8 +213,19 @@ def resolve_knowledge_base_permission(user: Any, resource: ShareableResource) ->
         user,
         resource,
         KNOWLEDGE_BASE_PERMISSION_POLICY,
-        default_scope=DEFAULT_SCOPE,
     )
+
+
+def require_knowledge_base_permission(
+    user: Any,
+    resource: ShareableResource,
+    required: ResourcePermission,
+) -> ResourcePermission:
+    """校验用户是否具备知识库所需权限，并返回实际权限。"""
+
+    actual = resolve_knowledge_base_permission(user, resource)
+    require_resource_permission(actual, required)
+    return actual
 
 
 def resolve_agent_permission(user: Any, resource: ShareableResource) -> ResourcePermission:
@@ -233,7 +235,6 @@ def resolve_agent_permission(user: Any, resource: ShareableResource) -> Resource
         user,
         resource,
         AGENT_PERMISSION_POLICY,
-        default_scope=DEFAULT_SCOPE,
     )
 
 
@@ -244,9 +245,4 @@ def resolve_skill_permission(user: Any, resource: ShareableResource) -> Resource
         user,
         resource,
         SKILL_PERMISSION_POLICY,
-        default_scope={
-            "access_level": "user",
-            "department_ids": [],
-            "user_uids": [str(_value(resource, "created_by", ""))],
-        },
     )

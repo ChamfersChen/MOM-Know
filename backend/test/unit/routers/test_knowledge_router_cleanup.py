@@ -87,7 +87,7 @@ async def test_document_file_exists_route_accepts_filename_with_slashes(monkeypa
 
     app = FastAPI()
     app.include_router(knowledge_router.knowledge, prefix="/api")
-    app.dependency_overrides[knowledge_router.get_admin_user] = fake_admin_user
+    app.dependency_overrides[knowledge_router.require_knowledge_base_read] = fake_admin_user
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get(

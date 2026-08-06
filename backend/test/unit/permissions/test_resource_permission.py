@@ -5,6 +5,7 @@ import pytest
 from yuxi.permissions import (
     ResourcePermission,
     ResourcePermissionDenied,
+    require_knowledge_base_permission,
     resolve_agent_permission,
     resolve_knowledge_base_permission,
     resolve_skill_permission,
@@ -74,10 +75,29 @@ def test_strict_config_rejects_user_manage_scope_under_department_read_scope():
         )
 
 
-def test_legacy_agent_scope_preserves_admin_management():
-    resource = _resource(share_config={"access_level": "global"})
+def test_global_agent_scope_preserves_admin_management():
+    resource = _resource(
+        share_config={
+            "version": 2,
+            "read_scope": {"access_level": "global"},
+            "manage_scope": {"access_level": "global"},
+        }
+    )
 
     assert resolve_agent_permission(_user(role="admin"), resource) == ResourcePermission.MANAGE
+
+
+def test_user_agent_and_skill_scope_preserves_user_management():
+    resource = _resource(
+        share_config={
+            "version": 2,
+            "read_scope": {"access_level": "user", "user_uids": ["user-1"]},
+            "manage_scope": {"access_level": "user", "user_uids": ["user-1"]},
+        }
+    )
+
+    assert resolve_agent_permission(_user(), resource) == ResourcePermission.MANAGE
+    assert resolve_skill_permission(_user(), resource) == ResourcePermission.MANAGE
 
 
 def test_knowledge_base_owner_and_superadmin_can_manage():
@@ -88,21 +108,24 @@ def test_knowledge_base_owner_and_superadmin_can_manage():
     assert resolve_knowledge_base_permission(_user(role="superadmin"), resource) == ResourcePermission.MANAGE
 
 
-def test_legacy_knowledge_base_share_remains_manage_for_admin():
-    resource = _resource(share_config={"access_level": "global"})
+def test_global_knowledge_base_share_remains_manage_for_admin():
+    resource = _resource(
+        share_config={
+            "version": 2,
+            "read_scope": {"access_level": "global"},
+            "manage_scope": {"access_level": "global"},
+        }
+    )
 
     assert resolve_knowledge_base_permission(_user(role="admin"), resource) == ResourcePermission.MANAGE
     assert resolve_knowledge_base_permission(_user(role="user"), resource) == ResourcePermission.READ
 
 
-def test_legacy_knowledge_base_scope_is_migrated_to_read_and_manage():
+def test_legacy_permission_config_is_rejected_at_runtime():
     from yuxi.permissions import normalize_permission_config
 
-    normalized = normalize_permission_config(
-        {"access_level": "department", "department_ids": [1]},
-    )
-
-    assert normalized["read_scope"] == normalized["manage_scope"]
+    with pytest.raises(ValueError, match="version 2"):
+        normalize_permission_config({"access_level": "department", "department_ids": [1]})
 
 
 def test_agent_and_skill_use_shared_resolver_with_resource_policy():
@@ -133,6 +156,23 @@ def test_require_permission_rejects_insufficient_access():
 
     with pytest.raises(ResourcePermissionDenied):
         require_resource_permission(ResourcePermission.READ, ResourcePermission.MANAGE)
+
+
+def test_require_knowledge_base_permission_uses_resolved_resource_permission():
+    resource = _resource(
+        share_config={
+            "version": 2,
+            "read_scope": {"access_level": "global"},
+            "manage_scope": None,
+        }
+    )
+
+    assert (
+        require_knowledge_base_permission(_user(role="admin"), resource, ResourcePermission.READ)
+        == ResourcePermission.READ
+    )
+    with pytest.raises(ResourcePermissionDenied):
+        require_knowledge_base_permission(_user(role="admin"), resource, ResourcePermission.MANAGE)
 
 
 def test_v2_scope_validation_rejects_disallowed_access_level():
