@@ -274,6 +274,7 @@ import dayjs, { parseToShanghai } from '@/utils/time'
 import AiTextarea from '@/components/AiTextarea.vue'
 import { useChunkPresetOptions } from '@/composables/useChunkPresetOptions'
 import { getKbTypeLabel, getKbTypeIcon, getKbTypeColor, kbUtils } from '@/utils/kb_utils'
+import { getShareConfigLabel } from '@/utils/shareConfig'
 import { DEFAULT_CHUNK_PRESET_ID } from '@/utils/chunkUtils'
 
 const route = useRoute()
@@ -523,12 +524,16 @@ const cardTags = (database) => {
     {
       name: getKbTypeLabel(database.kb_type || 'milvus'),
       color: getKbTypeColor(database.kb_type || 'milvus')
+    },
+    {
+      name: getShareConfigLabel(database.share_config),
+      color: 'gray'
     }
   ]
   if (database.embedding_model_spec) {
     tags.push({
       name: database.embedding_model_spec.split('/').slice(-1)[0],
-      color: 'blue'
+      color: 'gray'
     })
   }
   return tags

@@ -52,7 +52,7 @@
           aria-label="关闭文件面板"
           @click="emitClose"
         >
-          <PanelRightClose :size="15" />
+          <PanelRight :size="15" />
         </button>
       </div>
     </div>
@@ -137,7 +137,7 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { Download, Folders, PanelRightClose, RefreshCw, Trash2, X } from 'lucide-vue-next'
+import { Download, Folders, PanelRight, RefreshCw, Trash2, X } from 'lucide-vue-next'
 import { Modal, message } from 'ant-design-vue'
 import FileTreeComponent from '@/components/FileTreeComponent.vue'
 import AgentFilePreview from '@/components/AgentFilePreview.vue'

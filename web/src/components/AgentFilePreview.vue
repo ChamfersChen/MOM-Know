@@ -272,7 +272,7 @@ import {
   Download,
   Globe,
   Maximize,
-  PanelRightClose,
+  PanelRight,
   FilePen,
   Save,
   X
@@ -368,7 +368,7 @@ const closeTitle = computed(() =>
   props.closeVariant === 'collapse-right' ? '收起预览面板' : '关闭预览'
 )
 const closeIconComponent = computed(() =>
-  props.closeVariant === 'collapse-right' ? PanelRightClose : X
+  props.closeVariant === 'collapse-right' ? PanelRight : X
 )
 const htmlPreviewMode = ref('render')
 const editMode = ref('preview')

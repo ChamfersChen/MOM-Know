@@ -204,12 +204,18 @@
             <KnowledgeGraphSection
               :visible="true"
               :active="activeTab === 'graph'"
+              :readonly="!canManageDatabase"
               @toggle-visible="() => {}"
             />
           </div>
 
           <div v-if="isMilvus && activeTab === 'mindmap'" class="tab-panel">
-            <MindMapSection v-if="kbId" :kb-id="kbId" ref="mindmapSectionRef" />
+            <MindMapSection
+              v-if="kbId"
+              :kb-id="kbId"
+              :readonly="!canManageDatabase"
+              ref="mindmapSectionRef"
+            />
           </div>
 
           <div v-if="isMilvus && activeTab === 'evaluation'" class="tab-panel">
@@ -458,7 +464,7 @@ const tabs = computed(() => {
 const visibleTabs = computed(() =>
   canManageDatabase.value
     ? tabs.value
-    : tabs.value.filter((tab) => ['filetable', 'query'].includes(tab.key))
+    : tabs.value.filter((tab) => ['filetable', 'query', 'graph', 'mindmap'].includes(tab.key))
 )
 const activeTab = ref('filetable')
 
@@ -661,7 +667,7 @@ watch(
     }
 
     if (newFileCount !== oldFileCount) {
-      if (newFileCount > 0) {
+      if (newFileCount > 0 && canManageDatabase.value) {
         setTimeout(async () => {
           if (querySectionRef.value) {
             if (database.value.additional_params?.auto_generate_questions) {
