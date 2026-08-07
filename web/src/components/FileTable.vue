@@ -291,11 +291,22 @@
             <template #content>
               <div class="file-action-list">
                 <template v-if="row.is_folder">
-                  <a-button v-if="!readonly" type="text" block @click="showCreateFolderModal(row.file_id)">
+                  <a-button
+                    v-if="!readonly"
+                    type="text"
+                    block
+                    @click="showCreateFolderModal(row.file_id)"
+                  >
                     <template #icon><component :is="h(FolderPlus)" size="14" /></template>
                     新建子文件夹
                   </a-button>
-                  <a-button v-if="!readonly" type="text" block danger @click="handleDeleteFolder(row)">
+                  <a-button
+                    v-if="!readonly"
+                    type="text"
+                    block
+                    danger
+                    @click="handleDeleteFolder(row)"
+                  >
                     <template #icon><component :is="h(Trash2)" size="14" /></template>
                     删除文件夹
                   </a-button>

@@ -2,13 +2,14 @@ import asyncio
 import os
 import secrets
 import string
+from collections.abc import Awaitable
 from dataclasses import replace
 from typing import Any
 
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
-from yuxi.knowledge.base import KBNotFoundError, KnowledgeBase
+from yuxi.knowledge.base import KBNameConflictError, KBNotFoundError, KnowledgeBase
 from yuxi.knowledge.cache import (
     cache_kb_config,
     get_cached_kb_config,
@@ -17,13 +18,13 @@ from yuxi.knowledge.cache import (
 )
 from yuxi.knowledge.chunking.ragflow_like.presets import deep_merge
 from yuxi.knowledge.factory import KnowledgeBaseFactory
-from yuxi.knowledge.contracts import (
+from yuxi.knowledge.read_models import (
     KnowledgeBaseConfig,
     KnowledgeBaseDetail,
     KnowledgeBaseSummary,
-    redact_sensitive_params,
 )
 from yuxi.knowledge.schemas import FindOutputSchema, OpenOutputSchema
+from yuxi.knowledge.utils.security import redact_sensitive_params
 from yuxi.permissions import ResourcePermission, normalize_permission_config, resolve_knowledge_base_permission
 from yuxi.storage.postgres.models_business import User
 from yuxi.utils import logger
@@ -206,6 +207,60 @@ class KnowledgeBaseManager:
 
         raise ValueError("知识库共享配置必须使用 version 2")
 
+    @staticmethod
+    def _normalize_database_stats(stats: dict | None) -> dict[str, int]:
+        """规范化知识库聚合统计字段。"""
+        normalized = {
+            "file_count": 0,
+            "folder_count": 0,
+            "row_count": 0,
+            "total_size": 0,
+            "chunk_count": 0,
+            "token_count": 0,
+            "pending_parse_count": 0,
+            "pending_index_count": 0,
+            "processing_count": 0,
+        }
+        if not isinstance(stats, dict):
+            return normalized
+
+        for key in normalized:
+            try:
+                normalized[key] = max(int(stats.get(key) or 0), 0)
+            except (TypeError, ValueError):
+                normalized[key] = 0
+        return normalized
+
+    async def _refresh_database_stats(
+        self,
+        kb_id: str,
+        stats: dict[str, int] | None = None,
+    ) -> dict[str, int]:
+        """刷新并持久化知识库聚合统计。"""
+        from yuxi.repositories.knowledge_base_repository import KnowledgeBaseRepository
+
+        if stats is None:
+            stats = await self._get_database_file_stats(kb_id)
+        normalized_stats = self._normalize_database_stats(stats)
+        kb = await KnowledgeBaseRepository().update_stats(kb_id, normalized_stats)
+        if kb is None:
+            raise KBNotFoundError(f"Database {kb_id} not found")
+        return normalized_stats
+
+    async def _run_with_stats_refresh(self, kb_id: str, operation: Awaitable[Any]) -> Any:
+        """执行文件操作并刷新统计，同时保留原始操作异常。"""
+        try:
+            result = await operation
+        except (Exception, asyncio.CancelledError):
+            try:
+                await self._refresh_database_stats(kb_id)
+            except (Exception, asyncio.CancelledError) as refresh_error:
+                logger.error(f"Refresh database stats after failed operation: kb_id={kb_id}: {refresh_error}")
+            raise
+
+        await self._refresh_database_stats(kb_id)
+        return result
+
     def _database_read_fields(
         self,
         row: Any,
@@ -223,7 +278,7 @@ class KnowledgeBaseManager:
             else dict(row.additional_params or {})
         )
         persisted_stats = additional_params.pop("stats", None)
-        normalized_stats = KnowledgeBase._normalize_database_stats(stats if stats is not None else persisted_stats)
+        normalized_stats = self._normalize_database_stats(stats if stats is not None else persisted_stats)
 
         return {
             "kb_id": row.kb_id,
@@ -384,7 +439,10 @@ class KnowledgeBaseManager:
     async def create_folder(self, kb_id: str, folder_name: str, parent_id: str = None) -> dict:
         """Create a folder in the database."""
         kb_instance = await self.get_kb_executor(kb_id)
-        return await kb_instance.create_folder(kb_id, folder_name, parent_id)
+        return await self._run_with_stats_refresh(
+            kb_id,
+            kb_instance.create_folder(kb_id, folder_name, parent_id),
+        )
 
     async def create_database(
         self,
@@ -397,7 +455,7 @@ class KnowledgeBaseManager:
         created_by: str | None = None,
         created_by_department_id: int | str | None = None,
         **kwargs,
-    ) -> dict:
+    ) -> KnowledgeBaseDetail:
         """
         创建数据库
 
@@ -419,9 +477,8 @@ class KnowledgeBaseManager:
             available_types = list(KnowledgeBaseFactory.get_available_types().keys())
             raise ValueError(f"Unsupported knowledge base type: {kb_type}. Available types: {available_types}")
 
-        # 检查名称是否已存在
         if await self.database_name_exists(database_name):
-            raise ValueError(f"知识库名称 '{database_name}' 已存在，请使用其他名称")
+            raise KBNameConflictError(f"知识库名称 '{database_name}' 已存在，请使用其他名称")
 
         share_config = self._normalize_share_config(
             share_config,
@@ -430,7 +487,23 @@ class KnowledgeBaseManager:
         )
 
         kb_instance = self._get_or_create_kb_instance(kb_type)
-        kwargs = kb_instance.normalize_additional_params(kwargs)
+        additional_params = kwargs
+        additional_params.setdefault("auto_generate_questions", False)
+        if "reranker_config" in additional_params:
+            raise ValueError("reranker_config 已移除，请在查询参数中使用 reranker_model spec")
+        additional_params = kb_instance.normalize_additional_params(additional_params)
+
+        if kb_instance.requires_embedding_model:
+            if not embedding_model_spec:
+                raise ValueError("embedding_model_spec 不能为空")
+
+            from yuxi.models.providers.cache import model_cache
+
+            info = model_cache.get_model_info(embedding_model_spec)
+            if not info or info.model_type != "embedding":
+                raise ValueError(f"不支持的 embedding 模型: {embedding_model_spec}")
+        else:
+            embedding_model_spec = None
 
         from yuxi.repositories.knowledge_base_repository import KnowledgeBaseRepository
 
@@ -442,10 +515,7 @@ class KnowledgeBaseManager:
                 break
 
         query_params = kb_instance.get_default_query_params(kb_id)
-        persisted_additional_params = {
-            **kwargs,
-            "stats": {"file_count": 0, "chunk_count": 0, "token_count": 0},
-        }
+        persisted_additional_params = {**additional_params, "stats": self._normalize_database_stats(None)}
         await kb_repo.create(
             {
                 "kb_id": kb_id,
@@ -462,28 +532,21 @@ class KnowledgeBaseManager:
         )
         os.makedirs(os.path.join(kb_instance.work_dir, kb_id), exist_ok=True)
 
-        logger.info(f"Created {kb_type} database: {database_name} ({kb_id}) with {kwargs}")
-        return {
-            "kb_id": kb_id,
-            "name": database_name,
-            "description": description,
-            "kb_type": kb_type,
-            "embedding_model_spec": embedding_model_spec,
-            "llm_model_spec": llm_model_spec,
-            "query_params": query_params,
-            "additional_params": persisted_additional_params,
-            "metadata": persisted_additional_params,
-            "share_config": share_config,
-            "created_by": created_by,
-            "created_at": utc_isoformat(),
-            "files": {},
-        }
+        logger.info(f"Created {kb_type} database: {database_name} ({kb_id}) with {additional_params}")
+        database = await self.get_database_info(kb_id)
+        if database is None:
+            raise KBNotFoundError(f"Database {kb_id} not found after creation")
+        return database
 
     async def delete_database(self, kb_id: str) -> dict:
         """删除数据库"""
+        from yuxi.repositories.knowledge_base_repository import KnowledgeBaseRepository
+
         try:
             kb_instance = await self.get_kb_executor(kb_id)
-            return await kb_instance.delete_database(kb_id)
+            result = await kb_instance.cleanup_database_resources(kb_id)
+            await KnowledgeBaseRepository().delete(kb_id)
+            return result
         except KBNotFoundError as e:
             logger.warning(f"Database {kb_id} not found during deletion: {e}")
             return {"message": "删除成功"}
@@ -494,23 +557,29 @@ class KnowledgeBaseManager:
         """Add file record to metadata"""
         config = await self.get_kb_config(kb_id)
         executor = self._get_or_create_kb_instance(config.kb_type)
-        return await executor.add_file_record(
+        return await self._run_with_stats_refresh(
             kb_id,
-            item,
-            params,
-            operator_id,
-            additional_params=config.additional_params,
+            executor.add_file_record(
+                kb_id,
+                item,
+                params,
+                operator_id,
+                additional_params=config.additional_params,
+            ),
         )
 
     async def parse_file(self, kb_id: str, file_id: str, operator_id: str | None = None) -> dict:
         """Parse file to Markdown"""
         config = await self.get_kb_config(kb_id)
         executor = self._get_or_create_kb_instance(config.kb_type)
-        return await executor.parse_file(
+        return await self._run_with_stats_refresh(
             kb_id,
-            file_id,
-            operator_id,
-            additional_params=config.additional_params,
+            executor.parse_file(
+                kb_id,
+                file_id,
+                operator_id,
+                additional_params=config.additional_params,
+            ),
         )
 
     async def index_file(
@@ -519,13 +588,16 @@ class KnowledgeBaseManager:
         """Index parsed file"""
         config = await self.get_kb_config(kb_id)
         executor = self._get_or_create_kb_instance(config.kb_type)
-        return await executor.index_file(
+        return await self._run_with_stats_refresh(
             kb_id,
-            file_id,
-            operator_id,
-            params=params,
-            embedding_model_spec=config.embedding_model_spec,
-            additional_params=config.additional_params,
+            executor.index_file(
+                kb_id,
+                file_id,
+                operator_id,
+                params=params,
+                embedding_model_spec=config.embedding_model_spec,
+                additional_params=config.additional_params,
+            ),
         )
 
     async def update_file_params(self, kb_id: str, file_id: str, params: dict, operator_id: str | None = None) -> None:
@@ -561,6 +633,14 @@ class KnowledgeBaseManager:
             if key in config.query_options:
                 option["default"] = config.query_options[key]
         return params
+
+    async def update_kb_query_params(self, kb_id: str, params: dict[str, Any]) -> None:
+        """合并并持久化知识库查询参数。"""
+        from yuxi.repositories.knowledge_base_repository import KnowledgeBaseRepository
+
+        kb = await KnowledgeBaseRepository().merge_query_params_options(kb_id, params)
+        if kb is None:
+            raise KBNotFoundError(f"Database {kb_id} not found")
 
     async def export_data(self, kb_id: str, format: str = "zip", **kwargs) -> str:
         """导出知识库数据"""
@@ -859,29 +939,34 @@ class KnowledgeBaseManager:
     async def delete_folder(self, kb_id: str, folder_id: str) -> None:
         """递归删除文件夹"""
         kb_instance = await self.get_kb_executor(kb_id)
-        await kb_instance.delete_folder(kb_id, folder_id)
+        await self._run_with_stats_refresh(kb_id, kb_instance.delete_folder(kb_id, folder_id))
 
     async def delete_file(self, kb_id: str, file_id: str) -> None:
         """删除文件"""
         kb_instance = await self.get_kb_executor(kb_id)
-        await kb_instance.delete_file(kb_id, file_id)
+        await self._run_with_stats_refresh(kb_id, kb_instance.delete_file(kb_id, file_id))
 
     async def update_content(self, kb_id: str, file_ids: list[str], params: dict | None = None) -> list[dict]:
         """更新内容（重新分块）"""
         config = await self.get_kb_config(kb_id)
         executor = self._get_or_create_kb_instance(config.kb_type)
-        return await executor.update_content(
+        return await self._run_with_stats_refresh(
             kb_id,
-            file_ids,
-            params or {},
-            embedding_model_spec=config.embedding_model_spec,
-            additional_params=config.additional_params,
+            executor.update_content(
+                kb_id,
+                file_ids,
+                params or {},
+                embedding_model_spec=config.embedding_model_spec,
+                additional_params=config.additional_params,
+            ),
         )
 
     async def repair_missing_file_stats(self, kb_id: str) -> dict:
         """修复历史文件缺失的 Chunk/Token 统计，并刷新知识库聚合统计。"""
         kb_instance = await self.get_kb_executor(kb_id)
-        return await kb_instance.repair_missing_file_stats(kb_id)
+        result = await kb_instance.repair_missing_file_stats(kb_id)
+        result["stats"] = await self._refresh_database_stats(kb_id, result["stats"])
+        return result
 
     async def get_file_basic_info(self, kb_id: str, file_id: str) -> dict:
         """获取文件基本信息（仅元数据）"""
@@ -1003,7 +1088,7 @@ class KnowledgeBaseManager:
         share_config: dict | None = None,
         operator_uid: str | None = None,
         operator_department_id: int | str | None = None,
-    ) -> dict:
+    ) -> KnowledgeBaseDetail:
         """更新数据库"""
         from yuxi.repositories.knowledge_base_repository import KnowledgeBaseRepository
 
@@ -1045,7 +1130,10 @@ class KnowledgeBaseManager:
         # 保存到数据库
         await kb_repo.update(kb_id, update_data)
 
-        return await self.get_database_info(kb_id)
+        database = await self.get_database_info(kb_id)
+        if database is None:
+            raise KBNotFoundError(f"Database {kb_id} not found after update")
+        return database
 
     async def retrieve(self, kb_id: str, query: str, **options) -> dict:
         """按 kb_id 加载最新运行时元数据并执行检索。"""
@@ -1169,132 +1257,32 @@ class KnowledgeBaseManager:
     # =============================================================================
 
     async def detect_data_inconsistencies(self) -> dict:
-        """
-        检测向量数据库中存在但在 metadata 中缺失的数据
+        """协调各类型执行器检测外部资源与主数据的不一致。"""
+        from yuxi.repositories.knowledge_base_repository import KnowledgeBaseRepository
 
-        Returns:
-            包含不一致信息的字典，按知识库类型分组
-        """
         inconsistencies = {
             "milvus": {"missing_collections": [], "missing_files": []},
             "total_missing_collections": 0,
             "total_missing_files": 0,
         }
-
         logger.info("开始检测向量数据库与元数据的一致性...")
 
-        # 检测 Milvus 数据不一致
         if "milvus" in self.kb_instances:
             try:
-                milvus_inconsistencies = await self._detect_milvus_inconsistencies()
+                rows = await KnowledgeBaseRepository().get_all()
+                known_kb_ids = {row.kb_id for row in rows}
+                managed_kb_ids = {row.kb_id for row in rows if (row.kb_type or "milvus") == "milvus"}
+                milvus_inconsistencies = await self.kb_instances["milvus"].detect_data_inconsistencies(
+                    known_kb_ids,
+                    managed_kb_ids,
+                )
                 inconsistencies["milvus"] = milvus_inconsistencies
-                inconsistencies["total_missing_collections"] += len(milvus_inconsistencies["missing_collections"])
-                inconsistencies["total_missing_files"] += len(milvus_inconsistencies["missing_files"])
+                inconsistencies["total_missing_collections"] = len(milvus_inconsistencies["missing_collections"])
+                inconsistencies["total_missing_files"] = len(milvus_inconsistencies["missing_files"])
             except Exception as e:
                 logger.error(f"检测 Milvus 数据不一致时出错: {e}")
 
-        # 输出检测结果到日志
         self._log_inconsistencies(inconsistencies)
-
-        return inconsistencies
-
-    async def _detect_milvus_inconsistencies(self) -> dict:
-        """检测 Milvus 中的数据不一致"""
-        from yuxi.repositories.knowledge_base_repository import KnowledgeBaseRepository
-
-        inconsistencies = {"missing_collections": [], "missing_files": []}
-
-        milvus_kb = self.kb_instances["milvus"]
-
-        try:
-            from pymilvus import utility
-
-            # 获取 Milvus 中所有实际的集合
-            actual_collection_names = set(utility.list_collections(using=milvus_kb.connection_alias))
-
-            # 从数据库获取所有已知的数据库ID
-            kb_repo = KnowledgeBaseRepository()
-            rows = await kb_repo.get_all()
-            all_known_kb_ids = {row.kb_id for row in rows}
-
-            # 找出存在于 Milvus 但不在 metadata 中的集合
-            # missing_collections = actual_collection_names - metadata_collection_names
-            for collection_name in actual_collection_names:
-                # 跳过一些系统集合
-                if not collection_name.startswith("kb_"):
-                    continue
-
-                # 检查集合是否属于已知数据库
-                is_known = False
-
-                if collection_name in all_known_kb_ids:
-                    is_known = True
-
-                # 如果是已知集合，跳过
-                if is_known:
-                    continue
-
-                # 如果是未知集合，记录下来
-                collection_info = {"collection_name": collection_name, "detected_at": utc_isoformat()}
-
-                # 尝试获取集合的基本信息
-                try:
-                    from pymilvus import Collection
-
-                    collection = Collection(name=collection_name, using=milvus_kb.connection_alias)
-                    collection_info["count"] = collection.num_entities
-                    collection_info["description"] = collection.description
-                except Exception as e:
-                    logger.warning(f"无法获取集合 {collection_name} 的详细信息: {e}")
-                    collection_info["count"] = "unknown"
-
-                inconsistencies["missing_collections"].append(collection_info)
-                logger.warning(
-                    f"发现 Milvus 中存在但 metadata 中缺失的集合: {collection_name} "
-                    f"(实体数: {collection_info['count']})"
-                )
-
-            from yuxi.repositories.knowledge_base_repository import KnowledgeBaseRepository
-
-            loaded_kb_ids = {
-                row.kb_id for row in await KnowledgeBaseRepository().get_all() if (row.kb_type or "milvus") == "milvus"
-            }
-
-            # 检查文件级别的不一致（针对已知的数据库）
-            for kb_id in loaded_kb_ids:
-                try:
-                    if utility.has_collection(kb_id, using=milvus_kb.connection_alias):
-                        from pymilvus import Collection
-
-                        collection = Collection(name=kb_id, using=milvus_kb.connection_alias)
-                        actual_count = collection.num_entities
-
-                        # 获取 metadata 中记录的文件数量
-                        from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
-
-                        metadata_files_count = (await KnowledgeFileRepository().get_kb_file_stats(kb_id))["file_count"]
-
-                        # 如果向量数据库中有数据但 metadata 中没有文件记录，可能存在文件缺失
-                        if actual_count > 0 and metadata_files_count == 0:
-                            inconsistencies["missing_files"].append(
-                                {
-                                    "kb_id": kb_id,
-                                    "vector_count": actual_count,
-                                    "metadata_files_count": metadata_files_count,
-                                    "detected_at": utc_isoformat(),
-                                }
-                            )
-                            logger.warning(
-                                f"发现数据库 {kb_id} 在 Milvus 中有 {actual_count} 条向量数据，"
-                                "但 metadata 中没有文件记录"
-                            )
-
-                except Exception as e:
-                    logger.debug(f"检查数据库 {kb_id} 的文件一致性时出错: {e}")
-
-        except Exception as e:
-            logger.error(f"检测 Milvus 数据不一致时出错: {e}")
-
         return inconsistencies
 
     def _log_inconsistencies(self, inconsistencies: dict) -> None:

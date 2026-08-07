@@ -75,9 +75,6 @@ class TestAddFileRecordSizeFallback:
             async def _persist_file_meta(self, file_id, meta):
                 pass
 
-            async def refresh_database_stats(self, kb_id):
-                return {}
-
             async def index_file(self, kb_id, file_id, operator_id=None):
                 return {}
 

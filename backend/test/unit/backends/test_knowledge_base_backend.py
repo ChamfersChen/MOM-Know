@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 import yuxi.agents.backends.knowledge_base_backend as knowledge_base_backend
-from yuxi.knowledge.contracts import KnowledgeBaseSummary
+from yuxi.knowledge.read_models import KnowledgeBaseSummary
 
 
 @pytest.mark.asyncio

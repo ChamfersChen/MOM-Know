@@ -8,8 +8,8 @@ from typing import Any, Literal
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from yuxi.storage.postgres.models_business import Agent, User
 from yuxi.permissions import ResourcePermission, normalize_permission_config, resolve_agent_permission
+from yuxi.storage.postgres.models_business import Agent, User
 from yuxi.utils.datetime_utils import utc_now_naive
 
 DEFAULT_AGENT_SLUG = "default-chatbot"

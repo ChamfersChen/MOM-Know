@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from yuxi.knowledge.contracts import KnowledgeBaseSummary
+from yuxi.knowledge.read_models import KnowledgeBaseSummary
 
 
 def _knowledge_summary(kb_id: str) -> KnowledgeBaseSummary:

@@ -68,8 +68,7 @@ const agentStats = computed(() => ({
   manageable: managedAgents.value.filter((agent) => agent.can_manage).length,
   global: managedAgents.value.filter(
     (agent) => (agent.share_config?.read_scope || agent.share_config)?.access_level === 'global'
-  )
-    .length
+  ).length
 }))
 const canManageAgent = (agent) => !!agent?.can_manage
 const getAgentDefaultIconSrc = (agent) => (agent.id ? generatePixelAvatar(agent.id) : '')

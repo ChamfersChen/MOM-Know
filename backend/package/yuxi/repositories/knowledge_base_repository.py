@@ -58,6 +58,21 @@ class KnowledgeBaseRepository:
                 kb.query_params = query_params
             return kb
 
+    async def update_stats(self, kb_id: str, stats: dict[str, int]) -> KnowledgeBase | None:
+        """在行锁内更新统计投影，保留并发写入的其他附加参数。"""
+        async with kb_config_cache_lock(kb_id):
+            async with pg_manager.get_async_session_context() as session:
+                statement = select(KnowledgeBase).where(KnowledgeBase.kb_id == kb_id).with_for_update()
+                result = await session.execute(statement)
+                kb = result.scalar_one_or_none()
+                if kb is None:
+                    return None
+
+                additional_params = dict(kb.additional_params or {})
+                additional_params["stats"] = stats
+                kb.additional_params = additional_params
+            return kb
+
     async def delete(self, kb_id: str) -> None:
         async with kb_config_cache_lock(kb_id):
             await delete_cached_kb_config(kb_id)

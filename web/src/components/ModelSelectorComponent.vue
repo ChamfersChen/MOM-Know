@@ -557,7 +557,6 @@ const handleClear = () => {
     color: var(--gray-1000);
     background: var(--main-50);
   }
-
 }
 
 .model-option {

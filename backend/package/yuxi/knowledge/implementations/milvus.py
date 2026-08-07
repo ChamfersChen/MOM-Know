@@ -24,13 +24,14 @@ from pymilvus import (
 from yuxi.knowledge.base import FileStatus, KnowledgeBase
 from yuxi.knowledge.chunking.ragflow_like.dispatcher import chunk_markdown
 from yuxi.knowledge.chunking.ragflow_like.nlp import count_tokens
-from yuxi.knowledge.contracts import KnowledgeBaseConfig
+from yuxi.knowledge.read_models import KnowledgeBaseConfig
 from yuxi.knowledge.utils.kb_utils import resolve_processing_params
 from yuxi.models.providers.cache import model_cache
 from yuxi.repositories.knowledge_chunk_repository import KnowledgeChunkRepository
 from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
 from yuxi.services.ocr_service import parse_document
 from yuxi.utils import hashstr, logger
+from yuxi.utils.datetime_utils import utc_isoformat
 
 MILVUS_AVAILABLE = True
 CONTENT_SPARSE_FIELD = "content_sparse"
@@ -761,7 +762,6 @@ class MilvusKB(KnowledgeBase):
                 }
             )
 
-            await self.refresh_database_stats(kb_id)
             return result
 
         except (Exception, asyncio.CancelledError) as e:
@@ -852,8 +852,6 @@ class MilvusKB(KnowledgeBase):
                     kb_id=kb_id,
                     data={"status": FileStatus.INDEXED, "error_message": None, **chunk_stats},
                 )
-                await self.refresh_database_stats(kb_id)
-
                 # 返回更新后的文件信息
                 updated_file_meta = file_meta.copy()
                 updated_file_meta["status"] = FileStatus.INDEXED
@@ -1267,7 +1265,6 @@ class MilvusKB(KnowledgeBase):
             kb_id=kb_id,
             data={"chunk_count": 0, "token_count": 0},
         )
-        await self.refresh_database_stats(kb_id)
 
     async def delete_file(self, kb_id: str, file_id: str) -> None:
         """删除文件（包括元数据）"""
@@ -1275,7 +1272,6 @@ class MilvusKB(KnowledgeBase):
         await self.delete_file_chunks_only(kb_id, file_id)
 
         await KnowledgeFileRepository().delete(file_id)
-        await self.refresh_database_stats(kb_id)
 
     async def get_file_basic_info(self, kb_id: str, file_id: str) -> dict:
         """获取文件基本信息（仅元数据）"""
@@ -1328,8 +1324,8 @@ class MilvusKB(KnowledgeBase):
         content_info = await self._get_file_content_from_meta(file_id, file_meta)
         return {"meta": file_meta, **content_info}
 
-    async def delete_database(self, kb_id: str) -> dict:
-        """删除数据库，同时清除Milvus中的集合"""
+    async def cleanup_database_resources(self, kb_id: str) -> dict:
+        """清理知识库资源，同时删除 Milvus 集合。"""
 
         def delete_milvus_collections() -> None:
             try:
@@ -1347,8 +1343,53 @@ class MilvusKB(KnowledgeBase):
 
         await asyncio.to_thread(delete_milvus_collections)
 
-        # Call base method to delete local files and metadata
-        return await super().delete_database(kb_id)
+        return await super().cleanup_database_resources(kb_id)
+
+    async def detect_data_inconsistencies(
+        self,
+        known_kb_ids: set[str],
+        managed_kb_ids: set[str],
+    ) -> dict[str, list[dict]]:
+        """检测 Milvus 集合与知识库元数据之间的不一致。"""
+        inconsistencies: dict[str, list[dict]] = {"missing_collections": [], "missing_files": []}
+        try:
+            collection_names = set(utility.list_collections(using=self.connection_alias))
+            for collection_name in collection_names:
+                if not collection_name.startswith("kb_") or collection_name in known_kb_ids:
+                    continue
+
+                collection_info = {"collection_name": collection_name, "detected_at": utc_isoformat()}
+                try:
+                    collection = Collection(name=collection_name, using=self.connection_alias)
+                    collection_info["count"] = collection.num_entities
+                    collection_info["description"] = collection.description
+                except Exception as exc:
+                    logger.warning(f"无法获取集合 {collection_name} 的详细信息: {exc}")
+                    collection_info["count"] = "unknown"
+                inconsistencies["missing_collections"].append(collection_info)
+
+            file_repo = KnowledgeFileRepository()
+            for kb_id in managed_kb_ids:
+                try:
+                    if not utility.has_collection(kb_id, using=self.connection_alias):
+                        continue
+                    collection = Collection(name=kb_id, using=self.connection_alias)
+                    file_count = (await file_repo.get_kb_file_stats(kb_id))["file_count"]
+                    if collection.num_entities > 0 and file_count == 0:
+                        inconsistencies["missing_files"].append(
+                            {
+                                "kb_id": kb_id,
+                                "vector_count": collection.num_entities,
+                                "metadata_files_count": file_count,
+                                "detected_at": utc_isoformat(),
+                            }
+                        )
+                except Exception as exc:
+                    logger.debug(f"检查数据库 {kb_id} 的文件一致性时出错: {exc}")
+        except Exception as exc:
+            logger.error(f"检测 Milvus 数据不一致时出错: {exc}")
+
+        return inconsistencies
 
     def get_query_params_config(self, kb_id: str, **kwargs) -> dict:
         """获取 Milvus 知识库的查询参数配置"""

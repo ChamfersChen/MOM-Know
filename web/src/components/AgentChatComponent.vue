@@ -1027,10 +1027,7 @@ const openPanelPreview = (file, keepTreeOpen = false) => {
 
   if (existingIndex >= 0) {
     const existingTab = agentPanelPreviewTabs.value[existingIndex]
-    if (
-      existingTab.modified_at !== tab.modified_at ||
-      existingTab.size !== tab.size
-    ) {
+    if (existingTab.modified_at !== tab.modified_at || existingTab.size !== tab.size) {
       releasePreviewCacheEntry(tab.path)
     }
     agentPanelPreviewTabs.value = agentPanelPreviewTabs.value.map((item, index) =>
@@ -3336,7 +3333,6 @@ watch(currentChatId, (threadId, oldThreadId) => {
   }
   emit('thread-change', threadId || '')
 })
-
 </script>
 
 <style lang="less" scoped>

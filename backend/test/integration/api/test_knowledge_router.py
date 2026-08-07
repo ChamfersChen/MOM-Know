@@ -165,7 +165,9 @@ async def test_create_database_with_chunk_preset(test_client, admin_headers):
 
     create_response = await test_client.post("/api/knowledge/databases", json=payload, headers=admin_headers)
     assert create_response.status_code == 200, create_response.text
-    kb_id = create_response.json()["kb_id"]
+    create_payload = create_response.json()
+    assert create_payload["files"] == {}
+    kb_id = create_payload["kb_id"]
 
     info_response = await test_client.get(f"/api/knowledge/databases/{kb_id}", headers=admin_headers)
     assert info_response.status_code == 200, info_response.text

@@ -24,8 +24,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yuxi import config as sys_config
 from yuxi.agents.mcp.service import get_enabled_mcp_server_slugs
 from yuxi.agents.skills.repository import SkillRepository
-from yuxi.storage.postgres.models_business import Skill, User
 from yuxi.permissions import ResourcePermission, normalize_permission_config, resolve_skill_permission
+from yuxi.storage.postgres.models_business import Skill, User
 from yuxi.storage.redis import get_async_redis_client
 from yuxi.utils.logging_config import logger
 from yuxi.utils.paths import ensure_within_root

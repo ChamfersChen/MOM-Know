@@ -53,7 +53,9 @@
                 </div>
                 <div class="card-title">{{ option.title }}</div>
                 <div
-                  v-if="scopes[scope.key].access_level === option.value && option.value !== 'global'"
+                  v-if="
+                    scopes[scope.key].access_level === option.value && option.value !== 'global'
+                  "
                   class="card-action"
                   @click.stop
                 >
@@ -69,13 +71,16 @@
                       :disabled="disabled"
                     >
                       <UserPlus class="select-action-icon" :size="14" />
-                      <span class="access-count">{{ getAccessCount(scope.key, option.value) }}</span>
+                      <span class="access-count">{{
+                        getAccessCount(scope.key, option.value)
+                      }}</span>
                     </a-button>
                     <template #overlay>
                       <div class="selection-dropdown" @mousedown.stop @click.stop>
                         <div class="selection-dropdown-header">
                           <div class="selection-dropdown-title">
-                            {{ scope.key === 'manage_scope' ? '可管理' : '可读取' }}{{ option.value === 'department' ? '部门' : '用户' }}
+                            {{ scope.key === 'manage_scope' ? '可管理' : '可读取'
+                            }}{{ option.value === 'department' ? '部门' : '用户' }}
                           </div>
                           <div class="selection-dropdown-subtitle">
                             {{ getAccessSummary(scope.key, option.value) }}
@@ -90,7 +95,10 @@
                           @mousedown.stop
                           @click.stop
                         />
-                        <div v-if="getSelectionOptions(scope.key, option.value).length" class="selection-list">
+                        <div
+                          v-if="getSelectionOptions(scope.key, option.value).length"
+                          class="selection-list"
+                        >
                           <div
                             v-for="item in getSelectionOptions(scope.key, option.value)"
                             :key="item.value"
@@ -223,7 +231,12 @@ const scopeOptions = [
 
 const baseShareModeOptions = [
   { value: 'global', title: '全局共享', description: '所有用户都可以访问', icon: Globe },
-  { value: 'department', title: '部门共享', description: '选中的部门成员可以访问', icon: Building2 },
+  {
+    value: 'department',
+    title: '部门共享',
+    description: '选中的部门成员可以访问',
+    icon: Building2
+  },
   { value: 'user', title: '指定人', description: '选中的用户可以访问', icon: Users }
 ]
 
@@ -233,20 +246,30 @@ const selectionSearch = reactive({
   manage_scope: { department: '', user: '' }
 })
 
-const currentDepartmentId = computed(() => (userStore.departmentId ? Number(userStore.departmentId) : null))
+const currentDepartmentId = computed(() =>
+  userStore.departmentId ? Number(userStore.departmentId) : null
+)
 const currentUserUid = computed(() => userStore.uid || '')
 const normalizedAllowedAccessLevels = computed(() => {
-  const allowed = props.allowedAccessLevels.filter((level) => ['global', 'department', 'user'].includes(level))
+  const allowed = props.allowedAccessLevels.filter((level) =>
+    ['global', 'department', 'user'].includes(level)
+  )
   return allowed.length ? allowed : ['global']
 })
 const shareModeOptions = computed(() =>
-  baseShareModeOptions.filter((option) => normalizedAllowedAccessLevels.value.includes(option.value))
+  baseShareModeOptions.filter((option) =>
+    normalizedAllowedAccessLevels.value.includes(option.value)
+  )
 )
 
 const createScope = (scope) => ({
   access_level: scope?.access_level || 'global',
-  department_ids: Array.from(new Set((scope?.department_ids || []).map(Number).filter(Number.isFinite))),
-  user_uids: Array.from(new Set((scope?.user_uids || []).map((uid) => String(uid).trim()).filter(Boolean)))
+  department_ids: Array.from(
+    new Set((scope?.department_ids || []).map(Number).filter(Number.isFinite))
+  ),
+  user_uids: Array.from(
+    new Set((scope?.user_uids || []).map((uid) => String(uid).trim()).filter(Boolean))
+  )
 })
 
 const normalizeScope = (scope, { includeCurrent = false } = {}) => {
@@ -260,12 +283,20 @@ const normalizeScope = (scope, { includeCurrent = false } = {}) => {
     normalized.user_uids = []
   } else if (normalized.access_level === 'department') {
     normalized.user_uids = []
-    if (includeCurrent && currentDepartmentId.value && !normalized.department_ids.includes(currentDepartmentId.value)) {
+    if (
+      includeCurrent &&
+      currentDepartmentId.value &&
+      !normalized.department_ids.includes(currentDepartmentId.value)
+    ) {
       normalized.department_ids.unshift(currentDepartmentId.value)
     }
   } else {
     normalized.department_ids = []
-    if (includeCurrent && currentUserUid.value && !normalized.user_uids.includes(currentUserUid.value)) {
+    if (
+      includeCurrent &&
+      currentUserUid.value &&
+      !normalized.user_uids.includes(currentUserUid.value)
+    ) {
       normalized.user_uids.unshift(currentUserUid.value)
     }
   }
@@ -276,7 +307,10 @@ const isManageScopeWithinRead = (manageScope, readScope = scopes.read_scope) => 
   if (!manageScope || !readScope || readScope.access_level === 'global') return true
   if (manageScope.access_level !== readScope.access_level) return false
   if (readScope.access_level === 'user') {
-    return manageScope.access_level === 'user' && manageScope.user_uids.every((uid) => readScope.user_uids.includes(uid))
+    return (
+      manageScope.access_level === 'user' &&
+      manageScope.user_uids.every((uid) => readScope.user_uids.includes(uid))
+    )
   }
   if (manageScope.access_level === 'department') {
     return manageScope.department_ids.every((id) => readScope.department_ids.includes(id))
@@ -318,7 +352,12 @@ const toggleScope = (scopeKey, enabled) => {
 }
 
 const setAccessLevel = (scopeKey, accessLevel) => {
-  if (props.disabled || !scopes[scopeKey] || !normalizedAllowedAccessLevels.value.includes(accessLevel)) return
+  if (
+    props.disabled ||
+    !scopes[scopeKey] ||
+    !normalizedAllowedAccessLevels.value.includes(accessLevel)
+  )
+    return
   scopes[scopeKey].access_level = accessLevel
   scopes[scopeKey] = normalizeScope(scopes[scopeKey], {
     includeCurrent: scopeKey === 'read_scope' && props.autoSelectUserDept
@@ -328,14 +367,14 @@ const setAccessLevel = (scopeKey, accessLevel) => {
 const departmentOptions = computed(() =>
   departments.value.map((dept) => ({
     label: dept.name,
-    value: Number(dept.id),
+    value: Number(dept.id)
   }))
 )
 const userOptions = computed(() =>
   users.value.map((user) => ({
     label: user.department_name ? `${user.username}（${user.department_name}）` : user.username,
     value: user.uid,
-    department_id: user.department_id,
+    department_id: user.department_id
   }))
 )
 
@@ -369,11 +408,19 @@ const toggleSelection = (scopeKey, accessLevel, value, checked) => {
   const scope = scopes[scopeKey]
   if (accessLevel === 'department') {
     scope.department_ids = Array.from(
-      new Set(checked ? [...scope.department_ids, Number(value)] : scope.department_ids.filter((id) => id !== Number(value)))
+      new Set(
+        checked
+          ? [...scope.department_ids, Number(value)]
+          : scope.department_ids.filter((id) => id !== Number(value))
+      )
     )
   } else {
     scope.user_uids = Array.from(
-      new Set(checked ? [...scope.user_uids, String(value)] : scope.user_uids.filter((uid) => uid !== String(value)))
+      new Set(
+        checked
+          ? [...scope.user_uids, String(value)]
+          : scope.user_uids.filter((uid) => uid !== String(value))
+      )
     )
   }
 }
@@ -396,9 +443,13 @@ const loadUsers = async () => {
 
 watch(() => props.modelValue, initConfig, { deep: true })
 watch(normalizedAllowedAccessLevels, initConfig)
-watch(scopes, () => {
-  if (!syncingFromProps.value) emitConfig()
-}, { deep: true })
+watch(
+  scopes,
+  () => {
+    if (!syncingFromProps.value) emitConfig()
+  },
+  { deep: true }
+)
 
 const validateScope = (scope, title) => {
   if (!scope || scope.access_level === 'global') return { valid: true, message: '' }
@@ -422,8 +473,8 @@ const validate = () => {
   return manageResult
 }
 
-const hasManageScopeViolation = computed(
-  () => Boolean(scopes.manage_scope && !isManageScopeWithinRead(scopes.manage_scope))
+const hasManageScopeViolation = computed(() =>
+  Boolean(scopes.manage_scope && !isManageScopeWithinRead(scopes.manage_scope))
 )
 
 onMounted(() => {

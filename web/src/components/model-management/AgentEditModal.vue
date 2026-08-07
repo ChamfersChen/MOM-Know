@@ -138,9 +138,7 @@ const captureProfileBaseline = () => {
   originalShareConfig.value = snapshotShareConfig()
 }
 
-const hasAnyUnsavedChanges = computed(
-  () => agentStore.hasConfigChanges || hasProfileChanges.value
-)
+const hasAnyUnsavedChanges = computed(() => agentStore.hasConfigChanges || hasProfileChanges.value)
 
 const normalizeAgent = (agent) => {
   const agentId = agent?.agent_id || agent?.slug || agent?.id
@@ -171,13 +169,21 @@ const isSubAgentBackend = (backendId) => backendId === SUB_AGENT_BACKEND_ID
 
 const getInitialShareConfig = () => ({
   version: 2,
-  read_scope: { access_level: 'user', department_ids: [], user_uids: userStore.uid ? [userStore.uid] : [] },
+  read_scope: {
+    access_level: 'user',
+    department_ids: [],
+    user_uids: userStore.uid ? [userStore.uid] : []
+  },
   manage_scope: null
 })
 
 const normalizeShareConfigForPayload = () => {
   if (isBuiltinAgent({ id: editingAgentId.value })) {
-    return { version: 2, read_scope: { access_level: 'global', department_ids: [], user_uids: [] }, manage_scope: null }
+    return {
+      version: 2,
+      read_scope: { access_level: 'global', department_ids: [], user_uids: [] },
+      manage_scope: null
+    }
   }
   return agentShareConfig.value || getInitialShareConfig()
 }
@@ -207,10 +213,7 @@ const selectedBackendIcon = computed(() => {
 })
 
 const generateDefaultAgentProfile = () => {
-  const stamp = new Date()
-    .toISOString()
-    .slice(0, 16)
-    .replace(/[-:T]/g, '')
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')
   return {
     name: '新建智能体',
     slug: `agent-${stamp}`
@@ -276,7 +279,11 @@ const openEdit = async (agent) => {
     icon: detail.icon || ''
   })
   agentShareConfig.value = isBuiltinAgent(detail)
-    ? { version: 2, read_scope: { access_level: 'global', department_ids: [], user_uids: [] }, manage_scope: null }
+    ? {
+        version: 2,
+        read_scope: { access_level: 'global', department_ids: [], user_uids: [] },
+        manage_scope: null
+      }
     : detail.share_config || getInitialShareConfig()
   await agentStore.selectAgent(detail.id, { allowSubagent: true })
   captureProfileBaseline()

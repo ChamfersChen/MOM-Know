@@ -10,10 +10,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 from yuxi import config
+from yuxi.knowledge.base import KBNameConflictError, KBNotFoundError
 from yuxi.knowledge.chunking.ragflow_like.presets import get_chunk_preset_options
-from yuxi.knowledge.factory import KnowledgeBaseFactory
 from yuxi.knowledge.graphs.milvus_graph_service import GRAPH_TASK_TYPE, MilvusGraphService
-from yuxi.knowledge.contracts import KnowledgeBaseDetail
+from yuxi.knowledge.read_models import KnowledgeBaseDetail
 from yuxi.knowledge.parser.unified import SUPPORTED_FILE_EXTENSIONS, is_supported_file_extension
 from yuxi.knowledge.runtime import knowledge_base
 from yuxi.knowledge.utils import calculate_content_hash, is_minio_url, parse_minio_url
@@ -35,7 +35,6 @@ from yuxi.permissions import (
     ResourcePermission,
     resolve_knowledge_base_permission,
 )
-from yuxi.models.providers.cache import model_cache
 from yuxi.services.ocr_service import parse_document
 from yuxi.services.task_service import TaskContext, tasker
 from yuxi.services.workspace_service import MAX_WORKSPACE_UPLOAD_SIZE_BYTES, resolve_workspace_file_path
@@ -248,38 +247,6 @@ async def create_database(
         f"embedding_model_spec {embedding_model_spec}, share_config {share_config}"
     )
     try:
-        # 先检查名称是否已存在
-        if await knowledge_base.database_name_exists(database_name):
-            raise HTTPException(
-                status_code=409,
-                detail=f"知识库名称 '{database_name}' 已存在，请使用其他名称",
-            )
-
-        if not KnowledgeBaseFactory.is_type_supported(kb_type):
-            raise HTTPException(status_code=400, detail=f"Unsupported knowledge base type: {kb_type}")
-
-        kb_class = KnowledgeBaseFactory.get_kb_class(kb_type)
-
-        additional_params = {**(additional_params or {})}
-        additional_params["auto_generate_questions"] = False  # 默认不生成问题
-
-        if "reranker_config" in additional_params:
-            raise HTTPException(
-                status_code=400,
-                detail="reranker_config 已移除，请在查询参数中使用 reranker_model spec",
-            )
-        additional_params = kb_class.normalize_additional_params(additional_params)
-
-        if kb_class.requires_embedding_model:
-            if not embedding_model_spec:
-                raise HTTPException(status_code=400, detail="embedding_model_spec 不能为空")
-
-            info = model_cache.get_model_info(embedding_model_spec)
-            if not info or info.model_type != "embedding":
-                raise HTTPException(status_code=400, detail=f"不支持的 embedding 模型: {embedding_model_spec}")
-        else:
-            embedding_model_spec = None
-
         database_info = await knowledge_base.create_database(
             database_name,
             description,
@@ -289,7 +256,7 @@ async def create_database(
             share_config=share_config,
             created_by=current_user.uid,
             created_by_department_id=current_user.department_id,
-            **additional_params,
+            **(additional_params or {}),
         )
 
         # 需要重新加载所有智能体，因为工具刷新了
@@ -297,7 +264,11 @@ async def create_database(
 
         await agent_manager.reload_all()
 
-        return database_info
+        response = serialize_knowledge_base(database_info)
+        response["files"] = {}
+        return response
+    except KBNameConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except HTTPException:
         raise
     except Exception as e:
@@ -440,30 +411,13 @@ async def update_database_info(
     try:
         update_llm_model_spec = "llm_model_spec" in data.model_fields_set
 
-        additional_params = data.additional_params
-        if additional_params is not None:
-            db_info = await knowledge_base.get_database_info(kb_id)
-            if not db_info:
-                raise HTTPException(status_code=404, detail=f"知识库 {kb_id} 不存在")
-
-            kb_type = db_info.kb_type.lower()
-            kb_class = KnowledgeBaseFactory.get_kb_class(kb_type)
-            merged_params = dict(db_info.additional_params)
-            merged_params.update(additional_params)
-            kb_class.normalize_additional_params(merged_params)
-            additional_params = (
-                kb_class.normalize_additional_params(additional_params)
-                if kb_class.apply_chunk_defaults
-                else kb_class.normalize_additional_params(merged_params)
-            )
-
         database = await knowledge_base.update_database(
             kb_id,
             data.name,
             data.description,
             data.llm_model_spec,
             update_llm_model_spec=update_llm_model_spec,
-            additional_params=additional_params,
+            additional_params=data.additional_params,
             share_config=data.share_config,
             operator_uid=current_user.uid,
             operator_department_id=current_user.department_id,
@@ -1728,17 +1682,14 @@ async def update_knowledge_base_query_params(
 ):
     """更新知识库查询参数配置"""
     try:
-        from yuxi.repositories.knowledge_base_repository import KnowledgeBaseRepository
-
-        kb_repo = KnowledgeBaseRepository()
-        kb = await kb_repo.merge_query_params_options(kb_id, params)
-        if kb is None:
-            raise HTTPException(status_code=404, detail="Knowledge base not found")
+        await knowledge_base.update_kb_query_params(kb_id, params)
 
         logger.info(f"更新知识库 {kb_id} 查询参数: {params}")
 
         return {"message": "success", "data": params}
 
+    except KBNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except HTTPException:
         raise
     except Exception as e:

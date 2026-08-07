@@ -4,7 +4,7 @@ from typing import Any
 import httpx
 
 from yuxi.knowledge.implementations.read_only_connectors import ReadOnlyConnectors
-from yuxi.knowledge.contracts import KnowledgeBaseConfig
+from yuxi.knowledge.read_models import KnowledgeBaseConfig
 from yuxi.utils import logger
 
 DIFY_REQUIRED_PARAMS = ("dify_api_url", "dify_token", "dify_dataset_id")

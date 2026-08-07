@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from yuxi.knowledge.contracts import KnowledgeBaseDetail
+from yuxi.knowledge.read_models import KnowledgeBaseDetail
 from yuxi.knowledge.utils import sample_question_utils as sq
 
 

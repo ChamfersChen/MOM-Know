@@ -3,7 +3,7 @@
 from fastapi import Depends, HTTPException
 
 from server.utils.auth_middleware import get_admin_user
-from yuxi.knowledge.contracts import KnowledgeBaseDetail
+from yuxi.knowledge.read_models import KnowledgeBaseDetail
 from yuxi.knowledge.runtime import knowledge_base
 from yuxi.permissions import (
     ResourcePermission,

@@ -283,13 +283,22 @@
               </a-form-item>
               <template v-if="isDifyKb">
                 <a-form-item label="Dify API URL" name="dify_api_url">
-                  <a-input v-model:value="editForm.dify_api_url" placeholder="例如: https://api.dify.ai/v1" />
+                  <a-input
+                    v-model:value="editForm.dify_api_url"
+                    placeholder="例如: https://api.dify.ai/v1"
+                  />
                 </a-form-item>
                 <a-form-item label="Dify Token" name="dify_token">
-                  <a-input-password v-model:value="editForm.dify_token" placeholder="请输入 Dify API Token" />
+                  <a-input-password
+                    v-model:value="editForm.dify_token"
+                    placeholder="请输入 Dify API Token"
+                  />
                 </a-form-item>
                 <a-form-item label="Dataset ID" name="dify_dataset_id">
-                  <a-input v-model:value="editForm.dify_dataset_id" placeholder="请输入 Dify dataset_id" />
+                  <a-input
+                    v-model:value="editForm.dify_dataset_id"
+                    placeholder="请输入 Dify dataset_id"
+                  />
                 </a-form-item>
               </template>
 
@@ -338,12 +347,10 @@
 
           <a-tab-pane key="retrieval" tab="检索配置" force-render>
             <div class="database-edit-tab-content retrieval-config-content">
-              <p class="database-edit-tab-description">调整当前知识库在检索测试和 Agent 使用时采用的参数。</p>
-              <SearchConfigPanel
-                v-if="editModalVisible"
-                ref="searchConfigPanelRef"
-                :kb-id="kbId"
-              />
+              <p class="database-edit-tab-description">
+                调整当前知识库在检索测试和 Agent 使用时采用的参数。
+              </p>
+              <SearchConfigPanel v-if="editModalVisible" ref="searchConfigPanelRef" :kb-id="kbId" />
             </div>
           </a-tab-pane>
         </a-tabs>
@@ -371,7 +378,7 @@ import {
   Map as MapIcon,
   Network,
   Pencil,
-  Search,
+  Search
 } from 'lucide-vue-next'
 import { QuestionCircleOutlined } from '@ant-design/icons-vue'
 import { message, Modal } from 'ant-design-vue'
@@ -449,7 +456,9 @@ const tabs = computed(() => {
 })
 
 const visibleTabs = computed(() =>
-  canManageDatabase.value ? tabs.value : tabs.value.filter((tab) => ['filetable', 'query'].includes(tab.key))
+  canManageDatabase.value
+    ? tabs.value
+    : tabs.value.filter((tab) => ['filetable', 'query'].includes(tab.key))
 )
 const activeTab = ref('filetable')
 
@@ -748,7 +757,8 @@ const shareConfigDisplay = computed(() => {
     if (!scope) return '无'
     if (scope.access_level === 'global') return '全局'
     if (scope.access_level === 'department') {
-      const names = (scope.department_ids || []).map((id) => getDepartmentName(id)).join('、') || '无'
+      const names =
+        (scope.department_ids || []).map((id) => getDepartmentName(id)).join('、') || '无'
       return `${scope.department_ids?.length || 0} 个部门：${names}`
     }
     const names = (scope.user_uids || []).map((uid) => getUserName(uid)).join('、') || '无'

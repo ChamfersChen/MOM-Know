@@ -3,6 +3,7 @@ import types
 from yuxi.knowledge.base import KnowledgeBase
 from yuxi.knowledge.chunking.ragflow_like.nlp import count_tokens
 from yuxi.knowledge.manager import KnowledgeBaseManager
+from yuxi.knowledge.read_models import KnowledgeBaseDetail
 
 
 class FakeKnowledgeBase(KnowledgeBase):
@@ -53,10 +54,10 @@ class FakeKnowledgeBaseRepository:
     async def get_by_kb_id(self, kb_id: str):
         return self.row if kb_id == "db" else None
 
-    async def update(self, kb_id: str, data: dict):
+    async def update_stats(self, kb_id: str, stats: dict[str, int]):
         assert kb_id == "db"
-        self.update_calls.append(dict(data))
-        self.row.additional_params = data["additional_params"]
+        self.update_calls.append({"stats": stats})
+        self.row.additional_params = {**self.row.additional_params, "stats": stats}
         return self.row
 
 
@@ -180,6 +181,27 @@ async def test_create_database_persists_allowed_record_fields(tmp_path, monkeypa
         "yuxi.knowledge.manager.KnowledgeBaseFactory.is_type_supported",
         classmethod(lambda cls, _kb_type: True),
     )
+    monkeypatch.setattr(
+        "yuxi.models.providers.cache.model_cache.get_model_info",
+        lambda _spec: types.SimpleNamespace(model_type="embedding"),
+    )
+
+    async def get_database_info(kb_id: str):
+        return KnowledgeBaseDetail(
+            kb_id=kb_id,
+            name="New database",
+            description="New description",
+            kb_type="fake",
+            embedding_model_spec="provider:embedding",
+            llm_model_spec=None,
+            query_params={},
+            additional_params={"auto_generate_questions": False},
+            share_config=share_config,
+            created_by="root",
+            created_at=None,
+        )
+
+    monkeypatch.setattr(manager, "get_database_info", get_database_info)
 
     result = await manager.create_database(
         "New database",
@@ -197,12 +219,12 @@ async def test_create_database_persists_allowed_record_fields(tmp_path, monkeypa
     assert payload["created_by"] == "root"
     assert "share_config" not in payload["additional_params"]
     assert "created_by" not in payload["additional_params"]
-    assert result["kb_id"].startswith("kb_")
+    assert result.kb_id.startswith("kb_")
     assert not hasattr(kb, "_runtime_configs")
 
 
-async def test_refresh_database_stats_persists_metadata(tmp_path, monkeypatch):
-    kb = make_kb(tmp_path)
+async def test_manager_refresh_database_stats_persists_metadata(tmp_path, monkeypatch):
+    manager = KnowledgeBaseManager(str(tmp_path))
     records = make_file_records(
         {
             "file-1": {"kb_id": "db", "filename": "alpha.md", "chunk_count": 2, "token_count": 10},
@@ -227,17 +249,18 @@ async def test_refresh_database_stats_persists_metadata(tmp_path, monkeypatch):
         lambda: kb_repo,
     )
 
-    stats = await kb.refresh_database_stats("db")
+    stats = await manager._refresh_database_stats("db")
 
     assert stats["file_count"] == 1
     assert stats["chunk_count"] == 2
     assert stats["token_count"] == 10
     assert kb_repo.row.additional_params["stats"] == stats
-    assert kb_repo.update_calls == [{"additional_params": {"stats": stats}}]
+    assert kb_repo.update_calls == [{"stats": stats}]
 
 
 async def test_repair_missing_file_stats_updates_files_and_database_metadata(tmp_path, monkeypatch):
     kb = make_kb(tmp_path)
+    manager = KnowledgeBaseManager(str(tmp_path))
     records = make_file_records(
         {
             "file-1": {"kb_id": "db", "filename": "alpha.md", "chunk_count": 0, "token_count": 0},
@@ -276,7 +299,12 @@ async def test_repair_missing_file_stats_updates_files_and_database_metadata(tmp
         lambda: kb_repo,
     )
 
-    result = await kb.repair_missing_file_stats("db")
+    async def get_kb_executor(_kb_id: str):
+        return kb
+
+    monkeypatch.setattr(manager, "get_kb_executor", get_kb_executor)
+
+    result = await manager.repair_missing_file_stats("db")
 
     expected_token_count = count_tokens("alpha beta") + count_tokens("中文")
     expected_stats = {"file_count": 2, "chunk_count": 5, "token_count": expected_token_count + 7}
@@ -297,6 +325,7 @@ async def test_repair_missing_file_stats_updates_files_and_database_metadata(tmp
 
 async def test_repair_missing_file_stats_skips_unindexed_files(tmp_path, monkeypatch):
     kb = make_kb(tmp_path)
+    manager = KnowledgeBaseManager(str(tmp_path))
     records = make_file_records(
         {
             "file-indexed": {
@@ -344,7 +373,12 @@ async def test_repair_missing_file_stats_skips_unindexed_files(tmp_path, monkeyp
         lambda: kb_repo,
     )
 
-    result = await kb.repair_missing_file_stats("db")
+    async def get_kb_executor(_kb_id: str):
+        return kb
+
+    monkeypatch.setattr(manager, "get_kb_executor", get_kb_executor)
+
+    result = await manager.repair_missing_file_stats("db")
 
     expected_token_count = count_tokens("alpha beta")
     assert records["file-indexed"].chunk_count == 2

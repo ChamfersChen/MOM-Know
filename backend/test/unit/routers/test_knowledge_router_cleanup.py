@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, UploadFile
 from httpx import ASGITransport, AsyncClient
 
 from server.routers import knowledge_router
-from yuxi.knowledge.contracts import KnowledgeBaseDetail
+from yuxi.knowledge.read_models import KnowledgeBaseDetail
 
 pytestmark = pytest.mark.asyncio
 

@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from yuxi.knowledge.chunking.ragflow_like.presets import ensure_chunk_defaults_in_additional_params
-from yuxi.knowledge.contracts import KnowledgeBaseConfig
+from yuxi.knowledge.read_models import KnowledgeBaseConfig
 from yuxi.knowledge.schemas import (
     FindOutputSchema,
     FindWindowSchema,
@@ -54,6 +54,12 @@ class KnowledgeBaseException(Exception):
 
 class KBNotFoundError(KnowledgeBaseException):
     """知识库不存在错误"""
+
+    pass
+
+
+class KBNameConflictError(KnowledgeBaseException):
+    """知识库名称冲突错误。"""
 
     pass
 
@@ -244,7 +250,6 @@ class KnowledgeBase(ABC):
             metadata["created_by"] = operator_id
 
         await self._persist_file_meta(file_id, metadata)
-        await self.refresh_database_stats(kb_id)
 
         return metadata
 
@@ -860,9 +865,9 @@ class KnowledgeBase(ABC):
         """
         pass
 
-    async def delete_database(self, kb_id: str) -> dict:
+    async def cleanup_database_resources(self, kb_id: str) -> dict:
         """
-        删除数据库
+        清理知识库关联的文件与存储资源。
 
         Args:
             kb_id: 数据库ID
@@ -871,7 +876,6 @@ class KnowledgeBase(ABC):
             操作结果
         """
         from yuxi.knowledge.utils.kb_utils import is_minio_url, parse_minio_url
-        from yuxi.repositories.knowledge_base_repository import KnowledgeBaseRepository
         from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
         from yuxi.storage.minio import get_minio_client
 
@@ -909,10 +913,8 @@ class KnowledgeBase(ABC):
         cleanup_tasks = [minio_client.adelete_objects_by_prefix(bucket_name, prefix) for bucket_name in cleanup_buckets]
         await asyncio.gather(*cleanup_tasks)
 
-        # 3. 删除数据库记录
+        # 3. 删除知识库的文件记录；知识库主记录由 Manager 统一删除。
         await file_repo.delete_by_kb_id(kb_id)
-        kb_repo = KnowledgeBaseRepository()
-        await kb_repo.delete(kb_id)
 
         # 删除工作目录
         working_dir = os.path.join(self.work_dir, kb_id)
@@ -925,6 +927,14 @@ class KnowledgeBase(ABC):
                 logger.error(f"Error deleting working directory {working_dir}: {e}")
 
         return {"message": "删除成功"}
+
+    async def detect_data_inconsistencies(
+        self,
+        known_kb_ids: set[str],
+        managed_kb_ids: set[str],
+    ) -> dict[str, list[dict]]:
+        """检测当前知识库类型管理的外部资源不一致。"""
+        return {"missing_collections": [], "missing_files": []}
 
     async def create_folder(self, kb_id: str, folder_name: str, parent_id: str | None = None) -> dict:
         """Create a folder in the database."""
@@ -1038,44 +1048,6 @@ class KnowledgeBase(ABC):
                 defaults[opt["key"]] = opt["default"]
         return {"options": defaults}
 
-    @staticmethod
-    def _normalize_database_stats(stats: dict | None) -> dict[str, int]:
-        normalized = {
-            "file_count": 0,
-            "folder_count": 0,
-            "row_count": 0,
-            "total_size": 0,
-            "chunk_count": 0,
-            "token_count": 0,
-            "pending_parse_count": 0,
-            "pending_index_count": 0,
-            "processing_count": 0,
-        }
-        if not isinstance(stats, dict):
-            return normalized
-
-        for key in normalized:
-            try:
-                normalized[key] = max(int(stats.get(key) or 0), 0)
-            except (TypeError, ValueError):
-                normalized[key] = 0
-        return normalized
-
-    async def refresh_database_stats(self, kb_id: str) -> dict[str, int]:
-        from yuxi.repositories.knowledge_base_repository import KnowledgeBaseRepository
-        from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
-
-        stats = await KnowledgeFileRepository().get_kb_file_stats(kb_id)
-        kb_repo = KnowledgeBaseRepository()
-        kb = await kb_repo.get_by_kb_id(kb_id)
-        if kb is None:
-            raise ValueError(f"Database {kb_id} not found")
-
-        additional_params = dict(kb.additional_params or {})
-        additional_params["stats"] = self._normalize_database_stats(stats)
-        await kb_repo.update(kb_id, {"additional_params": additional_params})
-        return stats
-
     async def repair_missing_file_stats(self, kb_id: str) -> dict:
         from yuxi.knowledge.chunking.ragflow_like.nlp import count_tokens
         from yuxi.repositories.knowledge_chunk_repository import KnowledgeChunkRepository
@@ -1149,7 +1121,7 @@ class KnowledgeBase(ABC):
                     updated_files += 1
                     await file_repo.update_fields(file_id=file_id, kb_id=kb_id, data=update_data)
 
-        stats = await self.refresh_database_stats(kb_id)
+        stats = await file_repo.get_kb_file_stats(kb_id)
         return {
             "status": "success",
             "stats": stats,

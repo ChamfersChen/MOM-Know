@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from yuxi.knowledge.contracts import KnowledgeBaseDetail, KnowledgeBaseSummary, redact_sensitive_params
+from yuxi.knowledge.read_models import KnowledgeBaseDetail, KnowledgeBaseSummary
+from yuxi.knowledge.utils.security import redact_sensitive_params
 from yuxi.permissions import ResourcePermission
 from yuxi.utils.datetime_utils import utc_isoformat
 

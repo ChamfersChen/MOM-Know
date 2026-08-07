@@ -9,5 +9,7 @@ export function getShareConfigLabel(shareConfig) {
     if (scope.access_level === 'department') return `部门(${scope.department_ids?.length || 0})`
     return `用户(${scope.user_uids?.length || 0})`
   }
-  return manageScope ? `读${scopeLabel(readScope)} · 管${scopeLabel(manageScope)}` : `只读${scopeLabel(readScope)}`
+  return manageScope
+    ? `读${scopeLabel(readScope)} · 管${scopeLabel(manageScope)}`
+    : `只读${scopeLabel(readScope)}`
 }
