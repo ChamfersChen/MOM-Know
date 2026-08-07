@@ -7,6 +7,7 @@ import httpx
 import pytest
 
 from test.e2e.test_agent_async_e2e import _cancel_run, _consume_events, _wait_for_run
+from test.live_api_cleanup import remove_e2e_thread_storage
 from yuxi.agents.skills.service import get_personal_skills_root_dir, get_thread_skills_root_dir
 from yuxi.utils.paths import VIRTUAL_PATH_WORKSPACE_SKILLS
 
@@ -85,7 +86,11 @@ async def test_main_agent_reads_personal_skill_from_workspace(
         thread_response = await e2e_client.post(
             "/api/chat/thread",
             headers=e2e_headers,
-            json={"agent_id": agent_slug, "title": f"personal-skill-e2e-{slug[-8:]}", "metadata": {}},
+            json={
+                "agent_id": agent_slug,
+                "title": f"personal-skill-e2e-{slug[-8:]}",
+                "metadata": {"_yuxi_e2e": True, "test": "personal-skill-e2e"},
+            },
         )
         assert thread_response.status_code == 200, thread_response.text
         thread_payload = thread_response.json()
@@ -121,6 +126,7 @@ async def test_main_agent_reads_personal_skill_from_workspace(
         if thread_id:
             thread_delete = await e2e_client.delete(f"/api/chat/thread/{thread_id}", headers=e2e_headers)
             assert thread_delete.status_code in {200, 404}, thread_delete.text
+            remove_e2e_thread_storage(thread_id)
         if agent_created:
             agent_delete = await e2e_client.delete(f"/api/agent/{agent_slug}", headers=e2e_headers)
             assert agent_delete.status_code in {200, 404}, agent_delete.text

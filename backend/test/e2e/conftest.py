@@ -15,7 +15,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from test.live_api_cleanup import cleanup_pytest_knowledge_resources  # noqa: E402
+from test.live_api_cleanup import (  # noqa: E402
+    cleanup_e2e_chat_resources,
+    cleanup_pytest_knowledge_resources,
+)
 
 load_dotenv(PROJECT_ROOT / ".env", override=False)
 load_dotenv(PROJECT_ROOT / "test/.env.test", override=False)
@@ -23,8 +26,8 @@ load_dotenv(PROJECT_ROOT / "test/.env.test", override=False)
 E2E_BASE_URL = os.getenv("TEST_BASE_URL", os.getenv("API_BASE_URL", "http://localhost:5050")).rstrip("/")
 E2E_USERNAME = os.getenv("E2E_USERNAME") or os.getenv("TEST_USERNAME")
 E2E_PASSWORD = os.getenv("E2E_PASSWORD") or os.getenv("TEST_PASSWORD")
-CLEANUP_USERNAME = os.getenv("TEST_USERNAME") or E2E_USERNAME
-CLEANUP_PASSWORD = os.getenv("TEST_PASSWORD") or E2E_PASSWORD
+CLEANUP_USERNAME = E2E_USERNAME or os.getenv("TEST_USERNAME")
+CLEANUP_PASSWORD = E2E_PASSWORD or os.getenv("TEST_PASSWORD")
 E2E_TIMEOUT = httpx.Timeout(300.0, connect=10.0)
 LITE_MODE = os.getenv("LITE_MODE", "").lower() in {"true", "1"}
 
@@ -44,7 +47,7 @@ def e2e_base_url() -> str:
 
 @pytest.fixture(scope="session", autouse=True)
 def cleanup_e2e_test_resources(e2e_base_url: str):
-    """在 E2E 会话前后清理 pytest 前缀的评估资源和知识库。"""
+    """在 E2E 会话前后清理测试对话、临时智能体和知识库。"""
 
     if LITE_MODE or not CLEANUP_USERNAME or not CLEANUP_PASSWORD:
         yield
@@ -74,6 +77,11 @@ def cleanup_e2e_test_resources(e2e_base_url: str):
             if current_user.json().get("role") not in {"admin", "superadmin"}:
                 raise RuntimeError("E2E cleanup credentials must belong to an admin or superadmin")
 
+            cleanup_uid = str(current_user.json().get("uid") or "")
+            if not cleanup_uid:
+                raise RuntimeError("E2E cleanup current user payload is missing uid")
+
+            await cleanup_e2e_chat_resources(client, headers, owner_uid=cleanup_uid)
             await cleanup_pytest_knowledge_resources(client, headers)
 
     anyio.run(run_cleanup)

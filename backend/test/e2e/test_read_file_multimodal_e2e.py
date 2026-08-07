@@ -61,7 +61,11 @@ async def _create_agent(
 async def _create_thread(client: httpx.AsyncClient, headers: dict[str, str], agent_slug: str) -> str:
     response = await client.post(
         "/api/chat/thread",
-        json={"agent_id": agent_slug, "title": f"read-file-e2e-{uuid.uuid4().hex[:8]}", "metadata": {}},
+        json={
+            "agent_id": agent_slug,
+            "title": f"read-file-e2e-{uuid.uuid4().hex[:8]}",
+            "metadata": {"_yuxi_e2e": True, "test": "read-file-e2e"},
+        },
         headers=headers,
     )
     assert response.status_code == 200, response.text

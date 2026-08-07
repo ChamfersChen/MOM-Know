@@ -20,7 +20,7 @@ async def _create_thread(client: httpx.AsyncClient, headers: dict[str, str], age
         json={
             "agent_id": agent_slug,
             "title": f"agent-steer-e2e-{uuid.uuid4().hex[:8]}",
-            "metadata": {"test": "agent-steer-e2e"},
+            "metadata": {"_yuxi_e2e": True, "test": "agent-steer-e2e"},
         },
         headers=headers,
     )
