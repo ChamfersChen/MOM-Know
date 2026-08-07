@@ -72,7 +72,11 @@ async def test_main_agent_reads_personal_skill_from_workspace(
                 "backend_id": "ChatbotAgent",
                 "description": "真实个人 Skill Agent E2E 临时智能体",
                 "config_json": {"context": context},
-                "share_config": {"access_level": "user", "department_ids": [], "user_uids": [uid]},
+                "share_config": {
+                    "version": 2,
+                    "read_scope": {"access_level": "user", "department_ids": [], "user_uids": [uid]},
+                    "manage_scope": None,
+                },
             },
         )
         assert agent_response.status_code == 200, agent_response.text

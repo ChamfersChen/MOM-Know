@@ -46,7 +46,11 @@ async def _create_agent(
                     "model_retry_times": 0,
                 }
             },
-            "share_config": {"access_level": "user", "department_ids": [], "user_uids": [uid]},
+            "share_config": {
+                "version": 2,
+                "read_scope": {"access_level": "user", "department_ids": [], "user_uids": [uid]},
+                "manage_scope": None,
+            },
         },
         headers=headers,
     )

@@ -208,7 +208,11 @@ async def test_subagent_stream_records_run_and_shares_output_files(
     if default_context.get("model"):
         base_context["model"] = default_context["model"]
 
-    share_config = {"access_level": "user", "department_ids": [], "user_uids": [uid]}
+    share_config = {
+        "version": 2,
+        "read_scope": {"access_level": "user", "department_ids": [], "user_uids": [uid]},
+        "manage_scope": None,
+    }
 
     try:
         sub_agent = await _create_agent(
