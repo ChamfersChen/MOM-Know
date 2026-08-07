@@ -1,7 +1,7 @@
 """PDF 解析前置检查。
 
 本模块在文档进入 MinerU、PyPDFLoader 等解析器之前，
-先用 Yuxi 已有的 PyMuPDF 依赖检查 PDF 页面树是否能逐页加载。
+先用 Yuxi 已有的 pypdfium2 依赖检查 PDF 页面树是否能逐页加载。
 它只负责识别明显的 PDF 结构异常，例如页树中存在 null 页槽、非 Page 对象或循环引用；
 不负责修复 PDF，也不能被当作内容 OCR 或页数统计的业务事实源。
 """
@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-import fitz
+import pypdfium2 as pdfium
 
 from yuxi.knowledge.parser.base import DocumentParserException
 
@@ -40,8 +40,15 @@ def validate_pdf_page_tree_loadable(file_path: str | Path) -> None:
     path = Path(file_path)
 
     try:
-        doc = fitz.open(str(path))
+        doc = pdfium.PdfDocument(str(path))
     except Exception as exc:  # noqa: BLE001
+        # pypdfium2 打开加密 PDF 时抛 PdfiumError（消息含 password），无独立加密属性。
+        if isinstance(exc, pdfium.PdfiumError) and "password" in str(exc).lower():
+            raise DocumentParserException(
+                "PDF 文件已加密或需要密码，无法进入文档解析流程",
+                "pdf_preflight",
+                "encrypted_pdf",
+            ) from exc
         raise DocumentParserException(
             f"PDF 文件结构异常，无法打开页面目录: {exc}",
             "pdf_preflight",
@@ -49,14 +56,7 @@ def validate_pdf_page_tree_loadable(file_path: str | Path) -> None:
         ) from exc
 
     try:
-        if doc.is_encrypted or doc.needs_pass:
-            raise DocumentParserException(
-                "PDF 文件已加密或需要密码，无法进入文档解析流程",
-                "pdf_preflight",
-                "encrypted_pdf",
-            )
-
-        page_count = doc.page_count
+        page_count = len(doc)
         if page_count <= 0:
             raise DocumentParserException(
                 "PDF 文件没有可解析页面",
@@ -67,9 +67,9 @@ def validate_pdf_page_tree_loadable(file_path: str | Path) -> None:
         issues: list[PDFPageLoadIssue] = []
         for page_index in range(page_count):
             try:
-                page = doc.load_page(page_index)
-                # 访问 rect 会触发页面对象基础解析，能提前暴露 null/非 Page 页槽。
-                _ = page.rect
+                page = doc[page_index]
+                # 访问页面尺寸会触发页面对象基础解析，能提前暴露 null/非 Page 页槽。
+                _ = page.get_size()
             except Exception as exc:  # noqa: BLE001
                 issues.append(PDFPageLoadIssue(page_number=page_index + 1, message=str(exc)))
 
