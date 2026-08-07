@@ -7,6 +7,10 @@ name = "yuxi"
 version = "0.7.1"
 description = "Yuxi 智能知识库与知识图谱平台核心后端包"
 readme = "README.md"
+license = { text = "MIT" }
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+]
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "agent-sandbox>=0.0.26",
